@@ -9,6 +9,9 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql://user:pass@localhost:5432/trading_os"
 )
+# Coolify/Heroku use postgres:// but SQLAlchemy requires postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 engine = create_engine(
     DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overflow=20

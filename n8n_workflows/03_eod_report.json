@@ -22,7 +22,7 @@
       "parameters": {
         "method": "GET",
         "url": "https://money.shadowmarket.ai/tools/signal_accuracy",
-        "options": {}
+        "options": { "allowUnauthorizedCerts": true }
       },
       "id": "d1000000-0003-4000-8000-000000000002",
       "name": "Get Accuracy",
@@ -34,7 +34,7 @@
       "parameters": {
         "method": "GET",
         "url": "https://money.shadowmarket.ai/tools/order_status",
-        "options": {}
+        "options": { "allowUnauthorizedCerts": true }
       },
       "id": "d1000000-0003-4000-8000-000000000003",
       "name": "Get Order Status",
@@ -61,7 +61,7 @@
       "parameters": {
         "method": "GET",
         "url": "https://money.shadowmarket.ai/tools/trade_memory_stats",
-        "options": {}
+        "options": { "allowUnauthorizedCerts": true }
       },
       "id": "d1000000-0003-4000-8000-000000000005",
       "name": "Get Memory Stats",
@@ -90,7 +90,7 @@
             { "name": "text", "value": "={{ $json.text }}" }
           ]
         },
-        "options": {}
+        "options": { "allowUnauthorizedCerts": true }
       },
       "id": "d1000000-0003-4000-8000-000000000007",
       "name": "Send Telegram",

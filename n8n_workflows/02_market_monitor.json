@@ -22,7 +22,7 @@
       "parameters": {
         "method": "GET",
         "url": "https://money.shadowmarket.ai/tools/order_status",
-        "options": {}
+        "options": { "allowUnauthorizedCerts": true }
       },
       "id": "c1000000-0002-4000-8000-000000000002",
       "name": "Get Order Status",
@@ -51,7 +51,7 @@
       "parameters": {
         "method": "POST",
         "url": "https://money.shadowmarket.ai/tools/close_all",
-        "options": { "timeout": 30000 }
+        "options": { "timeout": 30000, "allowUnauthorizedCerts": true }
       },
       "id": "c1000000-0002-4000-8000-000000000004",
       "name": "Emergency Close All",
@@ -73,7 +73,7 @@
             }
           ]
         },
-        "options": {}
+        "options": { "allowUnauthorizedCerts": true }
       },
       "id": "c1000000-0002-4000-8000-000000000005",
       "name": "Alert Kill Switch",
@@ -85,7 +85,7 @@
       "parameters": {
         "method": "GET",
         "url": "https://money.shadowmarket.ai/api/trades/active",
-        "options": {}
+        "options": { "allowUnauthorizedCerts": true }
       },
       "id": "c1000000-0002-4000-8000-000000000006",
       "name": "Get Active Trades",
@@ -114,7 +114,7 @@
             { "name": "text", "value": "={{ $json.text }}" }
           ]
         },
-        "options": {}
+        "options": { "allowUnauthorizedCerts": true }
       },
       "id": "c1000000-0002-4000-8000-000000000008",
       "name": "Send Trade Alert",
@@ -182,7 +182,7 @@
             }
           ]
         },
-        "options": {}
+        "options": { "allowUnauthorizedCerts": true }
       },
       "id": "c1000000-0002-4000-8000-000000000012",
       "name": "Send F&O Alert",

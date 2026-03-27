@@ -84,19 +84,14 @@ class TestN8nWorkflows:
                 f"{filename} has no HTTP request nodes"
             )
 
-    def test_workflows_target_localhost_8001(self):
+    def test_workflows_target_mcp_server(self):
         for filename in EXPECTED_WORKFLOWS:
             data = self._load_workflow(filename)
-            for node in data["nodes"]:
-                url = node.get("parameters", {}).get("url", "")
-                if "localhost:8001" in url:
-                    break
-            else:
-                # Check if any node targets localhost:8001 (some use expressions)
-                raw = json.dumps(data)
-                if "localhost:8001" not in raw and "signal_receiver" not in filename:
-                    # TV webhook forwards to MCP, others must call it
-                    pass  # Webhook workflows may use expressions
+            raw = json.dumps(data)
+            # Workflows should target money.shadowmarket.ai or localhost:8001
+            has_mcp = "money.shadowmarket.ai" in raw or "localhost:8001" in raw
+            if "signal_receiver" not in filename:
+                assert has_mcp, f"{filename} should target MCP server"
 
     def test_morning_startup_calls_connect_kite_and_mwa(self):
         data = self._load_workflow("00_morning_startup.json")
