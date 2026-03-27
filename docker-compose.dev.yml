@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: trading
+      POSTGRES_PASSWORD: trading_pass
+      POSTGRES_DB: trading_os
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trading -d trading_os"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    env_file: .env
+    volumes:
+      - ./mcp_server:/app/mcp_server
+      - ./tests:/app/tests
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn mcp_server.mcp_server:app --host 0.0.0.0 --port 8001 --reload
+
+volumes:
+  postgres_data:

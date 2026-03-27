@@ -1,0 +1,55 @@
+import os
+import logging
+from dotenv import load_dotenv
+
+load_dotenv()
+logger = logging.getLogger(__name__)
+
+
+class Settings:
+    # Kite Connect
+    KITE_API_KEY: str = os.getenv("KITE_API_KEY", "")
+    KITE_API_SECRET: str = os.getenv("KITE_API_SECRET", "")
+    KITE_ACCESS_TOKEN: str = os.getenv("KITE_ACCESS_TOKEN", "")
+    KITE_USER_ID: str = os.getenv("KITE_USER_ID", "")
+    KITE_PASSWORD: str = os.getenv("KITE_PASSWORD", "")
+    KITE_TOTP_KEY: str = os.getenv("KITE_TOTP_KEY", "")
+
+    # Claude AI
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+
+    # Telegram
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
+
+    # Database
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/trading_os")
+
+    # Google Sheets
+    GOOGLE_SHEETS_CREDENTIALS: str = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "")
+    GOOGLE_SHEET_ID: str = os.getenv("GOOGLE_SHEET_ID", "")
+
+    # n8n
+    N8N_WEBHOOK_BASE: str = os.getenv("N8N_WEBHOOK_BASE", "https://n8n.shadowmarket.ai")
+
+    # MCP Server
+    MCP_SERVER_HOST: str = os.getenv("MCP_SERVER_HOST", "0.0.0.0")
+    MCP_SERVER_PORT: int = int(os.getenv("MCP_SERVER_PORT", "8001"))
+
+    # RRMS Defaults
+    RRMS_CAPITAL: float = float(os.getenv("RRMS_CAPITAL", "100000"))
+    RRMS_RISK_PCT: float = float(os.getenv("RRMS_RISK_PCT", "0.02"))
+    RRMS_MIN_RRR: float = float(os.getenv("RRMS_MIN_RRR", "3.0"))
+
+    # Debate Validator
+    DEBATE_ENABLED: bool = os.getenv("DEBATE_ENABLED", "true").lower() == "true"
+    DEBATE_UNCERTAIN_LOW: int = int(os.getenv("DEBATE_UNCERTAIN_LOW", "40"))
+    DEBATE_UNCERTAIN_HIGH: int = int(os.getenv("DEBATE_UNCERTAIN_HIGH", "75"))
+    DEBATE_ROUNDS: int = int(os.getenv("DEBATE_ROUNDS", "2"))
+
+    # Trade Memory
+    TRADE_MEMORY_FILE: str = os.getenv("TRADE_MEMORY_FILE", "data/trade_memory.json")
+    MEMORY_TOP_K: int = int(os.getenv("MEMORY_TOP_K", "3"))
+
+
+settings = Settings()

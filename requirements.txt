@@ -1,0 +1,27 @@
+kiteconnect==4.2.0
+fastapi==0.104.1
+uvicorn==0.24.0
+# mcp SDK requires Python 3.12+ — using FastAPI directly as MCP-compatible server
+anthropic
+pandas>=2.1.0
+numpy>=1.26.0
+ta
+# TA-Lib requires system-level install; use ta-lib-bin on Windows or install from wheel
+# TA-Lib==0.4.28
+backtrader
+pyotp==2.9.0
+requests==2.31.0
+beautifulsoup4==4.12.0
+yfinance==0.2.31
+gspread==5.12.0
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+python-telegram-bot==20.6
+schedule==1.2.1
+python-dotenv==1.0.0
+ruff
+pytest
+pytest-asyncio
+httpx
+pytest-cov
+rank-bm25>=0.2.2

@@ -1,0 +1,243 @@
+{
+  "name": "MKUMARAN - 02 Market Monitor (Kill Switch + F&O)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/5 9-15 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "c1000000-0002-4000-8000-000000000001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 350]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://money.shadowmarket.ai/tools/order_status",
+        "options": {}
+      },
+      "id": "c1000000-0002-4000-8000-000000000002",
+      "name": "Get Order Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 350]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.kill_switch_active }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "c1000000-0002-4000-8000-000000000003",
+      "name": "Kill Switch Active?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [750, 350]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://money.shadowmarket.ai/tools/close_all",
+        "options": { "timeout": 30000 }
+      },
+      "id": "c1000000-0002-4000-8000-000000000004",
+      "name": "Emergency Close All",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 150]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_CHAT_ID }}" },
+            {
+              "name": "text",
+              "value": "=\ud83d\udea8 KILL SWITCH TRIGGERED\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nReason: {{ $json.kill_switch_reason }}\nDaily P&L: Rs.{{ $json.daily_pnl }}\nAll positions being closed!\n\nManual intervention may be needed."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1000000-0002-4000-8000-000000000005",
+      "name": "Alert Kill Switch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 150]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://money.shadowmarket.ai/api/trades/active",
+        "options": {}
+      },
+      "id": "c1000000-0002-4000-8000-000000000006",
+      "name": "Get Active Trades",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "const trades = $input.first().json;\nconst alerts = [];\n\nif (!Array.isArray(trades) || trades.length === 0) {\n  return alerts;\n}\n\nfor (const t of trades) {\n  const pnl = t.pnl_pct || 0;\n  const ticker = t.ticker || 'UNKNOWN';\n  \n  if (pnl >= 5) {\n    alerts.push({ json: { text: `\ud83d\udcc8 ${ticker}: +${pnl.toFixed(1)}% \u2014 nearing target! Consider booking profit.`, ticker, pnl } });\n  } else if (pnl <= -2) {\n    alerts.push({ json: { text: `\ud83d\udcc9 ${ticker}: ${pnl.toFixed(1)}% \u2014 approaching stop loss. Monitor closely.`, ticker, pnl } });\n  }\n}\n\nreturn alerts;"
+      },
+      "id": "c1000000-0002-4000-8000-000000000007",
+      "name": "Check SL/Target",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [1250, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_CHAT_ID }}" },
+            { "name": "text", "value": "={{ $json.text }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1000000-0002-4000-8000-000000000008",
+      "name": "Send Trade Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1500, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Only run F&O check every 15 minutes (on :00, :15, :30, :45)\nconst minute = new Date().getMinutes();\nif (minute % 15 !== 0) {\n  return [];  // Skip — not a 15-min mark\n}\nreturn [{ json: { run_fo: true } }];"
+      },
+      "id": "c1000000-0002-4000-8000-000000000009",
+      "name": "F&O Timer Gate",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [1000, 650]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://money.shadowmarket.ai/tools/get_fo_signal",
+        "options": { "timeout": 30000 }
+      },
+      "id": "c1000000-0002-4000-8000-000000000010",
+      "name": "Get F&O Signal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 650]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.verdict }}",
+              "operation": "notEqual",
+              "value2": "UNAVAILABLE"
+            },
+            {
+              "value1": "={{ $json.verdict }}",
+              "operation": "notEqual",
+              "value2": "NEUTRAL"
+            }
+          ]
+        },
+        "combineOperation": "all"
+      },
+      "id": "c1000000-0002-4000-8000-000000000011",
+      "name": "F&O Has Signal?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1500, 650]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_CHAT_ID }}" },
+            {
+              "name": "text",
+              "value": "=\ud83d\udcca F&O Intraday Signal\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nVerdict: {{ $json.verdict }}\nPCR: {{ $json.pcr || 'N/A' }}\nOI Interpretation: {{ $json.oi_interpretation || 'N/A' }}\nStatus: {{ $json.status || 'N/A' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1000000-0002-4000-8000-000000000012",
+      "name": "Send F&O Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1750, 550]
+    },
+    {
+      "parameters": {},
+      "id": "c1000000-0002-4000-8000-000000000013",
+      "name": "F&O No Signal",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1750, 750]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[
+        {"node": "Get Order Status", "type": "main", "index": 0},
+        {"node": "F&O Timer Gate", "type": "main", "index": 0}
+      ]]
+    },
+    "Get Order Status": {
+      "main": [[{"node": "Kill Switch Active?", "type": "main", "index": 0}]]
+    },
+    "Kill Switch Active?": {
+      "main": [
+        [{"node": "Emergency Close All", "type": "main", "index": 0}],
+        [{"node": "Get Active Trades", "type": "main", "index": 0}]
+      ]
+    },
+    "Emergency Close All": {
+      "main": [[{"node": "Alert Kill Switch", "type": "main", "index": 0}]]
+    },
+    "Get Active Trades": {
+      "main": [[{"node": "Check SL/Target", "type": "main", "index": 0}]]
+    },
+    "Check SL/Target": {
+      "main": [[{"node": "Send Trade Alert", "type": "main", "index": 0}]]
+    },
+    "F&O Timer Gate": {
+      "main": [[{"node": "Get F&O Signal", "type": "main", "index": 0}]]
+    },
+    "Get F&O Signal": {
+      "main": [[{"node": "F&O Has Signal?", "type": "main", "index": 0}]]
+    },
+    "F&O Has Signal?": {
+      "main": [
+        [{"node": "Send F&O Alert", "type": "main", "index": 0}],
+        [{"node": "F&O No Signal", "type": "main", "index": 0}]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "mkumaran-trading-os" }]
+}

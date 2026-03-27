@@ -1,0 +1,67 @@
+// This Pine Script(TM) code is subject to the terms of the Mozilla Public License 2.0
+// (c) mkumaran
+
+//@version=5
+strategy("MKUMARAN RRMS Strategy v1.0", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=2)
+
+// === INPUTS ===
+capital = input.float(100000, "Capital (Rs)", group="RRMS Settings")
+risk_pct = input.float(2.0, "Risk %", minval=0.1, maxval=10.0, group="RRMS Settings") / 100
+min_rrr = input.float(3.0, "Min RRR", minval=1.0, group="RRMS Settings")
+entry_zone_pct = input.float(2.0, "Entry Zone %", minval=0.1, maxval=10.0, group="RRMS Settings") / 100
+sl_below_pct = input.float(0.5, "SL Below LTRP %", minval=0.1, maxval=5.0, group="RRMS Settings") / 100
+lookback = input.int(20, "Swing Lookback", minval=5, maxval=100, group="Detection")
+
+// === WEBHOOK ===
+use_webhook = input.bool(true, "Send Webhook Alerts", group="Alerts")
+
+// === SWING DETECTION ===
+swing_low = ta.lowest(low, lookback)
+swing_high = ta.highest(high, lookback)
+
+ltrp = swing_low
+pivot_high = swing_high
+
+// === RRMS CALCULATION ===
+risk_amt = capital * risk_pct
+entry_trigger = close <= ltrp * (1 + entry_zone_pct)
+stop_loss = ltrp * (1 - sl_below_pct)
+risk_per_share = close - stop_loss
+reward_per_share = pivot_high - close
+rrr = risk_per_share > 0 ? reward_per_share / risk_per_share : 0
+qty = risk_per_share > 0 ? math.floor(risk_amt / risk_per_share) : 0
+
+// === CONDITIONS ===
+long_condition = entry_trigger and rrr >= min_rrr and qty > 0 and close > stop_loss
+exit_target = close >= pivot_high
+exit_sl = close <= stop_loss
+
+// === STRATEGY ===
+if long_condition
+    strategy.entry("RRMS Long", strategy.long, qty=qty)
+
+if exit_target
+    strategy.close("RRMS Long", comment="TARGET HIT")
+
+if exit_sl
+    strategy.close("RRMS Long", comment="STOP LOSS")
+
+// === PLOTS ===
+plot(ltrp, "LTRP", color=color.new(color.blue, 0), linewidth=2, style=plot.style_stepline)
+plot(pivot_high, "Pivot High", color=color.new(color.green, 0), linewidth=2, style=plot.style_stepline)
+plot(stop_loss, "Stop Loss", color=color.new(color.red, 0), linewidth=1, style=plot.style_stepline)
+
+// Entry zone highlighting
+entry_zone_upper = ltrp * (1 + entry_zone_pct)
+bgcolor(close >= ltrp and close <= entry_zone_upper ? color.new(color.green, 90) : na, title="Entry Zone")
+
+// === LABELS ===
+if long_condition
+    label.new(bar_index, low, "BUY\nRRR:" + str.tostring(rrr, "#.#") + "\nQty:" + str.tostring(qty), style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+
+// === ALERTS ===
+alertcondition(long_condition, "RRMS Buy Signal", "RRMS BUY: {{ticker}} @ {{close}} | SL: " + str.tostring(stop_loss) + " | Target: " + str.tostring(pivot_high) + " | RRR: " + str.tostring(rrr))
+
+// === WEBHOOK MESSAGE ===
+if long_condition and use_webhook
+    alert('{"ticker": "' + syminfo.ticker + '", "direction": "LONG", "entry": ' + str.tostring(close) + ', "sl": ' + str.tostring(stop_loss) + ', "target": ' + str.tostring(pivot_high) + ', "rrr": ' + str.tostring(rrr) + ', "qty": ' + str.tostring(qty) + ', "source": "tradingview"}', alert.freq_once_per_bar_close)

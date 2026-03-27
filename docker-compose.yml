@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: trading
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trading_pass}
+      POSTGRES_DB: trading_os
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trading -d trading_os"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "8001"
+    environment:
+      DATABASE_URL: postgresql://trading:${POSTGRES_PASSWORD:-trading_pass}@postgres:5432/trading_os
+      KITE_API_KEY: ${KITE_API_KEY:-}
+      KITE_API_SECRET: ${KITE_API_SECRET:-}
+      KITE_USER_ID: ${KITE_USER_ID:-}
+      KITE_PASSWORD: ${KITE_PASSWORD:-}
+      KITE_TOTP_KEY: ${KITE_TOTP_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      GOOGLE_SHEETS_CREDENTIALS: /app/data/service_account.json
+      GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID:-}
+      N8N_WEBHOOK_BASE: https://n8n.shadowmarket.ai
+      MCP_SERVER_HOST: "0.0.0.0"
+      MCP_SERVER_PORT: "8001"
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  app_data:

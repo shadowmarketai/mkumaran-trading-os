@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-trading-bg text-slate-100 font-sans;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-slate-800;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-600 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-500;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-trading-card/80 backdrop-blur-xl border border-trading-border rounded-xl shadow-lg;
+  }
+
+  .glass-card-hover {
+    @apply glass-card hover:bg-trading-card-hover hover:border-slate-500 transition-all duration-300;
+  }
+
+  .gradient-bull {
+    @apply bg-gradient-to-r from-trading-bull to-trading-bull-light;
+  }
+
+  .gradient-bear {
+    @apply bg-gradient-to-r from-trading-bear to-trading-bear-dark;
+  }
+
+  .gradient-info {
+    @apply bg-gradient-to-r from-trading-info to-trading-info-light;
+  }
+
+  .gradient-alert {
+    @apply bg-gradient-to-r from-trading-alert to-trading-gold;
+  }
+
+  .gradient-ai {
+    @apply bg-gradient-to-r from-trading-ai to-trading-ai-light;
+  }
+
+  .text-bull {
+    @apply text-trading-bull;
+  }
+
+  .text-bear {
+    @apply text-trading-bear;
+  }
+
+  .glow-bull {
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.15), 0 0 40px rgba(16, 185, 129, 0.05);
+  }
+
+  .glow-bear {
+    box-shadow: 0 0 20px rgba(244, 63, 94, 0.15), 0 0 40px rgba(244, 63, 94, 0.05);
+  }
+
+  .glow-ai {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.15), 0 0 40px rgba(139, 92, 246, 0.05);
+  }
+}

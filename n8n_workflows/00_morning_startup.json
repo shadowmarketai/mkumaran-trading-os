@@ -1,0 +1,173 @@
+{
+  "name": "MKUMARAN - 00 Morning Startup (Token + MWA)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "35 7 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "name": "Schedule 7:35 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://money.shadowmarket.ai/tools/connect_kite",
+        "options": {
+          "timeout": 30000,
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "name": "Connect Kite",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.kite_connected }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "name": "Kite Connected?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_CHAT_ID }}"
+            },
+            {
+              "name": "text",
+              "value": "=\u26a0\ufe0f Kite Token Refresh FAILED\n\nError: {{ $json.message }}\n\nManual login needed at https://kite.zerodha.com"
+            }
+          ]
+        },
+        "options": { "allowUnauthorizedCerts": true }
+      },
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "name": "Alert Kite Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 500]
+    },
+    {
+      "parameters": {
+        "amount": 70,
+        "unit": "minutes"
+      },
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "name": "Wait Until 8:45",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://money.shadowmarket.ai/tools/run_mwa_scan",
+        "options": { "timeout": 120000, "allowUnauthorizedCerts": true }
+      },
+      "id": "a1000000-0000-4000-8000-000000000006",
+      "name": "Run MWA Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://money.shadowmarket.ai/tools/signal_accuracy",
+        "options": { "allowUnauthorizedCerts": true }
+      },
+      "id": "a1000000-0000-4000-8000-000000000007",
+      "name": "Get Accuracy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1500, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "const mwa = $input.first().json;\nconst accuracy = $input.last().json;\n\nconst promoted = (mwa.promoted_stocks || []).join(', ') || 'None';\nconst winRate = accuracy.win_rate || 0;\nconst totalPnl = accuracy.total_pnl_rs || 0;\n\nconst msg = `\ud83c\udf05 MKUMARAN Morning Brief\\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\\nMWA: ${mwa.direction || 'N/A'} (Bull: ${mwa.bull_pct || 0}% | Bear: ${mwa.bear_pct || 0}%)\\nActive Chains: ${(mwa.active_chains || []).length}\\nChain Boost: ${mwa.chain_boost || 0}\\nPromoted: ${promoted}\\nScanners Fired: ${mwa.scanner_count || 0}\\n\\n\ud83d\udcca Accuracy: ${winRate}% Win Rate | P&L: Rs.${totalPnl}\\nOpen Signals: ${accuracy.open || 0}`;\n\nreturn [{ json: { text: msg, promoted: mwa.promoted_stocks || [] } }];"
+      },
+      "id": "a1000000-0000-4000-8000-000000000008",
+      "name": "Format Brief",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [1750, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_CHAT_ID }}" },
+            { "name": "text", "value": "={{ $json.text }}" },
+            { "name": "parse_mode", "value": "HTML" }
+          ]
+        },
+        "options": { "allowUnauthorizedCerts": true }
+      },
+      "id": "a1000000-0000-4000-8000-000000000009",
+      "name": "Send Morning Brief",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 200]
+    }
+  ],
+  "connections": {
+    "Schedule 7:35 AM": {
+      "main": [[{"node": "Connect Kite", "type": "main", "index": 0}]]
+    },
+    "Connect Kite": {
+      "main": [[{"node": "Kite Connected?", "type": "main", "index": 0}]]
+    },
+    "Kite Connected?": {
+      "main": [
+        [{"node": "Wait Until 8:45", "type": "main", "index": 0}],
+        [{"node": "Alert Kite Failed", "type": "main", "index": 0}]
+      ]
+    },
+    "Wait Until 8:45": {
+      "main": [[{"node": "Run MWA Scan", "type": "main", "index": 0}]]
+    },
+    "Run MWA Scan": {
+      "main": [[{"node": "Get Accuracy", "type": "main", "index": 0}]]
+    },
+    "Get Accuracy": {
+      "main": [[{"node": "Format Brief", "type": "main", "index": 0}]]
+    },
+    "Format Brief": {
+      "main": [[{"node": "Send Morning Brief", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "mkumaran-trading-os" }]
+}

@@ -1,0 +1,115 @@
+import { useLocation } from 'react-router-dom';
+import { TrendingUp, TrendingDown, Wifi, WifiOff } from 'lucide-react';
+import { cn } from '../../lib/utils';
+import type { MarketDirection } from '../../types';
+
+const pageNames: Record<string, string> = {
+  '/overview': 'Overview',
+  '/trades': 'Active Trades',
+  '/accuracy': 'Accuracy',
+  '/watchlist': 'Watchlist',
+  '/backtesting': 'Backtesting',
+};
+
+interface IndexPriceProps {
+  name: string;
+  price: number;
+  change: number;
+  changePct: number;
+}
+
+function IndexPrice({ name, price, change, changePct }: IndexPriceProps) {
+  const isPositive = change >= 0;
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-slate-400 font-medium">{name}</span>
+      <span className="text-sm font-mono font-semibold text-white">
+        {price.toLocaleString('en-IN', { minimumFractionDigits: 1 })}
+      </span>
+      <div className={cn('flex items-center gap-0.5 text-xs font-mono', isPositive ? 'text-trading-bull' : 'text-trading-bear')}>
+        {isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+        <span>{isPositive ? '+' : ''}{change.toFixed(1)}</span>
+        <span className="text-slate-500">({isPositive ? '+' : ''}{changePct.toFixed(2)}%)</span>
+      </div>
+    </div>
+  );
+}
+
+interface DirectionBadgeProps {
+  direction: MarketDirection;
+}
+
+function DirectionBadge({ direction }: DirectionBadgeProps) {
+  const colorMap: Record<MarketDirection, string> = {
+    BULL: 'bg-trading-bull/20 text-trading-bull border-trading-bull/30',
+    BEAR: 'bg-trading-bear/20 text-trading-bear border-trading-bear/30',
+    SIDEWAYS: 'bg-trading-info/20 text-trading-info border-trading-info/30',
+    MILD_BULL: 'bg-trading-bull-light/20 text-trading-bull-light border-trading-bull-light/30',
+    MILD_BEAR: 'bg-trading-bear/15 text-rose-400 border-rose-400/30',
+  };
+
+  return (
+    <span
+      className={cn(
+        'px-2.5 py-1 rounded-md text-xs font-mono font-semibold border',
+        colorMap[direction]
+      )}
+    >
+      MWA: {direction.replace('_', ' ')}
+    </span>
+  );
+}
+
+interface MarketStatusLabelProps {
+  status: 'PRE' | 'LIVE' | 'POST' | 'CLOSED';
+}
+
+function MarketStatusLabel({ status }: MarketStatusLabelProps) {
+  const isLive = status === 'LIVE';
+  return (
+    <div className="flex items-center gap-1.5">
+      {isLive ? (
+        <Wifi size={14} className="text-trading-bull" />
+      ) : (
+        <WifiOff size={14} className="text-slate-500" />
+      )}
+      <span
+        className={cn(
+          'text-xs font-medium',
+          status === 'LIVE' ? 'text-trading-bull' : status === 'PRE' ? 'text-trading-alert' : 'text-slate-500'
+        )}
+      >
+        {status}
+      </span>
+    </div>
+  );
+}
+
+export default function TopBar() {
+  const location = useLocation();
+  const currentPage = pageNames[location.pathname] || 'Dashboard';
+
+  return (
+    <header className="h-14 min-h-[56px] sticky top-0 z-30 glass-card rounded-none border-x-0 border-t-0 flex items-center justify-between px-6">
+      {/* Left: Breadcrumb */}
+      <div className="flex items-center gap-2">
+        <span className="text-slate-500 text-sm">Dashboard</span>
+        <span className="text-slate-600">/</span>
+        <span className="text-white text-sm font-medium">{currentPage}</span>
+      </div>
+
+      {/* Center: Index Prices */}
+      <div className="flex items-center gap-6">
+        <IndexPrice name="NIFTY" price={24850.3} change={127.5} changePct={0.52} />
+        <div className="w-px h-5 bg-trading-border" />
+        <IndexPrice name="BANKNIFTY" price={53420.8} change={-85.2} changePct={-0.16} />
+      </div>
+
+      {/* Right: MWA + Market Status */}
+      <div className="flex items-center gap-4">
+        <DirectionBadge direction="MILD_BULL" />
+        <MarketStatusLabel status="CLOSED" />
+      </div>
+    </header>
+  );
+}
