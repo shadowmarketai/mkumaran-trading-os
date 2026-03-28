@@ -1,3 +1,12 @@
+# Stage 1: Build frontend dashboard
+FROM node:20-alpine AS frontend
+WORKDIR /frontend
+COPY dashboard/package.json dashboard/package-lock.json* ./
+RUN npm install
+COPY dashboard/ .
+RUN npm run build
+
+# Stage 2: Python backend + serve frontend
 FROM python:3.11-slim AS base
 
 WORKDIR /app
@@ -25,6 +34,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+
+# Copy built frontend from stage 1
+COPY --from=frontend /frontend/dist /app/dashboard_dist
 
 # Create non-root user
 RUN useradd -m -r appuser && \

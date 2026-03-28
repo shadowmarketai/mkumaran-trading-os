@@ -1,9 +1,13 @@
 import logging
+import os
 from dataclasses import asdict
 from datetime import date
+from pathlib import Path
 
 from fastapi import FastAPI, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, case
@@ -44,8 +48,8 @@ async def startup():
     logger.info("MCP Server starting on %s:%s", settings.MCP_SERVER_HOST, settings.MCP_SERVER_PORT)
 
 
-@app.get("/")
-async def root():
+@app.get("/api/info")
+async def api_info():
     return {
         "service": "MKUMARAN Trading OS",
         "version": "1.9",
@@ -1469,6 +1473,48 @@ async def api_tv_webhook(payload: TVWebhookPayload):
         "signal_id": record_result.get("signal_id", ""),
         "recorded": record_result.get("recorded", False),
     }
+
+
+# ============================================================
+# Dashboard — serve frontend static files (SPA)
+# ============================================================
+DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard_dist"
+
+if DASHBOARD_DIR.is_dir():
+    # Mount static assets (js, css, images) at /assets
+    assets_dir = DASHBOARD_DIR / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="dashboard-assets")
+
+    # Serve root → dashboard index.html
+    @app.get("/", include_in_schema=False)
+    async def serve_root():
+        return FileResponse(str(DASHBOARD_DIR / "index.html"))
+
+    # SPA catch-all: serve index.html for all unmatched routes
+    # This MUST be the last route defined so API routes take priority
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        # Try to serve the exact file first (e.g. vite.svg, favicon.ico)
+        file_path = DASHBOARD_DIR / full_path
+        if file_path.is_file() and DASHBOARD_DIR in file_path.resolve().parents:
+            return FileResponse(str(file_path))
+        # Fallback to index.html for SPA client-side routing
+        return FileResponse(str(DASHBOARD_DIR / "index.html"))
+
+    logger.info("Dashboard frontend enabled from %s", DASHBOARD_DIR)
+else:
+    # API-only mode when no dashboard build exists
+    @app.get("/", include_in_schema=False)
+    async def root_api_only():
+        return {
+            "service": "MKUMARAN Trading OS",
+            "version": "1.9",
+            "status": "running",
+            "docs": "/docs",
+        }
+
+    logger.info("Dashboard frontend not found at %s — API-only mode", DASHBOARD_DIR)
 
 
 if __name__ == "__main__":
