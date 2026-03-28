@@ -43,7 +43,7 @@ app.add_middleware(
 
 # Paths that never require auth
 AUTH_PUBLIC_PATHS = {
-    "/auth/login", "/api/info", "/health", "/docs",
+    "/auth/login", "/api/auth/login", "/api/info", "/health", "/docs",
     "/openapi.json", "/redoc",
     "/api/tv_webhook", "/api/telegram_webhook",
 }
@@ -135,6 +135,7 @@ class LoginRequest(BaseModel):
 
 
 @app.post("/auth/login")
+@app.post("/api/auth/login", include_in_schema=False)
 async def auth_login(req: LoginRequest):
     """Authenticate admin user and return JWT token."""
     from mcp_server.auth import authenticate_admin, create_access_token
@@ -155,6 +156,7 @@ async def auth_login(req: LoginRequest):
 
 
 @app.get("/auth/me")
+@app.get("/api/auth/me", include_in_schema=False)
 async def auth_me(request: Request):
     """Get current authenticated user info."""
     if not settings.AUTH_ENABLED:
