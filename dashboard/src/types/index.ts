@@ -206,6 +206,17 @@ export interface OverviewData {
   banknifty_price: number;
 }
 
+export interface NewsItem {
+  title: string;
+  source: string;
+  url: string;
+  published: string;
+  impact: 'HIGH' | 'MEDIUM' | 'LOW';
+  category: 'POLICY' | 'MACRO' | 'GEOPOLITICAL' | 'REGULATORY' | 'MARKET' | 'GENERAL';
+  matched_keywords: string[];
+  summary: string;
+}
+
 export type MarketDirection = 'BULL' | 'BEAR' | 'SIDEWAYS' | 'MILD_BULL' | 'MILD_BEAR';
 export type TradeStatus = 'OPEN' | 'WIN' | 'LOSS' | 'EXPIRED';
 export type SectorStrength = 'STRONG' | 'NEUTRAL' | 'WEAK';

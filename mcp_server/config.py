@@ -51,5 +51,16 @@ class Settings:
     TRADE_MEMORY_FILE: str = os.getenv("TRADE_MEMORY_FILE", "data/trade_memory.json")
     MEMORY_TOP_K: int = int(os.getenv("MEMORY_TOP_K", "3"))
 
+    # News Monitor
+    NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
+    NEWS_POLL_INTERVAL_MINUTES: int = int(os.getenv("NEWS_POLL_INTERVAL_MINUTES", "30"))
+
+    # Authentication (opt-in — set AUTH_ENABLED=true to require login)
+    AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "false").lower() == "true"
+    ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "admin@shadowmarket.ai")
+    ADMIN_PASSWORD_HASH: str = os.getenv("ADMIN_PASSWORD_HASH", "")
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-this-in-production")
+    JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))
+
 
 settings = Settings()

@@ -1,7 +1,8 @@
 import { useLocation } from 'react-router-dom';
-import { TrendingUp, TrendingDown, Wifi, WifiOff } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wifi, WifiOff, LogOut } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { MarketDirection } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 import SegmentTabs from './SegmentTabs';
 
 const pageNames: Record<string, string> = {
@@ -10,6 +11,9 @@ const pageNames: Record<string, string> = {
   '/accuracy': 'Accuracy',
   '/watchlist': 'Watchlist',
   '/backtesting': 'Backtesting',
+  '/engines': 'Pattern Engines',
+  '/wallstreet': 'Wall Street AI',
+  '/news': 'News & Macro',
 };
 
 interface IndexPriceProps {
@@ -89,6 +93,7 @@ function MarketStatusLabel({ status }: MarketStatusLabelProps) {
 export default function TopBar() {
   const location = useLocation();
   const currentPage = pageNames[location.pathname] || 'Dashboard';
+  const { logout, email } = useAuth();
 
   return (
     <div className="sticky top-0 z-30">
@@ -107,10 +112,18 @@ export default function TopBar() {
           <IndexPrice name="BANKNIFTY" price={53420.8} change={-85.2} changePct={-0.16} />
         </div>
 
-        {/* Right: MWA + Market Status */}
+        {/* Right: MWA + Market Status + Sign Out */}
         <div className="flex items-center gap-4">
           <DirectionBadge direction="MILD_BULL" />
           <MarketStatusLabel status="CLOSED" />
+          <button
+            onClick={logout}
+            title={email ? `Sign out (${email})` : 'Sign out'}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
+          >
+            <LogOut size={14} />
+            <span className="hidden lg:inline">Sign Out</span>
+          </button>
         </div>
       </header>
       <SegmentTabs />

@@ -10,6 +10,7 @@ import type {
   BacktestCompareResult,
   EngineDetectionResult,
   SegmentFilter,
+  NewsItem,
 } from '../types';
 
 const api = axios.create({
@@ -21,6 +22,18 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Auto-logout on 401 (except login endpoint itself)
+    if (
+      error.response?.status === 401 &&
+      !error.config?.url?.includes('/auth/login')
+    ) {
+      localStorage.removeItem('mkumaran_auth_token');
+      localStorage.removeItem('mkumaran_auth_email');
+      delete api.defaults.headers.common['Authorization'];
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
     const message = error.response?.data?.detail || error.message;
     console.error('[API Error]', message);
     return Promise.reject(error);
@@ -72,6 +85,11 @@ export const engineApi = {
     api.post<EngineDetectionResult>(`/engines/${engine}/detect`, { ticker, days }).then((r) => r.data),
   detectAll: (ticker: string, days: number) =>
     api.post<EngineDetectionResult[]>('/engines/detect-all', { ticker, days }).then((r) => r.data),
+};
+
+export const newsApi = {
+  getLatest: (hours = 24, minImpact = 'LOW') =>
+    api.get<NewsItem[]>('/news', { params: { hours, min_impact: minImpact } }).then((r) => r.data),
 };
 
 export default api;

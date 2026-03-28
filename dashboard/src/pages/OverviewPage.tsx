@@ -9,6 +9,9 @@ import {
   ArrowDownRight,
   Loader2,
   AlertCircle,
+  AlertTriangle,
+  Newspaper,
+  ExternalLink,
 } from 'lucide-react';
 import MetricCard from '../components/ui/MetricCard';
 import GlassCard from '../components/ui/GlassCard';
@@ -18,6 +21,8 @@ import { useMWA } from '../hooks/useMWA';
 import { useSignals } from '../hooks/useSignals';
 import { overviewApi } from '../services/api';
 import { useMarketSegment } from '../context/MarketSegmentContext';
+import { useNews } from '../hooks/useNews';
+import { cn } from '../lib/utils';
 import type { ScannerResult, SectorStrength } from '../types';
 
 // --- Scanner Heatmap ---
@@ -125,6 +130,63 @@ function groupByLayer(scanners: ScannerResult[]): [string, ScannerResult[]][] {
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
   return entries;
+}
+
+// --- News Widget (compact) ---
+function NewsWidget() {
+  const { items, loading } = useNews({ hours: 12, minImpact: 'MEDIUM' });
+  const highItems = items.filter((i) => i.impact === 'HIGH');
+  const medItems = items.filter((i) => i.impact === 'MEDIUM');
+  const displayItems = [...highItems, ...medItems].slice(0, 5);
+
+  if (loading || displayItems.length === 0) return null;
+
+  return (
+    <GlassCard>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Newspaper size={16} className="text-trading-ai" />
+          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+            Market News
+          </h3>
+          {highItems.length > 0 && (
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-trading-bear/15 text-trading-bear text-[10px] font-mono font-bold">
+              <AlertTriangle size={10} />
+              {highItems.length} HIGH
+            </span>
+          )}
+        </div>
+        <a href="/news" className="text-[10px] text-trading-ai hover:underline">
+          View all
+        </a>
+      </div>
+      <div className="space-y-1.5">
+        {displayItems.map((item, idx) => (
+          <div
+            key={item.url || `${item.title}-${idx}`}
+            className={cn(
+              'flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-800/40 transition-colors',
+              item.impact === 'HIGH' ? 'bg-trading-bear/5' : 'bg-transparent',
+            )}
+          >
+            <span
+              className={cn(
+                'w-1.5 h-1.5 rounded-full flex-shrink-0',
+                item.impact === 'HIGH' ? 'bg-trading-bear' : 'bg-trading-alert',
+              )}
+            />
+            <span className="text-xs text-slate-300 truncate flex-1">{item.title}</span>
+            <span className="text-[9px] text-slate-600 font-mono flex-shrink-0">{item.source}</span>
+            {item.url && (
+              <a href={item.url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+                <ExternalLink size={10} className="text-slate-600 hover:text-slate-400" />
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+    </GlassCard>
+  );
 }
 
 // --- Main Page ---
@@ -320,6 +382,9 @@ export default function OverviewPage() {
           </div>
         </GlassCard>
       )}
+
+      {/* News Ticker */}
+      <NewsWidget />
 
       {/* Today's Signals */}
       <div>

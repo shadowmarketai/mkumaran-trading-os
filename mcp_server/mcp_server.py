@@ -4,13 +4,16 @@ from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, Query
+from fastapi import FastAPI, Depends, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, case
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 from mcp_server.config import settings
 from mcp_server.db import get_db, init_db, SessionLocal
@@ -35,6 +38,60 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Auth Middleware (opt-in via AUTH_ENABLED=true) ──────────
+
+# Paths that never require auth
+AUTH_PUBLIC_PATHS = {
+    "/auth/login", "/api/info", "/health", "/docs",
+    "/openapi.json", "/redoc",
+    "/api/tv_webhook", "/api/telegram_webhook",
+}
+AUTH_PUBLIC_PREFIXES = ("/assets/", "/docs/", "/redoc/")
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if not settings.AUTH_ENABLED:
+            return await call_next(request)
+
+        path = request.url.path
+
+        # Allow public paths
+        if path in AUTH_PUBLIC_PATHS or path.startswith(AUTH_PUBLIC_PREFIXES):
+            return await call_next(request)
+
+        # Allow static file requests (SPA assets)
+        if "." in path.split("/")[-1] and not path.startswith("/api/") and not path.startswith("/tools/") and not path.startswith("/auth/"):
+            return await call_next(request)
+
+        # Allow root / and /login for SPA
+        if path in ("/", "/login"):
+            return await call_next(request)
+
+        # Check Authorization header
+        auth_header = request.headers.get("authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Not authenticated"},
+            )
+
+        token = auth_header[7:]
+        from mcp_server.auth import decode_access_token
+        payload = decode_access_token(token)
+        if payload is None:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid or expired token"},
+            )
+
+        # Attach user info to request state
+        request.state.user = payload
+        return await call_next(request)
+
+
+app.add_middleware(AuthMiddleware)
 
 
 @app.on_event("startup")
@@ -61,6 +118,49 @@ async def api_info():
 @app.get("/health")
 async def health():
     return {"status": "healthy", "service": "mkumaran-trading-os"}
+
+
+# ============================================================
+# Authentication Endpoints
+# ============================================================
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/auth/login")
+async def auth_login(req: LoginRequest):
+    """Authenticate admin user and return JWT token."""
+    from mcp_server.auth import authenticate_admin, create_access_token
+
+    user = authenticate_admin(req.email, req.password)
+    if user is None:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid email or password"},
+        )
+
+    token = create_access_token({"sub": user["email"], "role": user["role"]})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "email": user["email"],
+    }
+
+
+@app.get("/auth/me")
+async def auth_me(request: Request):
+    """Get current authenticated user info."""
+    if not settings.AUTH_ENABLED:
+        return {"email": "dev@local", "role": "admin", "auth_enabled": False}
+
+    user = getattr(request.state, "user", None)
+    if not user:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    return {"email": user.get("sub", ""), "role": user.get("role", ""), "auth_enabled": True}
 
 
 # ============================================================
@@ -1659,7 +1759,7 @@ async def api_tv_webhook(payload: TVWebhookPayload):
                 f"AI Confidence: {confidence}% ({recommendation})\n"
                 f"Signal ID: {record_result.get('signal_id', 'N/A')}"
             )
-            await send_telegram_message(msg)
+            await send_telegram_message(msg, exchange=exchange_str)
         except Exception as e:
             logger.debug("Telegram notification skipped: %s", e)
     else:
@@ -1675,6 +1775,51 @@ async def api_tv_webhook(payload: TVWebhookPayload):
         "signal_id": record_result.get("signal_id", ""),
         "recorded": record_result.get("recorded", False),
     }
+
+
+# ============================================================
+# News / Macro Event Monitor
+# ============================================================
+
+
+@app.get("/api/news")
+async def api_news(
+    hours: int = Query(default=24, ge=1, le=168),
+    min_impact: str = Query(default="LOW"),
+):
+    """Get latest news items classified by impact. For dashboard consumption."""
+    from mcp_server.news_monitor import get_latest_news
+    from dataclasses import asdict as _asdict
+
+    items = get_latest_news(hours=hours, min_impact=min_impact.upper())
+    return [_asdict(item) for item in items[:100]]
+
+
+@app.get("/tools/market_news")
+async def tool_market_news(
+    hours: int = Query(default=12, ge=1, le=168),
+    min_impact: str = Query(default="MEDIUM"),
+):
+    """MCP tool: Get market news for Claude analysis."""
+    from mcp_server.news_monitor import get_latest_news
+    from dataclasses import asdict as _asdict
+
+    items = get_latest_news(hours=hours, min_impact=min_impact.upper())
+    return {
+        "status": "ok",
+        "tool": "market_news",
+        "count": len(items),
+        "items": [_asdict(item) for item in items[:50]],
+    }
+
+
+@app.post("/tools/check_news_alerts")
+async def tool_check_news_alerts():
+    """Trigger news check and send HIGH-impact alerts to Telegram."""
+    from mcp_server.news_monitor import check_and_alert
+
+    result = await check_and_alert()
+    return {"status": "ok", "tool": "check_news_alerts", **result}
 
 
 # ============================================================

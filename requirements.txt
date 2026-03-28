@@ -25,3 +25,5 @@ pytest-asyncio
 httpx
 pytest-cov
 rank-bm25>=0.2.2
+PyJWT>=2.8.0
+bcrypt>=4.0.0

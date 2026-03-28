@@ -251,11 +251,33 @@ async def cmd_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"\U0001f4dd Trade exit logged for {ticker}\n(Full implementation in Phase 3)")
 
 
-async def send_telegram_message(text: str) -> None:
-    """Send a message to the configured Telegram chat."""
+async def send_telegram_message(
+    text: str,
+    exchange: str = "NSE",
+    force: bool = False,
+) -> None:
+    """Send a message to the configured Telegram chat.
+
+    Args:
+        text: Message content.
+        exchange: Exchange code for market hours check (NSE, MCX, CDS, etc.).
+        force: If True, send regardless of market hours (for kill switch / system alerts).
+    """
     if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID:
         logger.warning("Telegram not configured -- skipping message")
         return
+
+    # Market hours gate — skip non-forced messages when market is closed
+    if not force:
+        from mcp_server.market_calendar import is_market_open
+        if not is_market_open(exchange):
+            from mcp_server.market_calendar import get_market_status
+            status = get_market_status(exchange)
+            logger.info(
+                "Telegram SKIPPED (%s market %s): %.40s...",
+                exchange, status.get("reason", "CLOSED"), text,
+            )
+            return
 
     try:
         from telegram import Bot
