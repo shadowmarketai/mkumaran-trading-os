@@ -127,10 +127,12 @@ def _call_claude(client, system_prompt: str, user_prompt: str) -> dict:
     Make a single Claude API call and parse JSON response.
 
     Returns parsed dict or raises on failure.
+    Timeout: 30s per call to prevent pipeline hangs.
     """
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=400,
+        timeout=30.0,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )

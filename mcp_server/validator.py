@@ -1,11 +1,16 @@
 """
-MKUMARAN Trading OS — Signal Validator (v2 — Fail-Safe)
+MKUMARAN Trading OS — Signal Validator (v3 — Debate-Wired Fail-Safe)
 
-Fixes over v1:
+Fixes over v2:
+- Debate validator automatically triggered for uncertain signals (pre_confidence 40-75)
+- API timeout protection (30s per call)
+- BM25 trade memory lookup before validation
+- Fallback chain: debate → single-pass → BLOCK
+
+Fixes from v1:
 - API failure = BLOCK signal (not approve)
 - Explicit API key validation
 - validation_status field: VALIDATED / FAILED / SKIPPED / BLOCKED
-- Timeout protection
 - Structured error handling — never silently approves
 """
 
@@ -122,6 +127,7 @@ Thresholds: >= 70 = ALERT (execute), 50-69 = WATCHLIST (monitor), < 50 = SKIP"""
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=300,
+            timeout=30.0,
             messages=[{"role": "user", "content": prompt}],
         )
 
@@ -198,3 +204,102 @@ Thresholds: >= 70 = ALERT (execute), 50-69 = WATCHLIST (monitor), < 50 = SKIP"""
 
 # Explicit alias for single-pass fallback (used by debate_validator)
 validate_signal_simple = validate_signal
+
+
+def validate_with_debate(
+    ticker: str,
+    direction: str,
+    pattern: str,
+    rrr: float,
+    entry_price: float,
+    stop_loss: float,
+    target: float,
+    mwa_direction: str,
+    scanner_count: int,
+    tv_confirmed: bool,
+    sector_strength: str,
+    fii_net: float,
+    delivery_pct: float,
+    confidence_boosts: list[str],
+    pre_confidence: int,
+    exchange: str = "NSE",
+) -> dict:
+    """
+    Enhanced validator that routes through debate for uncertain signals.
+
+    Flow:
+    1. BM25 memory lookup (0 API cost)
+    2. Triage: pre_confidence 40-75 → full debate (6 calls)
+    3. Otherwise → single-pass validation (1 call)
+    4. Fallback: debate fails → single-pass → BLOCK
+
+    Returns same dict format as validate_signal() for backward compatibility.
+    """
+    similar_trades = []
+
+    # ── Step 1: BM25 Memory Lookup ───────────────────────────
+    try:
+        from mcp_server.trade_memory import TradeMemory
+        memory = TradeMemory(filepath=settings.TRADE_MEMORY_FILE)
+        similar_trades = memory.find_similar_for_signal(
+            ticker=ticker,
+            direction=direction,
+            pattern=pattern,
+            rrr=rrr,
+            confidence=pre_confidence,
+            exchange=exchange,
+            top_k=settings.MEMORY_TOP_K,
+        )
+        if similar_trades:
+            logger.info(
+                "Memory lookup for %s: found %d similar trades",
+                ticker, len(similar_trades),
+            )
+    except Exception as e:
+        logger.warning("Trade memory lookup failed (non-fatal): %s", e)
+
+    # ── Step 2: Route to debate or single-pass ───────────────
+    try:
+        from mcp_server.debate_validator import run_debate, should_debate
+
+        if settings.DEBATE_ENABLED and should_debate(pre_confidence):
+            logger.info(
+                "Routing %s to DEBATE (pre_confidence=%d, uncertain zone)",
+                ticker, pre_confidence,
+            )
+            result = run_debate(
+                ticker=ticker, direction=direction, pattern=pattern, rrr=rrr,
+                entry_price=entry_price, stop_loss=stop_loss, target=target,
+                mwa_direction=mwa_direction, scanner_count=scanner_count,
+                tv_confirmed=tv_confirmed, sector_strength=sector_strength,
+                fii_net=fii_net, delivery_pct=delivery_pct,
+                confidence_boosts=confidence_boosts, pre_confidence=pre_confidence,
+                similar_trades=similar_trades,
+            )
+            return {
+                "confidence": result.final_confidence,
+                "reasoning": result.reasoning,
+                "recommendation": result.recommendation,
+                "validation_status": result.validation_status,
+                "boosts": result.boosts,
+                "method": result.method,
+                "api_calls_used": result.api_calls_used,
+                "similar_trades": result.similar_trades,
+                "risk_assessment": result.risk_assessment,
+                "debate_transcript": result.debate_transcript,
+            }
+    except Exception as e:
+        logger.warning("Debate routing failed, falling back to single-pass: %s", e)
+
+    # ── Step 3: Single-pass fallback ─────────────────────────
+    result = validate_signal(
+        ticker=ticker, direction=direction, pattern=pattern, rrr=rrr,
+        entry_price=entry_price, stop_loss=stop_loss, target=target,
+        mwa_direction=mwa_direction, scanner_count=scanner_count,
+        tv_confirmed=tv_confirmed, sector_strength=sector_strength,
+        fii_net=fii_net, delivery_pct=delivery_pct,
+        confidence_boosts=confidence_boosts, pre_confidence=pre_confidence,
+    )
+    result["method"] = "single_pass"
+    result["similar_trades"] = similar_trades
+    return result

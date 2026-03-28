@@ -1,4 +1,5 @@
 import logging
+import time
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
@@ -11,6 +12,47 @@ from mcp_server.asset_registry import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ── Rate Limiter for yfinance ────────────────────────────────
+_YF_MIN_DELAY = 0.5         # Minimum 0.5s between yfinance requests
+_YF_MAX_RETRIES = 3          # Retry up to 3 times on failure
+_YF_RETRY_BACKOFF = 2.0      # Exponential backoff multiplier
+_last_yf_request_time = 0.0
+
+
+def _rate_limited_download(symbol: str, **kwargs) -> pd.DataFrame:
+    """
+    yfinance download with rate limiting and retry logic.
+
+    Prevents rate-limit blocks when scanning 400+ stocks.
+    """
+    global _last_yf_request_time
+
+    for attempt in range(_YF_MAX_RETRIES):
+        # Enforce minimum delay between requests
+        elapsed = time.time() - _last_yf_request_time
+        if elapsed < _YF_MIN_DELAY:
+            time.sleep(_YF_MIN_DELAY - elapsed)
+
+        try:
+            _last_yf_request_time = time.time()
+            data = yf.download(symbol, progress=False, **kwargs)
+            if not data.empty:
+                return data
+            # Empty data — retry with backoff
+            if attempt < _YF_MAX_RETRIES - 1:
+                wait = _YF_RETRY_BACKOFF ** attempt
+                logger.warning("Empty data for %s, retry %d/%d in %.1fs", symbol, attempt + 1, _YF_MAX_RETRIES, wait)
+                time.sleep(wait)
+        except Exception as e:
+            if attempt < _YF_MAX_RETRIES - 1:
+                wait = _YF_RETRY_BACKOFF ** attempt
+                logger.warning("yfinance error for %s: %s — retry %d/%d in %.1fs", symbol, e, attempt + 1, _YF_MAX_RETRIES, wait)
+                time.sleep(wait)
+            else:
+                logger.error("yfinance failed after %d retries for %s: %s", _YF_MAX_RETRIES, symbol, e)
+
+    return pd.DataFrame()
 
 # Minimum thresholds for liquid stocks
 MIN_VOLUME = 100000  # Average daily volume
@@ -91,7 +133,7 @@ def get_stock_data(
         return pd.DataFrame()
 
     try:
-        data = yf.download(yf_symbol, period=period, interval=interval, progress=False)
+        data = _rate_limited_download(yf_symbol, period=period, interval=interval)
 
         if data.empty:
             logger.warning("No data returned for %s (yf: %s)", ticker, yf_symbol)

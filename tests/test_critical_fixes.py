@@ -11,6 +11,7 @@ Tests for the 5 Critical Fixes (Phase 1–5).
 import numpy as np
 import pandas as pd
 import pytest
+from unittest.mock import patch
 
 # ============================================================
 # Helpers
@@ -366,7 +367,9 @@ class TestOrderManagerSafety:
         assert error is not None
         assert "Position size" in error
 
-    def test_validate_order_valid(self):
+    @patch("mcp_server.order_manager.validate_order_timing", return_value=None)
+    @patch("mcp_server.order_manager.validate_portfolio_risk", return_value=None)
+    def test_validate_order_valid(self, mock_risk, mock_timing):
         """Small valid order should pass all checks."""
         mgr = self._manager(capital=100000)
         error = mgr._validate_order("NSE:RELIANCE", "BUY", qty=2, price=2500)

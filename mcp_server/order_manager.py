@@ -5,6 +5,8 @@ Safety features:
 - Max open positions limit (default 5)
 - Daily loss limit / kill switch (default -3% of capital)
 - Position size validation (max 10% per trade)
+- Trailing stop loss with configurable trail percentage
+- Partial profit booking (exit N% of position at milestones)
 - Order confirmation flow
 - Audit trail for all orders
 - Emergency close-all function
@@ -17,6 +19,8 @@ from datetime import datetime, date
 from dataclasses import dataclass, field
 
 from mcp_server.config import settings
+from mcp_server.market_calendar import validate_order_timing, is_market_open
+from mcp_server.portfolio_risk import validate_portfolio_risk
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +33,10 @@ MAX_ORDER_VALUE = 200000              # Max Rs.2L per order (safety cap)
 ALLOWED_EXCHANGES = {"NSE", "BSE", "MCX", "NFO", "CDS"}
 ALLOWED_ORDER_TYPES = {"MARKET", "LIMIT", "SL", "SL-M"}
 ALLOWED_PRODUCTS = {"CNC", "MIS", "NRML"}
+
+# ── Trailing SL Defaults ────────────────────────────────────
+DEFAULT_TRAIL_PCT = 0.02              # 2% trailing distance
+DEFAULT_TRAIL_ACTIVATION_PCT = 0.03   # Activate trailing after 3% profit
 
 
 @dataclass
@@ -158,6 +166,20 @@ class OrderManager:
         exchange = ticker.split(":")[0] if ":" in ticker else "NSE"
         if exchange not in ALLOWED_EXCHANGES:
             return f"Exchange {exchange} not allowed. Allowed: {ALLOWED_EXCHANGES}"
+
+        # Market hours validation
+        timing_error = validate_order_timing(exchange)
+        if timing_error:
+            return timing_error
+
+        # Portfolio risk check (sector + asset class concentration)
+        order_value = qty * price if price > 0 else 0
+        if order_value > 0:
+            risk_error = validate_portfolio_risk(
+                self.open_positions, ticker, order_value, self.capital,
+            )
+            if risk_error:
+                return risk_error
 
         return None
 
@@ -375,6 +397,281 @@ class OrderManager:
         self.kill_switch.realized_pnl += realized_pnl
         self.kill_switch.check(self.capital)
 
+    # ── Trailing Stop Loss ──────────────────────────────────────
+
+    def update_trailing_sl(
+        self,
+        ticker: str,
+        current_price: float,
+        trail_pct: float = DEFAULT_TRAIL_PCT,
+        activation_pct: float = DEFAULT_TRAIL_ACTIVATION_PCT,
+    ) -> dict:
+        """
+        Update trailing stop loss for an open position.
+
+        The trailing SL activates only after the position reaches
+        activation_pct profit. Once active, the SL moves up (for LONG)
+        or down (for SHORT) as price moves favorably, but never moves
+        against the favorable direction.
+
+        Returns dict with: updated (bool), new_sl, old_sl, triggered (bool)
+        """
+        matching = [p for p in self.open_positions if p["ticker"] == ticker]
+        if not matching:
+            return {"updated": False, "message": f"No open position for {ticker}"}
+
+        pos = matching[-1]
+        entry = pos["entry_price"]
+        old_sl = pos.get("stop_loss", 0)
+        direction = pos["direction"]
+        is_long = direction == "BUY"
+
+        # Calculate profit percentage
+        if entry <= 0:
+            return {"updated": False, "message": "Invalid entry price"}
+
+        if is_long:
+            profit_pct = (current_price - entry) / entry
+        else:
+            profit_pct = (entry - current_price) / entry
+
+        # Check if trailing SL should activate
+        if profit_pct < activation_pct:
+            return {
+                "updated": False,
+                "message": f"Trail not active yet — profit {profit_pct:.1%} < activation {activation_pct:.1%}",
+                "profit_pct": round(profit_pct * 100, 2),
+                "old_sl": old_sl,
+            }
+
+        # Calculate new trailing SL
+        if is_long:
+            new_sl = current_price * (1 - trail_pct)
+            # Only move SL up, never down
+            if new_sl > old_sl:
+                pos["stop_loss"] = round(new_sl, 2)
+                pos["trail_active"] = True
+                logger.info(
+                    "TRAILING SL updated for %s: %.2f → %.2f (price=%.2f, profit=%.1f%%)",
+                    ticker, old_sl, new_sl, current_price, profit_pct * 100,
+                )
+                return {
+                    "updated": True,
+                    "old_sl": old_sl,
+                    "new_sl": round(new_sl, 2),
+                    "profit_pct": round(profit_pct * 100, 2),
+                    "triggered": False,
+                }
+        else:
+            new_sl = current_price * (1 + trail_pct)
+            # Only move SL down for SHORT, never up
+            if old_sl == 0 or new_sl < old_sl:
+                pos["stop_loss"] = round(new_sl, 2)
+                pos["trail_active"] = True
+                logger.info(
+                    "TRAILING SL updated for %s (SHORT): %.2f → %.2f (price=%.2f, profit=%.1f%%)",
+                    ticker, old_sl, new_sl, current_price, profit_pct * 100,
+                )
+                return {
+                    "updated": True,
+                    "old_sl": old_sl,
+                    "new_sl": round(new_sl, 2),
+                    "profit_pct": round(profit_pct * 100, 2),
+                    "triggered": False,
+                }
+
+        return {
+            "updated": False,
+            "message": "Trail SL not moved — current SL already tighter",
+            "old_sl": old_sl,
+            "new_sl": round(new_sl, 2) if 'new_sl' in dir() else old_sl,
+            "profit_pct": round(profit_pct * 100, 2),
+        }
+
+    def check_sl_hit(self, ticker: str, current_price: float) -> dict:
+        """
+        Check if stop loss has been hit for a position.
+
+        Returns dict with: hit (bool), action (CLOSE/HOLD), details
+        """
+        matching = [p for p in self.open_positions if p["ticker"] == ticker]
+        if not matching:
+            return {"hit": False, "message": f"No open position for {ticker}"}
+
+        pos = matching[-1]
+        sl = pos.get("stop_loss", 0)
+        if sl <= 0:
+            return {"hit": False, "message": "No stop loss set"}
+
+        is_long = pos["direction"] == "BUY"
+
+        if is_long and current_price <= sl:
+            return {
+                "hit": True,
+                "action": "CLOSE",
+                "ticker": ticker,
+                "sl": sl,
+                "current_price": current_price,
+                "trail_active": pos.get("trail_active", False),
+            }
+        elif not is_long and current_price >= sl:
+            return {
+                "hit": True,
+                "action": "CLOSE",
+                "ticker": ticker,
+                "sl": sl,
+                "current_price": current_price,
+                "trail_active": pos.get("trail_active", False),
+            }
+
+        return {"hit": False, "action": "HOLD", "sl": sl, "current_price": current_price}
+
+    # ── Partial Profit Booking ───────────────────────────────
+
+    def partial_exit(
+        self,
+        ticker: str,
+        exit_pct: float = 0.50,
+    ) -> OrderResult:
+        """
+        Exit a percentage of an open position for partial profit booking.
+
+        Args:
+            ticker: EXCHANGE:SYMBOL format
+            exit_pct: Fraction to exit (0.25 = 25%, 0.50 = 50%)
+
+        Returns OrderResult for the partial exit order.
+        """
+        if exit_pct <= 0 or exit_pct >= 1.0:
+            return OrderResult(
+                success=False,
+                message=f"exit_pct must be between 0 and 1, got {exit_pct}",
+                ticker=ticker,
+                timestamp=datetime.now().isoformat(),
+            )
+
+        matching = [p for p in self.open_positions if p["ticker"] == ticker]
+        if not matching:
+            return OrderResult(
+                success=False,
+                message=f"No open position for {ticker}",
+                ticker=ticker,
+                timestamp=datetime.now().isoformat(),
+            )
+
+        pos = matching[-1]
+        original_qty = pos["qty"]
+        exit_qty = max(1, int(original_qty * exit_pct))
+
+        if exit_qty >= original_qty:
+            # Don't allow full exit via partial — use close_position instead
+            return OrderResult(
+                success=False,
+                message=f"Partial exit qty ({exit_qty}) >= total ({original_qty}). Use close_position instead.",
+                ticker=ticker,
+                timestamp=datetime.now().isoformat(),
+            )
+
+        close_direction = "SELL" if pos["direction"] == "BUY" else "BUY"
+
+        result = self.place_order(
+            ticker=ticker,
+            direction=close_direction,
+            qty=exit_qty,
+            order_type="MARKET",
+            product="CNC",
+            tag="partial",
+        )
+
+        if result.success:
+            # Reduce position qty
+            pos["qty"] = original_qty - exit_qty
+            pos["partial_exits"] = pos.get("partial_exits", 0) + 1
+            logger.info(
+                "PARTIAL EXIT: %s — sold %d of %d (%.0f%%), remaining %d",
+                ticker, exit_qty, original_qty, exit_pct * 100, pos["qty"],
+            )
+
+        return result
+
+    # ── Smart Exit Strategy ──────────────────────────────────
+
+    def evaluate_exit_strategy(
+        self,
+        ticker: str,
+        current_price: float,
+    ) -> dict:
+        """
+        Evaluate whether to take partial profit, trail SL, or hold.
+
+        Returns recommended action based on profit milestones:
+        - 0-3%: HOLD (let trail activate)
+        - 3-5%: TRAIL active, consider 25% partial at +5%
+        - 5-8%: Book 50% profit, trail rest
+        - 8%+: Book 25% more, tight trail on remainder
+        """
+        matching = [p for p in self.open_positions if p["ticker"] == ticker]
+        if not matching:
+            return {"action": "NONE", "message": f"No position for {ticker}"}
+
+        pos = matching[-1]
+        entry = pos["entry_price"]
+        if entry <= 0:
+            return {"action": "HOLD", "message": "Invalid entry price"}
+
+        is_long = pos["direction"] == "BUY"
+        if is_long:
+            profit_pct = (current_price - entry) / entry * 100
+        else:
+            profit_pct = (entry - current_price) / entry * 100
+
+        partials_done = pos.get("partial_exits", 0)
+
+        if profit_pct < 0:
+            return {
+                "action": "HOLD",
+                "profit_pct": round(profit_pct, 2),
+                "message": "Position in loss — hold, SL protects",
+            }
+        elif profit_pct < 3:
+            return {
+                "action": "HOLD",
+                "profit_pct": round(profit_pct, 2),
+                "message": "Below trail activation — hold",
+            }
+        elif profit_pct < 5:
+            return {
+                "action": "TRAIL",
+                "profit_pct": round(profit_pct, 2),
+                "suggested_trail_pct": 0.02,
+                "message": "Trail activated — tighten SL",
+            }
+        elif profit_pct < 8 and partials_done == 0:
+            return {
+                "action": "PARTIAL_50",
+                "profit_pct": round(profit_pct, 2),
+                "suggested_exit_pct": 0.50,
+                "message": "Book 50% profit, trail remainder with 1.5% trail",
+                "suggested_trail_pct": 0.015,
+            }
+        elif profit_pct >= 8 and partials_done <= 1:
+            return {
+                "action": "PARTIAL_25",
+                "profit_pct": round(profit_pct, 2),
+                "suggested_exit_pct": 0.25 if partials_done == 1 else 0.50,
+                "message": "Book more profit, tight 1% trail on remainder",
+                "suggested_trail_pct": 0.01,
+            }
+        else:
+            return {
+                "action": "TRAIL_TIGHT",
+                "profit_pct": round(profit_pct, 2),
+                "suggested_trail_pct": 0.01,
+                "message": f"Profit {profit_pct:.1f}% — tight trail, let it run",
+            }
+
+    # ── Status ───────────────────────────────────────────────
+
     def get_status(self) -> dict:
         """Get current order manager status."""
         return {
@@ -396,6 +693,9 @@ class OrderManager:
                     "direction": p["direction"],
                     "qty": p["qty"],
                     "entry_price": p["entry_price"],
+                    "stop_loss": p.get("stop_loss", 0),
+                    "trail_active": p.get("trail_active", False),
+                    "partial_exits": p.get("partial_exits", 0),
                 }
                 for p in self.open_positions
             ],
