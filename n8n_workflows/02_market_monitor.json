@@ -83,25 +83,37 @@
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "https://money.shadowmarket.ai/api/trades/active",
-        "options": { "allowUnauthorizedCerts": true }
+        "method": "POST",
+        "url": "https://money.shadowmarket.ai/tools/update_all_trailing_sl",
+        "options": { "timeout": 30000, "allowUnauthorizedCerts": true }
       },
-      "id": "c1000000-0002-4000-8000-000000000006",
-      "name": "Get Active Trades",
+      "id": "c1000000-0002-4000-8000-000000000014",
+      "name": "Update Trailing SL",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1000, 400]
+      "position": [1000, 300]
     },
     {
       "parameters": {
-        "functionCode": "const trades = $input.first().json;\nconst alerts = [];\n\nif (!Array.isArray(trades) || trades.length === 0) {\n  return alerts;\n}\n\nfor (const t of trades) {\n  const pnl = t.pnl_pct || 0;\n  const ticker = t.ticker || 'UNKNOWN';\n  \n  if (pnl >= 5) {\n    alerts.push({ json: { text: `\ud83d\udcc8 ${ticker}: +${pnl.toFixed(1)}% \u2014 nearing target! Consider booking profit.`, ticker, pnl } });\n  } else if (pnl <= -2) {\n    alerts.push({ json: { text: `\ud83d\udcc9 ${ticker}: ${pnl.toFixed(1)}% \u2014 approaching stop loss. Monitor closely.`, ticker, pnl } });\n  }\n}\n\nreturn alerts;"
+        "method": "POST",
+        "url": "https://money.shadowmarket.ai/tools/check_exit_strategies",
+        "options": { "timeout": 30000, "allowUnauthorizedCerts": true }
+      },
+      "id": "c1000000-0002-4000-8000-000000000015",
+      "name": "Check Exit Strategies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const data = $input.first().json;\nconst alerts = [];\n\nconst results = data.results || [];\nfor (const r of results) {\n  const action = r.action || 'HOLD';\n  const ticker = r.ticker || 'UNKNOWN';\n  const pnl = (r.profit_pct || 0).toFixed(1);\n  \n  if (action === 'PARTIAL_50') {\n    alerts.push({ json: { text: `\ud83d\udfe1 ${ticker}: +${pnl}% \u2014 BOOK 50% PROFIT now!`, ticker, action } });\n  } else if (action === 'PARTIAL_25') {\n    alerts.push({ json: { text: `\ud83d\udfe2 ${ticker}: +${pnl}% \u2014 Book another 25%.`, ticker, action } });\n  } else if (action === 'TRAIL_TIGHT') {\n    alerts.push({ json: { text: `\ud83d\ude80 ${ticker}: +${pnl}% \u2014 Tighten trail to 1%!`, ticker, action } });\n  }\n}\n\n// Also check trailing SL updates\nconst slData = $input.all()[0] ? $input.all()[0].json : {};\nconst slResults = slData.results || [];\nfor (const s of slResults) {\n  if (s.updated) {\n    alerts.push({ json: { text: `\ud83d\udd12 ${s.ticker}: SL moved to \u20b9${s.new_sl} (trailing)`, ticker: s.ticker, action: 'TRAIL_UPDATE' } });\n  }\n}\n\nreturn alerts;"
       },
       "id": "c1000000-0002-4000-8000-000000000007",
       "name": "Check SL/Target",
       "type": "n8n-nodes-base.function",
       "typeVersion": 2,
-      "position": [1250, 400]
+      "position": [1500, 300]
     },
     {
       "parameters": {
@@ -120,7 +132,7 @@
       "name": "Send Trade Alert",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1500, 400]
+      "position": [1750, 300]
     },
     {
       "parameters": {
@@ -212,13 +224,16 @@
     "Kill Switch Active?": {
       "main": [
         [{"node": "Emergency Close All", "type": "main", "index": 0}],
-        [{"node": "Get Active Trades", "type": "main", "index": 0}]
+        [{"node": "Update Trailing SL", "type": "main", "index": 0}]
       ]
     },
     "Emergency Close All": {
       "main": [[{"node": "Alert Kill Switch", "type": "main", "index": 0}]]
     },
-    "Get Active Trades": {
+    "Update Trailing SL": {
+      "main": [[{"node": "Check Exit Strategies", "type": "main", "index": 0}]]
+    },
+    "Check Exit Strategies": {
       "main": [[{"node": "Check SL/Target", "type": "main", "index": 0}]]
     },
     "Check SL/Target": {

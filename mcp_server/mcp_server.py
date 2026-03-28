@@ -1195,6 +1195,71 @@ async def tool_update_pnl(realized_pnl: float = Query(...)):
     return manager.get_status()
 
 
+@app.post("/tools/update_trailing_sl")
+async def tool_update_trailing_sl(ticker: str = Query(...), current_price: float = Query(...)):
+    """Update trailing SL for a position given current market price."""
+    manager = _get_order_manager()
+    return manager.update_trailing_sl(ticker, current_price)
+
+
+@app.post("/tools/update_all_trailing_sl")
+async def tool_update_all_trailing_sl():
+    """Update trailing SL for ALL open positions using live Kite prices."""
+    manager = _get_order_manager()
+    if not manager.kite:
+        return {"updated": 0, "message": "Kite not connected"}
+
+    results = []
+    for pos in manager.open_positions:
+        ticker = pos.get("ticker", "")
+        try:
+            exchange, symbol = ticker.split(":", 1) if ":" in ticker else ("NSE", ticker)
+            ltp_data = manager.kite.ltp(f"{exchange}:{symbol}")
+            ltp = list(ltp_data.values())[0]["last_price"] if ltp_data else None
+            if ltp:
+                result = manager.update_trailing_sl(ticker, ltp)
+                result["ticker"] = ticker
+                result["ltp"] = ltp
+                results.append(result)
+        except Exception as e:
+            results.append({"ticker": ticker, "updated": False, "message": str(e)})
+
+    return {"positions_checked": len(results), "results": results}
+
+
+@app.get("/tools/portfolio_exposure")
+async def tool_portfolio_exposure():
+    """Get current portfolio sector/asset-class exposure breakdown."""
+    from mcp_server.portfolio_risk import get_portfolio_exposure
+    manager = _get_order_manager()
+    return get_portfolio_exposure(manager.open_positions, manager.capital)
+
+
+@app.post("/tools/check_exit_strategies")
+async def tool_check_exit_strategies():
+    """Evaluate exit strategy for ALL open positions using live prices."""
+    manager = _get_order_manager()
+    if not manager.kite:
+        return {"checked": 0, "message": "Kite not connected"}
+
+    results = []
+    for pos in manager.open_positions:
+        ticker = pos.get("ticker", "")
+        try:
+            exchange, symbol = ticker.split(":", 1) if ":" in ticker else ("NSE", ticker)
+            ltp_data = manager.kite.ltp(f"{exchange}:{symbol}")
+            ltp = list(ltp_data.values())[0]["last_price"] if ltp_data else None
+            if ltp:
+                result = manager.evaluate_exit_strategy(ticker, ltp)
+                result["ticker"] = ticker
+                result["ltp"] = ltp
+                results.append(result)
+        except Exception as e:
+            results.append({"ticker": ticker, "action": "ERROR", "message": str(e)})
+
+    return {"checked": len(results), "results": results}
+
+
 @app.post("/tools/connect_kite")
 async def tool_connect_kite():
     """Connect Kite to the order manager using kite_auth."""
@@ -1223,6 +1288,25 @@ async def tool_connect_kite():
         return {
             "kite_connected": False,
             "message": f"Kite connection failed: {e}",
+        }
+
+
+@app.post("/tools/refresh_kite_token")
+async def tool_refresh_kite_token():
+    """Refresh Kite access token via TOTP login (standalone, no order manager needed)."""
+    try:
+        from mcp_server.kite_auth import refresh_kite_token
+        access_token = refresh_kite_token()
+        return {
+            "success": True,
+            "message": "Kite token refreshed",
+            "token_prefix": access_token[:8] + "..." if access_token else None,
+        }
+    except Exception as e:
+        logger.error("Kite token refresh failed: %s", e)
+        return {
+            "success": False,
+            "message": f"Token refresh failed: {e}",
         }
 
 

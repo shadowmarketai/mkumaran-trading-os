@@ -21,7 +21,7 @@ def setup_db():
     """Create tables before each test, drop after."""
     Base.metadata.create_all(bind=engine)
     yield
-    Base.metadata.drop_all(bind=engine)
+    Base.metadata.drop_all(bind=engine, checkfirst=True)
 
 
 @pytest.fixture

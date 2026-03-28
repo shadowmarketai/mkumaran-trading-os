@@ -1,5 +1,7 @@
 """Tests for Signal Cards and Validator."""
 
+from unittest.mock import patch
+
 from mcp_server.signal_cards import (
     format_buy_signal,
     format_short_signal,
@@ -167,8 +169,10 @@ def test_mwa_briefing_no_promoted():
 
 # ── validate_signal (without API key) ─────────────────────────
 
-def test_validate_no_api_key_high():
+@patch("mcp_server.validator.settings")
+def test_validate_no_api_key_high(mock_settings):
     """Without API key, validator must BLOCK — never approve unvalidated signals."""
+    mock_settings.ANTHROPIC_API_KEY = ""
     result = validate_signal(
         ticker="RELIANCE", direction="LONG", pattern="Bullish Engulfing",
         rrr=4.0, entry_price=2500, stop_loss=2450, target=2700,
@@ -181,8 +185,10 @@ def test_validate_no_api_key_high():
     assert result["validation_status"] == "SKIPPED"
 
 
-def test_validate_no_api_key_medium():
+@patch("mcp_server.validator.settings")
+def test_validate_no_api_key_medium(mock_settings):
     """Without API key, BLOCK regardless of pre_confidence."""
+    mock_settings.ANTHROPIC_API_KEY = ""
     result = validate_signal(
         ticker="TEST", direction="LONG", pattern="Test",
         rrr=3.0, entry_price=100, stop_loss=95, target=115,
@@ -193,8 +199,10 @@ def test_validate_no_api_key_medium():
     assert result["recommendation"] == "BLOCKED"
 
 
-def test_validate_no_api_key_low():
+@patch("mcp_server.validator.settings")
+def test_validate_no_api_key_low(mock_settings):
     """Without API key, BLOCK regardless of pre_confidence."""
+    mock_settings.ANTHROPIC_API_KEY = ""
     result = validate_signal(
         ticker="TEST", direction="LONG", pattern="Test",
         rrr=3.0, entry_price=100, stop_loss=95, target=115,

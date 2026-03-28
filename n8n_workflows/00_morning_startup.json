@@ -21,6 +21,21 @@
     {
       "parameters": {
         "method": "POST",
+        "url": "https://money.shadowmarket.ai/tools/refresh_kite_token",
+        "options": {
+          "timeout": 30000,
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "a1000000-0000-4000-8000-000000000012",
+      "name": "Refresh Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
         "url": "https://money.shadowmarket.ai/tools/connect_kite",
         "options": {
           "timeout": 30000,
@@ -31,7 +46,7 @@
       "name": "Connect Kite",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [500, 300]
+      "position": [650, 300]
     },
     {
       "parameters": {
@@ -143,6 +158,9 @@
   ],
   "connections": {
     "Schedule 7:35 AM": {
+      "main": [[{"node": "Refresh Token", "type": "main", "index": 0}]]
+    },
+    "Refresh Token": {
       "main": [[{"node": "Connect Kite", "type": "main", "index": 0}]]
     },
     "Connect Kite": {

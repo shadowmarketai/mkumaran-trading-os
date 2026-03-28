@@ -71,7 +71,19 @@
     },
     {
       "parameters": {
-        "functionCode": "const acc = $input.all()[0].json;\nconst ord = $input.all()[1] ? $input.all()[1].json : {};\nconst reflect = $input.all()[2] ? $input.all()[2].json : {};\nconst memStats = $input.all()[3] ? $input.all()[3].json : {};\nconst mem = memStats.memory || {};\nconst ref = memStats.reflection || {};\n\nconst msg = `\ud83d\udcca EOD Report \u2014 ${new Date().toLocaleDateString('en-IN')}\\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\\nSignal Accuracy:\\n  Win Rate: ${acc.win_rate || 0}%\\n  Total Signals: ${acc.total_signals || 0}\\n  Open: ${acc.open || 0} | Wins: ${acc.wins || 0} | Losses: ${acc.losses || 0}\\n  Total P&L: Rs.${(acc.total_pnl_rs || 0).toLocaleString('en-IN')}\\n  Expectancy: ${acc.expectancy || 0}%\\n\\nOrder Manager:\\n  Positions: ${ord.open_positions || 0}/${ord.max_positions || 5}\\n  Daily P&L: Rs.${ord.daily_pnl || 0}\\n  Kill Switch: ${ord.kill_switch_active ? '\u26a0\ufe0f ACTIVE' : '\u2705 Normal'}\\n\\nTrade Memory:\\n  Stored: ${mem.total || 0} | Reflected: ${mem.reflected || 0}\\n  High-Conf WR: ${ref.high_conf_win_rate || 0}%\\n  Today Reflected: ${reflect.reflected || 0} trades`;\n\nreturn [{ json: { text: msg } }];"
+        "method": "GET",
+        "url": "https://money.shadowmarket.ai/tools/portfolio_exposure",
+        "options": { "allowUnauthorizedCerts": true }
+      },
+      "id": "d1000000-0003-4000-8000-000000000008",
+      "name": "Get Portfolio Exposure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1500, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "const acc = $input.all()[0].json;\nconst ord = $input.all()[1] ? $input.all()[1].json : {};\nconst reflect = $input.all()[2] ? $input.all()[2].json : {};\nconst memStats = $input.all()[3] ? $input.all()[3].json : {};\nconst portfolio = $input.all()[4] ? $input.all()[4].json : {};\nconst mem = memStats.memory || {};\nconst ref = memStats.reflection || {};\n\nconst sectors = portfolio.sector_breakdown || {};\nconst sectorLines = Object.entries(sectors).map(([k,v]) => `  ${k}: ${v.pct || 0}%`).join('\\n');\n\nconst msg = `\ud83d\udcca EOD Report \u2014 ${new Date().toLocaleDateString('en-IN')}\\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\\nSignal Accuracy:\\n  Win Rate: ${acc.win_rate || 0}%\\n  Total Signals: ${acc.total_signals || 0}\\n  Open: ${acc.open || 0} | Wins: ${acc.wins || 0} | Losses: ${acc.losses || 0}\\n  Total P&L: Rs.${(acc.total_pnl_rs || 0).toLocaleString('en-IN')}\\n  Expectancy: ${acc.expectancy || 0}%\\n\\nOrder Manager:\\n  Positions: ${ord.open_positions || 0}/${ord.max_positions || 5}\\n  Daily P&L: Rs.${ord.daily_pnl || 0}\\n  Kill Switch: ${ord.kill_switch_active ? '\u26a0\ufe0f ACTIVE' : '\u2705 Normal'}\\n\\nPortfolio Exposure:\\n  Deployed: ${portfolio.deployed_pct || 0}% of capital\\n${sectorLines || '  No positions'}\\n\\nTrade Memory:\\n  Stored: ${mem.total || 0} | Reflected: ${mem.reflected || 0}\\n  High-Conf WR: ${ref.high_conf_win_rate || 0}%\\n  Today Reflected: ${reflect.reflected || 0} trades`;\n\nreturn [{ json: { text: msg } }];"
       },
       "id": "d1000000-0003-4000-8000-000000000006",
       "name": "Format EOD Report",
@@ -113,6 +125,9 @@
       "main": [[{"node": "Get Memory Stats", "type": "main", "index": 0}]]
     },
     "Get Memory Stats": {
+      "main": [[{"node": "Get Portfolio Exposure", "type": "main", "index": 0}]]
+    },
+    "Get Portfolio Exposure": {
       "main": [[{"node": "Format EOD Report", "type": "main", "index": 0}]]
     },
     "Format EOD Report": {
