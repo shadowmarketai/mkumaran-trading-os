@@ -1,5 +1,5 @@
 {
-  "name": "MKUMARAN - 03 EOD Report + Reflection (3:35 PM)",
+  "name": "MKUMARAN - 03 EOD Report + Reflection + Momentum (3:35 PM)",
   "nodes": [
     {
       "parameters": {
@@ -109,6 +109,47 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1750, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://money.shadowmarket.ai/api/momentum",
+        "options": { "allowUnauthorizedCerts": true }
+      },
+      "id": "d1000000-0003-4000-8000-000000000009",
+      "name": "Get Momentum",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const momentum = $input.first().json;\nconst rankings = momentum.rankings || [];\nconst holdings = momentum.holdings || [];\nconst signals = momentum.signals || [];\n\nif (rankings.length === 0) {\n  return [];\n}\n\nconst top3 = rankings.slice(0, 3).map(r => r.ticker + ' #' + r.rank).join(', ');\nconst buyCount = signals.filter(s => s.action === 'BUY').length;\nconst sellCount = signals.filter(s => s.action === 'SELL').length;\nconst rankedAt = momentum.ranked_at ? momentum.ranked_at.split('T')[0] : 'Never';\n\nconst msg = `\\ud83d\\ude80 Momentum Status\\n\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\nHoldings: ${holdings.length} | Last Scan: ${rankedAt}\\nTop 3: ${top3}\\nSignals: ${buyCount} BUY / ${sellCount} SELL`;\n\nreturn [{ json: { text: msg } }];"
+      },
+      "id": "d1000000-0003-4000-8000-000000000010",
+      "name": "Format Momentum Status",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [2250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot7601124337:AAHOqcdTTNbLJ_RoxAUXTDOtQ6mN9qCOHEk/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "=699992965" },
+            { "name": "text", "value": "={{ $json.text }}" }
+          ]
+        },
+        "options": { "allowUnauthorizedCerts": true }
+      },
+      "id": "d1000000-0003-4000-8000-000000000011",
+      "name": "Send Momentum Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2500, 300]
     }
   ],
   "connections": {
@@ -132,6 +173,15 @@
     },
     "Format EOD Report": {
       "main": [[{"node": "Send Telegram", "type": "main", "index": 0}]]
+    },
+    "Send Telegram": {
+      "main": [[{"node": "Get Momentum", "type": "main", "index": 0}]]
+    },
+    "Get Momentum": {
+      "main": [[{"node": "Format Momentum Status", "type": "main", "index": 0}]]
+    },
+    "Format Momentum Status": {
+      "main": [[{"node": "Send Momentum Status", "type": "main", "index": 0}]]
     }
   },
   "active": false,

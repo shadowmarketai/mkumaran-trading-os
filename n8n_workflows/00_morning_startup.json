@@ -1,5 +1,5 @@
 {
-  "name": "MKUMARAN - 00 Morning Startup (Token + MWA)",
+  "name": "MKUMARAN - 00 Morning Startup (Token + MWA + Momentum)",
   "nodes": [
     {
       "parameters": {
@@ -154,6 +154,47 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://money.shadowmarket.ai/api/momentum",
+        "options": { "allowUnauthorizedCerts": true }
+      },
+      "id": "a1000000-0000-4000-8000-000000000010",
+      "name": "Get Momentum",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2250, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "const momentum = $input.first().json;\nconst rankings = momentum.rankings || [];\nconst holdings = momentum.holdings || [];\nconst signals = momentum.signals || [];\n\nif (rankings.length === 0) {\n  return [];\n}\n\nconst top5 = rankings.slice(0, 5).map(r => {\n  const ret = r.ret_12m > 0 ? '+' + r.ret_12m.toFixed(1) : r.ret_12m.toFixed(1);\n  return '  #' + r.rank + ' ' + r.ticker + ' \\u2014 ' + r.score.toFixed(2) + ' | 12M: ' + ret + '%';\n}).join('\\n');\n\nconst buyCount = signals.filter(s => s.action === 'BUY').length;\nconst sellCount = signals.filter(s => s.action === 'SELL').length;\nconst rankedAt = momentum.ranked_at ? momentum.ranked_at.split('T')[0] : 'Never';\n\nconst msg = `\\ud83d\\ude80 Momentum Portfolio\\n\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\nTop 5 by Score:\\n${top5}\\n\\nHoldings: ${holdings.length} stocks\\nPending: ${buyCount} BUY / ${sellCount} SELL\\nLast Scanned: ${rankedAt}`;\n\nreturn [{ json: { text: msg } }];"
+      },
+      "id": "a1000000-0000-4000-8000-000000000011",
+      "name": "Format Momentum Update",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [2500, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot7601124337:AAHOqcdTTNbLJ_RoxAUXTDOtQ6mN9qCOHEk/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "=699992965" },
+            { "name": "text", "value": "={{ $json.text }}" }
+          ]
+        },
+        "options": { "allowUnauthorizedCerts": true }
+      },
+      "id": "a1000000-0000-4000-8000-000000000012",
+      "name": "Send Momentum Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2750, 200]
     }
   ],
   "connections": {
@@ -183,6 +224,15 @@
     },
     "Format Brief": {
       "main": [[{"node": "Send Morning Brief", "type": "main", "index": 0}]]
+    },
+    "Send Morning Brief": {
+      "main": [[{"node": "Get Momentum", "type": "main", "index": 0}]]
+    },
+    "Get Momentum": {
+      "main": [[{"node": "Format Momentum Update", "type": "main", "index": 0}]]
+    },
+    "Format Momentum Update": {
+      "main": [[{"node": "Send Momentum Update", "type": "main", "index": 0}]]
     }
   },
   "active": false,
