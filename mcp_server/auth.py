@@ -19,12 +19,15 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against a bcrypt hash."""
-    return bcrypt.checkpw(
-        plain_password.encode("utf-8"),
-        hashed_password.encode("utf-8"),
-    )
+def verify_password(plain_password: str, hashed_or_plain: str) -> bool:
+    """Verify a plain password against a bcrypt hash or plain-text fallback."""
+    if hashed_or_plain.startswith("$2b$") or hashed_or_plain.startswith("$2a$"):
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_or_plain.encode("utf-8"),
+        )
+    # Fallback: plain-text comparison (for envs where $ gets mangled)
+    return plain_password == hashed_or_plain
 
 
 def hash_password(password: str) -> str:
