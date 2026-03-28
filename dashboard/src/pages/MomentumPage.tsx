@@ -6,7 +6,6 @@ import {
   Loader2,
   AlertCircle,
   TrendingUp,
-  TrendingDown,
   Minus,
   ArrowUpRight,
   ArrowDownRight,
