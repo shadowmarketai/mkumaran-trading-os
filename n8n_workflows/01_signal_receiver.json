@@ -63,11 +63,11 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "url": "=https://api.telegram.org/bot7601124337:AAHOqcdTTNbLJ_RoxAUXTDOtQ6mN9qCOHEk/sendMessage",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "chat_id", "value": "={{ $env.TELEGRAM_CHAT_ID }}" },
+            { "name": "chat_id", "value": "=699992965" },
             {
               "name": "text",
               "value": "=\ud83d\udfe2 TV Signal VALIDATED\nTicker: {{ $json.ticker }}\nDirection: {{ $json.direction }}\nConfidence: {{ $json.ai_confidence }}%\nRecommendation: {{ $json.recommendation }}\nSignal ID: {{ $json.signal_id }}"
@@ -85,11 +85,11 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "url": "=https://api.telegram.org/bot7601124337:AAHOqcdTTNbLJ_RoxAUXTDOtQ6mN9qCOHEk/sendMessage",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "chat_id", "value": "={{ $env.TELEGRAM_CHAT_ID }}" },
+            { "name": "chat_id", "value": "=699992965" },
             {
               "name": "text",
               "value": "=\ud83d\udd34 TV Signal REJECTED\nTicker: {{ $json.ticker }}\nConfidence: {{ $json.ai_confidence }}% (too low)\nRecommendation: {{ $json.recommendation }}"
@@ -139,11 +139,11 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "url": "=https://api.telegram.org/bot7601124337:AAHOqcdTTNbLJ_RoxAUXTDOtQ6mN9qCOHEk/sendMessage",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "chat_id", "value": "={{ $env.TELEGRAM_CHAT_ID }}" },
+            { "name": "chat_id", "value": "=699992965" },
             {
               "name": "text",
               "value": "=\u2705 Signal recorded: {{ $json.ticker }} {{ $json.direction || '' }}\nSignal ID: {{ $json.signal_id || 'N/A' }}"

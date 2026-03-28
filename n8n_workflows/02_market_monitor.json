@@ -62,11 +62,11 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "url": "=https://api.telegram.org/bot7601124337:AAHOqcdTTNbLJ_RoxAUXTDOtQ6mN9qCOHEk/sendMessage",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "chat_id", "value": "={{ $env.TELEGRAM_CHAT_ID }}" },
+            { "name": "chat_id", "value": "=699992965" },
             {
               "name": "text",
               "value": "=\ud83d\udea8 KILL SWITCH TRIGGERED\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nReason: {{ $json.kill_switch_reason }}\nDaily P&L: Rs.{{ $json.daily_pnl }}\nAll positions being closed!\n\nManual intervention may be needed."
@@ -106,11 +106,11 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "url": "=https://api.telegram.org/bot7601124337:AAHOqcdTTNbLJ_RoxAUXTDOtQ6mN9qCOHEk/sendMessage",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "chat_id", "value": "={{ $env.TELEGRAM_CHAT_ID }}" },
+            { "name": "chat_id", "value": "=699992965" },
             { "name": "text", "value": "={{ $json.text }}" }
           ]
         },
@@ -171,11 +171,11 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "url": "=https://api.telegram.org/bot7601124337:AAHOqcdTTNbLJ_RoxAUXTDOtQ6mN9qCOHEk/sendMessage",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "chat_id", "value": "={{ $env.TELEGRAM_CHAT_ID }}" },
+            { "name": "chat_id", "value": "=699992965" },
             {
               "name": "text",
               "value": "=\ud83d\udcca F&O Intraday Signal\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nVerdict: {{ $json.verdict }}\nPCR: {{ $json.pcr || 'N/A' }}\nOI Interpretation: {{ $json.oi_interpretation || 'N/A' }}\nStatus: {{ $json.status || 'N/A' }}"
