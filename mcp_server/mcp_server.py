@@ -57,16 +57,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         path = request.url.path
 
-        # Allow public paths
+        # Only enforce auth on API and tool endpoints
+        # SPA routes (/, /overview, /news, etc.) are served as index.html
+        # and the frontend ProtectedRoute handles UI-side auth
+        is_protected = (
+            path.startswith("/api/")
+            or path.startswith("/tools/")
+            or path.startswith("/auth/")
+        )
+
+        if not is_protected:
+            return await call_next(request)
+
+        # Allow public API paths (webhooks, health, docs, login)
         if path in AUTH_PUBLIC_PATHS or path.startswith(AUTH_PUBLIC_PREFIXES):
-            return await call_next(request)
-
-        # Allow static file requests (SPA assets)
-        if "." in path.split("/")[-1] and not path.startswith("/api/") and not path.startswith("/tools/") and not path.startswith("/auth/"):
-            return await call_next(request)
-
-        # Allow root / and /login for SPA
-        if path in ("/", "/login"):
             return await call_next(request)
 
         # Check Authorization header
