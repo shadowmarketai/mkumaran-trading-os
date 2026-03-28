@@ -14,6 +14,7 @@ const pageNames: Record<string, string> = {
   '/engines': 'Pattern Engines',
   '/wallstreet': 'Wall Street AI',
   '/news': 'News & Macro',
+  '/momentum': 'Momentum Ranking',
 };
 
 interface IndexPriceProps {

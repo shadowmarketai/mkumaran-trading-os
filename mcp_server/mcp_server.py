@@ -1827,6 +1827,90 @@ async def tool_check_news_alerts():
 
 
 # ============================================================
+# Momentum Ranking Module
+# ============================================================
+
+@app.get("/api/momentum")
+async def api_momentum():
+    """Get cached momentum rankings + portfolio + rebalance signals for dashboard."""
+    from mcp_server.momentum_ranker import get_momentum_portfolio
+
+    portfolio = get_momentum_portfolio()
+    if not portfolio:
+        return {
+            "ranked_at": None,
+            "top_n": 0,
+            "holdings": [],
+            "rankings": [],
+            "signals": [],
+            "message": "No momentum scan yet. Trigger a rebalance to generate rankings.",
+        }
+    return portfolio
+
+
+@app.get("/tools/momentum_rankings")
+async def tool_momentum_rankings(top_n: int = Query(default=10, ge=1, le=50)):
+    """MCP tool: Get current momentum rankings for Claude analysis."""
+    from mcp_server.momentum_ranker import get_momentum_portfolio
+
+    portfolio = get_momentum_portfolio()
+    if not portfolio:
+        return {
+            "status": "ok",
+            "tool": "momentum_rankings",
+            "count": 0,
+            "rankings": [],
+            "message": "No rankings available. Run momentum_rebalance first.",
+        }
+    rankings = portfolio.get("rankings", [])[:top_n]
+    return {
+        "status": "ok",
+        "tool": "momentum_rankings",
+        "ranked_at": portfolio.get("ranked_at"),
+        "count": len(rankings),
+        "rankings": rankings,
+    }
+
+
+@app.post("/tools/momentum_rebalance")
+async def tool_momentum_rebalance(top_n: int = Query(default=10, ge=1, le=50)):
+    """
+    Trigger full universe momentum scan and generate rebalance signals.
+    Takes ~40-75s due to rate-limited yfinance calls.
+    """
+    from mcp_server.momentum_ranker import (
+        rank_universe,
+        generate_rebalance_signals,
+        get_momentum_portfolio,
+        save_momentum_portfolio,
+    )
+    from dataclasses import asdict as _asdict
+
+    # Get current holdings (if any)
+    prev = get_momentum_portfolio()
+    current_holdings = prev.get("holdings", []) if prev else []
+
+    # Run full scan
+    rankings = rank_universe(top_n=top_n)
+    signals = generate_rebalance_signals(current_holdings, rankings, top_n=top_n)
+
+    # Persist
+    payload = save_momentum_portfolio(rankings, signals, top_n=top_n)
+
+    return {
+        "status": "ok",
+        "tool": "momentum_rebalance",
+        "top_n": top_n,
+        "stocks_scored": len(rankings),
+        "buy_signals": len([s for s in signals if s.action == "BUY"]),
+        "sell_signals": len([s for s in signals if s.action == "SELL"]),
+        "rankings": [_asdict(s) for s in rankings],
+        "signals": [_asdict(s) for s in signals],
+        "ranked_at": payload.get("ranked_at"),
+    }
+
+
+# ============================================================
 # Dashboard — serve frontend static files (SPA)
 # ============================================================
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard_dist"

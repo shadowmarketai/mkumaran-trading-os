@@ -11,6 +11,7 @@ import BacktestingPage from './pages/BacktestingPage';
 import EnginesPage from './pages/EnginesPage';
 import WallStreetPage from './pages/WallStreetPage';
 import NewsPage from './pages/NewsPage';
+import MomentumPage from './pages/MomentumPage';
 
 function App() {
   return (
@@ -35,6 +36,7 @@ function App() {
                     <Route path="/engines" element={<EnginesPage />} />
                     <Route path="/wallstreet" element={<WallStreetPage />} />
                     <Route path="/news" element={<NewsPage />} />
+                    <Route path="/momentum" element={<MomentumPage />} />
                   </Routes>
                 </main>
               </div>

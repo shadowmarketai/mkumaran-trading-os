@@ -11,6 +11,7 @@ import type {
   EngineDetectionResult,
   SegmentFilter,
   NewsItem,
+  MomentumData,
 } from '../types';
 
 const api = axios.create({
@@ -90,6 +91,16 @@ export const engineApi = {
 export const newsApi = {
   getLatest: (hours = 24, minImpact = 'LOW') =>
     api.get<NewsItem[]>('/news', { params: { hours, min_impact: minImpact } }).then((r) => r.data),
+};
+
+export const momentumApi = {
+  getRankings: () =>
+    api.get<MomentumData>('/momentum').then((r) => r.data),
+  triggerRebalance: (topN = 10) =>
+    axios.post<MomentumData>(`/tools/momentum_rebalance`, null, {
+      params: { top_n: topN },
+      timeout: 120000,
+    }).then((r) => r.data),
 };
 
 export default api;

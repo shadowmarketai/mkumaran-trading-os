@@ -9,6 +9,7 @@ import {
   Activity,
   Brain,
   Newspaper,
+  Rocket,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -27,6 +28,7 @@ const navItems: NavItem[] = [
   { to: '/engines', label: 'Pattern Engines', icon: <Cpu size={20} /> },
   { to: '/wallstreet', label: 'Wall Street AI', icon: <Brain size={20} /> },
   { to: '/news', label: 'News & Macro', icon: <Newspaper size={20} /> },
+  { to: '/momentum', label: 'Momentum', icon: <Rocket size={20} /> },
 ];
 
 interface MarketStatusProps {

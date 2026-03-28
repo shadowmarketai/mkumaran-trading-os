@@ -220,3 +220,33 @@ export interface NewsItem {
 export type MarketDirection = 'BULL' | 'BEAR' | 'SIDEWAYS' | 'MILD_BULL' | 'MILD_BEAR';
 export type TradeStatus = 'OPEN' | 'WIN' | 'LOSS' | 'EXPIRED';
 export type SectorStrength = 'STRONG' | 'NEUTRAL' | 'WEAK';
+
+// ── Momentum Ranking ──────────────────────────────────────
+export interface MomentumStock {
+  rank: number;
+  ticker: string;
+  sector: string;
+  score: number;
+  ret_3m: number;
+  ret_6m: number;
+  ret_12m: number;
+  volatility: number;
+  prev_rank: number | null;
+}
+
+export interface RebalanceSignal {
+  ticker: string;
+  sector: string;
+  action: 'BUY' | 'SELL';
+  score: number;
+  reason: string;
+}
+
+export interface MomentumData {
+  ranked_at: string | null;
+  top_n: number;
+  holdings: string[];
+  rankings: MomentumStock[];
+  signals: RebalanceSignal[];
+  message?: string;
+}
