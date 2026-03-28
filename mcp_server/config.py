@@ -57,7 +57,7 @@ class Settings:
 
     # Authentication (opt-in — set AUTH_ENABLED=true to require login)
     AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "false").lower() == "true"
-    ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "admin@shadowmarket.ai")
+    ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "sales@shadowmarket.ai")
     ADMIN_PASSWORD_HASH: str = os.getenv("ADMIN_PASSWORD_HASH", "")
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-this-in-production")
     JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))
