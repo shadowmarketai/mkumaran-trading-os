@@ -10,7 +10,12 @@ export function useMWA(refreshInterval = 300000) {
   const fetch = useCallback(async () => {
     try {
       const data = await mwaApi.getLatest();
-      setMwa(data);
+      // API returns {status: "no_data"} when no MWA scan has run
+      if (data && 'direction' in data) {
+        setMwa(data);
+      } else {
+        setMwa(null);
+      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch MWA');

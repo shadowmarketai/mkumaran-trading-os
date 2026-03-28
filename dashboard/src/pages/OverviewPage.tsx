@@ -54,10 +54,10 @@ function ScoreBar({ bullPct, bearPct }: ScoreBarProps) {
     <div className="space-y-2">
       <div className="flex justify-between text-xs font-mono">
         <span className="text-trading-bull flex items-center gap-1">
-          <ArrowUpRight size={12} /> BULL {bullPct.toFixed(1)}%
+          <ArrowUpRight size={12} /> BULL {(bullPct ?? 0).toFixed(1)}%
         </span>
         <span className="text-trading-bear flex items-center gap-1">
-          BEAR {bearPct.toFixed(1)}% <ArrowDownRight size={12} />
+          BEAR {(bearPct ?? 0).toFixed(1)}% <ArrowDownRight size={12} />
         </span>
       </div>
       <div className="h-3 bg-slate-700 rounded-full overflow-hidden flex">
@@ -234,14 +234,14 @@ export default function OverviewPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex items-center justify-between p-2 rounded-lg bg-slate-800/50">
                     <span className="text-xs text-slate-400">FII</span>
-                    <span className={`text-sm font-mono font-bold ${mwa.fii_net >= 0 ? 'text-trading-bull' : 'text-trading-bear'}`}>
-                      {mwa.fii_net >= 0 ? '+' : ''}{mwa.fii_net.toFixed(0)} Cr
+                    <span className={`text-sm font-mono font-bold ${(mwa.fii_net ?? 0) >= 0 ? 'text-trading-bull' : 'text-trading-bear'}`}>
+                      {(mwa.fii_net ?? 0) >= 0 ? '+' : ''}{(mwa.fii_net ?? 0).toFixed(0)} Cr
                     </span>
                   </div>
                   <div className="flex items-center justify-between p-2 rounded-lg bg-slate-800/50">
                     <span className="text-xs text-slate-400">DII</span>
-                    <span className={`text-sm font-mono font-bold ${mwa.dii_net >= 0 ? 'text-trading-bull' : 'text-trading-bear'}`}>
-                      {mwa.dii_net >= 0 ? '+' : ''}{mwa.dii_net.toFixed(0)} Cr
+                    <span className={`text-sm font-mono font-bold ${(mwa.dii_net ?? 0) >= 0 ? 'text-trading-bull' : 'text-trading-bear'}`}>
+                      {(mwa.dii_net ?? 0) >= 0 ? '+' : ''}{(mwa.dii_net ?? 0).toFixed(0)} Cr
                     </span>
                   </div>
                 </div>
