@@ -1,23 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ActiveTrade } from '../types';
 import { tradeApi } from '../services/api';
+import { useMarketSegment } from '../context/MarketSegmentContext';
 
 export function useTrades(refreshInterval = 60000) {
   const [trades, setTrades] = useState<ActiveTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { filter, timeframes } = useMarketSegment();
 
   const fetch = useCallback(async () => {
     try {
-      const data = await tradeApi.getActiveTrades();
-      setTrades(data);
+      const data = await tradeApi.getActiveTrades(filter);
+      const filtered = timeframes.length > 0
+        ? data.filter((t) => timeframes.includes(t.timeframe))
+        : data;
+      setTrades(filtered);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch trades');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filter, timeframes]);
 
   useEffect(() => {
     fetch();

@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { WatchlistItem } from '../types';
 import { watchlistApi } from '../services/api';
+import { useMarketSegment } from '../context/MarketSegmentContext';
 
 export function useWatchlist(tier = 0) {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { filter } = useMarketSegment();
 
   const fetch = useCallback(async () => {
     try {
-      const data = await watchlistApi.getAll(tier);
+      const data = await watchlistApi.getAll(tier, filter);
       setItems(data);
       setError(null);
     } catch (err) {
@@ -17,7 +19,7 @@ export function useWatchlist(tier = 0) {
     } finally {
       setLoading(false);
     }
-  }, [tier]);
+  }, [tier, filter]);
 
   useEffect(() => {
     fetch();

@@ -75,6 +75,7 @@ class Signal(Base):
     scanner_count = Column(Integer)
     tier = Column(Integer)
     source = Column(String(20))
+    timeframe = Column(String(10), default="1D")
     status = Column(String(20), default="OPEN")
 
     def __repr__(self) -> str:
@@ -145,6 +146,7 @@ class ActiveTrade(Base):
     current_price = Column(Numeric(10, 2))
     crrr = Column(Numeric(5, 2))
     last_updated = Column(DateTime)
+    timeframe = Column(String(10), default="1D")
     alert_sent = Column(Boolean, default=False)
 
     signal = relationship("Signal")

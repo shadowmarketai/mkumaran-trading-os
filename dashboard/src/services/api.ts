@@ -9,6 +9,7 @@ import type {
   BacktestResult,
   BacktestCompareResult,
   EngineDetectionResult,
+  SegmentFilter,
 } from '../types';
 
 const api = axios.create({
@@ -27,15 +28,18 @@ api.interceptors.response.use(
 );
 
 export const overviewApi = {
-  getOverview: () => api.get<OverviewData>('/overview').then((r) => r.data),
+  getOverview: (filter?: SegmentFilter) =>
+    api.get<OverviewData>('/overview', { params: { ...filter } }).then((r) => r.data),
 };
 
 export const signalApi = {
-  getSignals: (limit = 50) => api.get<Signal[]>('/signals', { params: { limit } }).then((r) => r.data),
+  getSignals: (limit = 50, filter?: SegmentFilter) =>
+    api.get<Signal[]>('/signals', { params: { limit, ...filter } }).then((r) => r.data),
 };
 
 export const tradeApi = {
-  getActiveTrades: () => api.get<ActiveTrade[]>('/trades/active').then((r) => r.data),
+  getActiveTrades: (filter?: SegmentFilter) =>
+    api.get<ActiveTrade[]>('/trades/active', { params: { ...filter } }).then((r) => r.data),
 };
 
 export const mwaApi = {
@@ -43,7 +47,8 @@ export const mwaApi = {
 };
 
 export const watchlistApi = {
-  getAll: (tier = 0) => api.get<WatchlistItem[]>('/watchlist', { params: { tier } }).then((r) => r.data),
+  getAll: (tier = 0, filter?: SegmentFilter) =>
+    api.get<WatchlistItem[]>('/watchlist', { params: { tier, ...filter } }).then((r) => r.data),
   add: (data: { ticker: string; tier?: number; ltrp?: number; pivot_high?: number; timeframe?: string }) =>
     api.post<WatchlistItem>('/watchlist', null, { params: data }).then((r) => r.data),
   remove: (id: number) => api.delete(`/watchlist/${id}`).then((r) => r.data),
@@ -51,7 +56,8 @@ export const watchlistApi = {
 };
 
 export const accuracyApi = {
-  getMetrics: () => api.get<AccuracyMetrics>('/accuracy').then((r) => r.data),
+  getMetrics: (filter?: SegmentFilter) =>
+    api.get<AccuracyMetrics>('/accuracy', { params: { ...filter } }).then((r) => r.data),
 };
 
 export const backtestApi = {

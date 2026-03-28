@@ -2,6 +2,7 @@ import { useLocation } from 'react-router-dom';
 import { TrendingUp, TrendingDown, Wifi, WifiOff } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { MarketDirection } from '../../types';
+import SegmentTabs from './SegmentTabs';
 
 const pageNames: Record<string, string> = {
   '/overview': 'Overview',
@@ -90,26 +91,29 @@ export default function TopBar() {
   const currentPage = pageNames[location.pathname] || 'Dashboard';
 
   return (
-    <header className="h-14 min-h-[56px] sticky top-0 z-30 glass-card rounded-none border-x-0 border-t-0 flex items-center justify-between px-6">
-      {/* Left: Breadcrumb */}
-      <div className="flex items-center gap-2">
-        <span className="text-slate-500 text-sm">Dashboard</span>
-        <span className="text-slate-600">/</span>
-        <span className="text-white text-sm font-medium">{currentPage}</span>
-      </div>
+    <div className="sticky top-0 z-30">
+      <header className="h-14 min-h-[56px] glass-card rounded-none border-x-0 border-t-0 flex items-center justify-between px-6">
+        {/* Left: Breadcrumb */}
+        <div className="flex items-center gap-2">
+          <span className="text-slate-500 text-sm">Dashboard</span>
+          <span className="text-slate-600">/</span>
+          <span className="text-white text-sm font-medium">{currentPage}</span>
+        </div>
 
-      {/* Center: Index Prices */}
-      <div className="flex items-center gap-6">
-        <IndexPrice name="NIFTY" price={24850.3} change={127.5} changePct={0.52} />
-        <div className="w-px h-5 bg-trading-border" />
-        <IndexPrice name="BANKNIFTY" price={53420.8} change={-85.2} changePct={-0.16} />
-      </div>
+        {/* Center: Index Prices */}
+        <div className="flex items-center gap-6">
+          <IndexPrice name="NIFTY" price={24850.3} change={127.5} changePct={0.52} />
+          <div className="w-px h-5 bg-trading-border" />
+          <IndexPrice name="BANKNIFTY" price={53420.8} change={-85.2} changePct={-0.16} />
+        </div>
 
-      {/* Right: MWA + Market Status */}
-      <div className="flex items-center gap-4">
-        <DirectionBadge direction="MILD_BULL" />
-        <MarketStatusLabel status="CLOSED" />
-      </div>
-    </header>
+        {/* Right: MWA + Market Status */}
+        <div className="flex items-center gap-4">
+          <DirectionBadge direction="MILD_BULL" />
+          <MarketStatusLabel status="CLOSED" />
+        </div>
+      </header>
+      <SegmentTabs />
+    </div>
   );
 }

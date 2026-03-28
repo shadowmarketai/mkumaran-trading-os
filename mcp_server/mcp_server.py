@@ -666,19 +666,46 @@ async def tool_ws_macro_assessment():
 
 
 @app.get("/api/overview")
-async def api_overview(db: Session = Depends(get_db)):
-    """Dashboard overview data."""
-    watchlist_count = db.query(Watchlist).filter(Watchlist.active.is_(True)).count()
-    active_trades = db.query(ActiveTrade).count()
-    total_signals = db.query(Signal).count()
-    today_signals = db.query(Signal).filter(Signal.signal_date == date.today()).count()
+async def api_overview(
+    exchange: str = "",
+    asset_class: str = "",
+    db: Session = Depends(get_db),
+):
+    """Dashboard overview data. Optional filter by exchange/asset_class."""
+    wl_query = db.query(Watchlist).filter(Watchlist.active.is_(True))
+    at_query = db.query(ActiveTrade)
+    sig_query = db.query(Signal)
+    today_query = db.query(Signal).filter(Signal.signal_date == date.today())
+
+    if exchange:
+        wl_query = wl_query.filter(Watchlist.exchange == exchange.upper())
+        at_query = at_query.filter(ActiveTrade.exchange == exchange.upper())
+        sig_query = sig_query.filter(Signal.exchange == exchange.upper())
+        today_query = today_query.filter(Signal.exchange == exchange.upper())
+    if asset_class:
+        wl_query = wl_query.filter(Watchlist.asset_class == asset_class.upper())
+        at_query = at_query.filter(ActiveTrade.asset_class == asset_class.upper())
+        sig_query = sig_query.filter(Signal.asset_class == asset_class.upper())
+        today_query = today_query.filter(Signal.asset_class == asset_class.upper())
+
+    watchlist_count = wl_query.count()
+    active_trades = at_query.count()
+    total_signals = sig_query.count()
+    today_signals = today_query.count()
 
     # Latest MWA
     latest_mwa = db.query(MWAScore).order_by(desc(MWAScore.score_date)).first()
 
-    # Win rate
-    total_outcomes = db.query(Outcome).count()
-    wins = db.query(Outcome).filter(Outcome.outcome == "WIN").count()
+    # Win rate (filtered by exchange/asset_class via Signal join)
+    outcome_query = db.query(Outcome)
+    if exchange or asset_class:
+        outcome_query = outcome_query.join(Signal, Outcome.signal_id == Signal.id)
+        if exchange:
+            outcome_query = outcome_query.filter(Signal.exchange == exchange.upper())
+        if asset_class:
+            outcome_query = outcome_query.filter(Signal.asset_class == asset_class.upper())
+    total_outcomes = outcome_query.count()
+    wins = outcome_query.filter(Outcome.outcome == "WIN").count()
     win_rate = round((wins / total_outcomes * 100), 1) if total_outcomes > 0 else 0
 
     return {
@@ -695,10 +722,23 @@ async def api_overview(db: Session = Depends(get_db)):
 
 
 @app.get("/api/signals")
-async def api_signals(limit: int = 50, db: Session = Depends(get_db)):
-    """Recent signals for dashboard."""
+async def api_signals(
+    limit: int = 50,
+    exchange: str = "",
+    asset_class: str = "",
+    timeframe: str = "",
+    db: Session = Depends(get_db),
+):
+    """Recent signals for dashboard. Optional filter by exchange/asset_class/timeframe."""
+    query = db.query(Signal)
+    if exchange:
+        query = query.filter(Signal.exchange == exchange.upper())
+    if asset_class:
+        query = query.filter(Signal.asset_class == asset_class.upper())
+    if timeframe:
+        query = query.filter(Signal.timeframe == timeframe)
     signals = (
-        db.query(Signal)
+        query
         .order_by(desc(Signal.signal_date), desc(Signal.id))
         .limit(limit)
         .all()
@@ -709,6 +749,9 @@ async def api_signals(limit: int = 50, db: Session = Depends(get_db)):
             "signal_date": str(s.signal_date),
             "signal_time": str(s.signal_time) if s.signal_time else None,
             "ticker": s.ticker,
+            "exchange": s.exchange or "NSE",
+            "asset_class": s.asset_class or "EQUITY",
+            "timeframe": s.timeframe or "1D",
             "direction": s.direction,
             "pattern": s.pattern,
             "entry_price": float(s.entry_price) if s.entry_price else 0,
@@ -732,12 +775,18 @@ async def api_signals(limit: int = 50, db: Session = Depends(get_db)):
 @app.get("/api/trades/active")
 async def api_active_trades(
     exchange: str = "",
+    asset_class: str = "",
+    timeframe: str = "",
     db: Session = Depends(get_db),
 ):
-    """Active trades for dashboard. Optional filter by exchange."""
+    """Active trades for dashboard. Optional filter by exchange/asset_class/timeframe."""
     query = db.query(ActiveTrade)
     if exchange:
         query = query.filter(ActiveTrade.exchange == exchange.upper())
+    if asset_class:
+        query = query.filter(ActiveTrade.asset_class == asset_class.upper())
+    if timeframe:
+        query = query.filter(ActiveTrade.timeframe == timeframe)
     trades = query.all()
     return [
         {
@@ -746,6 +795,7 @@ async def api_active_trades(
             "ticker": t.ticker,
             "exchange": t.exchange or "NSE",
             "asset_class": t.asset_class or "EQUITY",
+            "timeframe": t.timeframe or "1D",
             "entry_price": float(t.entry_price),
             "target": float(t.target),
             "stop_loss": float(t.stop_loss),
@@ -903,27 +953,57 @@ async def api_watchlist_toggle(item_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/api/accuracy")
-async def api_accuracy(db: Session = Depends(get_db)):
-    """Accuracy metrics for dashboard with breakdowns."""
-    total = db.query(Outcome).count()
-    wins = db.query(Outcome).filter(Outcome.outcome == "WIN").count()
-    losses = db.query(Outcome).filter(Outcome.outcome == "LOSS").count()
-    open_count = db.query(Signal).filter(Signal.status == "OPEN").count()
+async def api_accuracy(
+    exchange: str = "",
+    asset_class: str = "",
+    db: Session = Depends(get_db),
+):
+    """Accuracy metrics for dashboard with breakdowns. Optional filter by exchange/asset_class."""
+    # Build filtered base queries
+    outcome_base = db.query(Outcome)
+    signal_base = db.query(Signal)
+    if exchange or asset_class:
+        outcome_base = outcome_base.join(Signal, Outcome.signal_id == Signal.id)
+        if exchange:
+            outcome_base = outcome_base.filter(Signal.exchange == exchange.upper())
+            signal_base = signal_base.filter(Signal.exchange == exchange.upper())
+        if asset_class:
+            outcome_base = outcome_base.filter(Signal.asset_class == asset_class.upper())
+            signal_base = signal_base.filter(Signal.asset_class == asset_class.upper())
 
-    total_pnl = db.query(func.sum(Outcome.pnl_amount)).scalar() or 0
-    avg_rrr_val = db.query(func.avg(Signal.rrr)).scalar() or 0
+    total = outcome_base.count()
+    wins = outcome_base.filter(Outcome.outcome == "WIN").count()
+    losses = outcome_base.filter(Outcome.outcome == "LOSS").count()
+    open_count = signal_base.filter(Signal.status == "OPEN").count()
+
+    # Need fresh queries for aggregates to avoid double-join
+    pnl_query = db.query(func.sum(Outcome.pnl_amount))
+    rrr_query = db.query(func.avg(Signal.rrr))
+    if exchange or asset_class:
+        pnl_query = pnl_query.join(Signal, Outcome.signal_id == Signal.id)
+        if exchange:
+            pnl_query = pnl_query.filter(Signal.exchange == exchange.upper())
+            rrr_query = rrr_query.filter(Signal.exchange == exchange.upper())
+        if asset_class:
+            pnl_query = pnl_query.filter(Signal.asset_class == asset_class.upper())
+            rrr_query = rrr_query.filter(Signal.asset_class == asset_class.upper())
+    total_pnl = pnl_query.scalar() or 0
+    avg_rrr_val = rrr_query.scalar() or 0
 
     # By pattern breakdown
-    pattern_rows = (
+    pattern_query = (
         db.query(
             Signal.pattern,
             func.count(Outcome.id).label("total"),
             func.sum(case((Outcome.outcome == "WIN", 1), else_=0)).label("wins"),
         )
         .join(Signal, Outcome.signal_id == Signal.id)
-        .group_by(Signal.pattern)
-        .all()
     )
+    if exchange:
+        pattern_query = pattern_query.filter(Signal.exchange == exchange.upper())
+    if asset_class:
+        pattern_query = pattern_query.filter(Signal.asset_class == asset_class.upper())
+    pattern_rows = pattern_query.group_by(Signal.pattern).all()
     by_pattern = [
         {
             "pattern": row.pattern or "Unknown",
@@ -935,16 +1015,19 @@ async def api_accuracy(db: Session = Depends(get_db)):
     ]
 
     # By direction breakdown
-    direction_rows = (
+    dir_query = (
         db.query(
             Signal.direction,
             func.count(Outcome.id).label("total"),
             func.sum(case((Outcome.outcome == "WIN", 1), else_=0)).label("wins"),
         )
         .join(Signal, Outcome.signal_id == Signal.id)
-        .group_by(Signal.direction)
-        .all()
     )
+    if exchange:
+        dir_query = dir_query.filter(Signal.exchange == exchange.upper())
+    if asset_class:
+        dir_query = dir_query.filter(Signal.asset_class == asset_class.upper())
+    direction_rows = dir_query.group_by(Signal.direction).all()
     by_direction = [
         {
             "direction": row.direction,
@@ -956,12 +1039,14 @@ async def api_accuracy(db: Session = Depends(get_db)):
     ]
 
     # Monthly PnL (compute in Python for cross-DB compatibility)
-    all_outcomes = (
-        db.query(Outcome)
-        .filter(Outcome.exit_date.isnot(None))
-        .order_by(Outcome.exit_date)
-        .all()
-    )
+    monthly_query = db.query(Outcome).filter(Outcome.exit_date.isnot(None))
+    if exchange or asset_class:
+        monthly_query = monthly_query.join(Signal, Outcome.signal_id == Signal.id)
+        if exchange:
+            monthly_query = monthly_query.filter(Signal.exchange == exchange.upper())
+        if asset_class:
+            monthly_query = monthly_query.filter(Signal.asset_class == asset_class.upper())
+    all_outcomes = monthly_query.order_by(Outcome.exit_date).all()
     monthly: dict = {}
     for o in all_outcomes:
         month_key = o.exit_date.strftime("%b %Y") if o.exit_date else "Unknown"
@@ -1172,11 +1257,13 @@ async def tool_record_signal(req: RecordSignalRequest):
     from mcp_server.telegram_receiver import record_signal_to_sheets
     result = record_signal_to_sheets(req.model_dump())
 
-    # Also log to sheets_sync tab format
+    # Also log to sheets_sync tab format (with segment routing)
     import asyncio
     asyncio.ensure_future(_auto_sync_sheets(signal_data={
         "signal_date": str(date.today()),
         "ticker": req.ticker,
+        "exchange": req.exchange,
+        "asset_class": get_asset_class(f"{req.exchange}:{req.ticker.split(':')[-1]}").value if req.exchange else "EQUITY",
         "direction": req.direction,
         "entry_price": req.entry_price,
         "stop_loss": req.stop_loss,
@@ -1294,6 +1381,7 @@ class TVWebhookPayload(BaseModel):
     target: float = 0
     rrr: float = 0
     qty: int = 0
+    timeframe: str = "1D"
     source: str = "tradingview"
 
 
@@ -1409,6 +1497,8 @@ async def api_tv_webhook(payload: TVWebhookPayload):
     recommendation = validation.get("recommendation", "SKIP")
 
     # Step 2: Record signal
+    exchange_str = ticker.split(":")[0] if ":" in ticker else "NSE"
+    asset_class_str = get_asset_class(ticker).value
     signal_data = {
         "ticker": ticker,
         "direction": "BUY" if direction == "LONG" else "SELL",
@@ -1418,7 +1508,9 @@ async def api_tv_webhook(payload: TVWebhookPayload):
         "rrr": rrr,
         "pattern": "RRMS (TradingView)",
         "confidence": confidence,
-        "exchange": ticker.split(":")[0] if ":" in ticker else "NSE",
+        "exchange": exchange_str,
+        "asset_class": asset_class_str,
+        "timeframe": payload.timeframe,
         "notes": f"TV Alert | {recommendation} | Qty: {payload.qty}",
     }
 
@@ -1445,23 +1537,49 @@ async def api_tv_webhook(payload: TVWebhookPayload):
     except Exception as e:
         logger.debug("Trade memory store skipped: %s", e)
 
-    # Step 3: Send Telegram notification
-    try:
-        from mcp_server.telegram_bot import send_telegram_message
-        emoji = "\U0001f7e2" if recommendation == "ALERT" else "\U0001f7e1" if recommendation == "WATCHLIST" else "\U0001f534"
-        msg = (
-            f"{emoji} TradingView Signal\n"
-            f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
-            f"Ticker: {ticker}\n"
-            f"Direction: {direction}\n"
-            f"Entry: {payload.entry} | SL: {payload.sl} | TGT: {payload.target}\n"
-            f"RRR: {rrr} | Qty: {payload.qty}\n"
-            f"AI Confidence: {confidence}% ({recommendation})\n"
-            f"Signal ID: {record_result.get('signal_id', 'N/A')}"
-        )
-        await send_telegram_message(msg)
-    except Exception as e:
-        logger.debug("Telegram notification skipped: %s", e)
+    # Step 3: Send Telegram notification (only for signals with >50% confidence)
+    if confidence > 50:
+        try:
+            from mcp_server.telegram_bot import send_telegram_message
+            emoji = "\U0001f7e2" if recommendation == "ALERT" else "\U0001f7e1" if recommendation == "WATCHLIST" else "\U0001f534"
+            exchange_str = ticker.split(":")[0] if ":" in ticker else "NSE"
+            asset_class_str = get_asset_class(ticker).value
+
+            # Segment label
+            segment_map = {
+                "NSE": "NSE Equity", "BSE": "BSE Equity",
+                "MCX": "Commodity", "NFO": "F&O", "CDS": "Forex",
+            }
+            segment_label = segment_map.get(exchange_str, exchange_str)
+
+            # Timeframe classification
+            tf = payload.timeframe
+            tf_category_map = {
+                "5m": "Intraday", "15m": "Intraday", "30m": "Intraday", "1H": "Intraday",
+                "4H": "Swing", "1D": "Swing", "day": "Swing",
+                "1W": "Positional", "week": "Positional", "1M": "Positional",
+            }
+            tf_category = tf_category_map.get(tf, "Swing")
+
+            msg = (
+                f"{emoji} TradingView Signal\n"
+                f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                f"Ticker: {ticker}\n"
+                f"Segment: {segment_label} | {asset_class_str}\n"
+                f"Timeframe: {tf} ({tf_category})\n"
+                f"Direction: {direction}\n"
+                f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                f"Entry: \u20b9{payload.entry} | SL: \u20b9{payload.sl} | TGT: \u20b9{payload.target}\n"
+                f"RRR: {rrr} | Qty: {payload.qty}\n"
+                f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                f"AI Confidence: {confidence}% ({recommendation})\n"
+                f"Signal ID: {record_result.get('signal_id', 'N/A')}"
+            )
+            await send_telegram_message(msg)
+        except Exception as e:
+            logger.debug("Telegram notification skipped: %s", e)
+    else:
+        logger.info("Telegram skipped for %s — confidence %d%% below 50%% threshold", ticker, confidence)
 
     return {
         "status": "ok",

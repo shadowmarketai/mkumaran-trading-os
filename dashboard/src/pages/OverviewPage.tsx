@@ -17,6 +17,7 @@ import SignalCard from '../components/ui/SignalCard';
 import { useMWA } from '../hooks/useMWA';
 import { useSignals } from '../hooks/useSignals';
 import { overviewApi } from '../services/api';
+import { useMarketSegment } from '../context/MarketSegmentContext';
 import type { ScannerResult, SectorStrength } from '../types';
 
 // --- Scanner Heatmap ---
@@ -130,10 +131,11 @@ function groupByLayer(scanners: ScannerResult[]): [string, ScannerResult[]][] {
 export default function OverviewPage() {
   const { mwa, loading: mwaLoading, error: mwaError } = useMWA();
   const { signals, loading: signalsLoading } = useSignals(20);
+  const { filter } = useMarketSegment();
   const [stats, setStats] = useState({ active_trades: 0, win_rate: 0, today_signals: 0 });
 
   useEffect(() => {
-    overviewApi.getOverview().then((data) => {
+    overviewApi.getOverview(filter).then((data) => {
       const d = data as unknown as Record<string, number>;
       setStats({
         active_trades: d.active_trades ?? 0,
@@ -141,7 +143,7 @@ export default function OverviewPage() {
         today_signals: d.today_signals ?? 0,
       });
     }).catch(() => {});
-  }, []);
+  }, [filter]);
 
   const loading = mwaLoading || signalsLoading;
 

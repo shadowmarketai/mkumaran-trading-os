@@ -256,6 +256,7 @@ export default function WatchlistPage() {
               <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-trading-border">
                 <th className="text-left py-3 px-3">Ticker</th>
                 <th className="text-left py-3 px-3">Name</th>
+                <th className="text-center py-3 px-2">Exch</th>
                 <th className="text-center py-3 px-2">TF</th>
                 <th className="text-center py-3 px-2">Tier</th>
                 <th className="text-right py-3 px-2 font-mono">LTRP</th>
@@ -285,6 +286,17 @@ export default function WatchlistPage() {
                       <span className="font-mono font-bold text-white">{item.ticker}</span>
                     </td>
                     <td className="py-2.5 px-3 text-slate-400">{item.name}</td>
+                    <td className="py-2.5 px-2 text-center">
+                      <span className={cn(
+                        'text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border',
+                        item.exchange === 'MCX' ? 'bg-amber-500/15 text-amber-400 border-amber-500/20' :
+                        item.exchange === 'NFO' ? 'bg-purple-500/15 text-purple-400 border-purple-500/20' :
+                        item.exchange === 'CDS' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' :
+                        'bg-blue-500/15 text-blue-400 border-blue-500/20'
+                      )}>
+                        {item.exchange || 'NSE'}
+                      </span>
+                    </td>
                     <td className="py-2.5 px-2 text-center">
                       <span className="text-xs font-mono bg-slate-800 px-1.5 py-0.5 rounded">{item.timeframe}</span>
                     </td>

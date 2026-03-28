@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS signals (
     scanner_count   INTEGER,
     tier            INTEGER,
     source          VARCHAR(20),
+    timeframe       VARCHAR(10)   DEFAULT '1D',
     status          VARCHAR(20)   DEFAULT 'OPEN'
 );
 
@@ -100,6 +101,7 @@ CREATE TABLE IF NOT EXISTS active_trades (
     current_price   DECIMAL(10,2),
     crrr            DECIMAL(5,2),
     last_updated    TIMESTAMP,
+    timeframe       VARCHAR(10)   DEFAULT '1D',
     alert_sent      BOOLEAN       DEFAULT FALSE
 );
 
@@ -151,6 +153,8 @@ INSERT INTO watchlist (ticker, name, timeframe, tier, ltrp, pivot_high, active, 
 -- ALTER TABLE signals ADD COLUMN IF NOT EXISTS asset_class VARCHAR(15) DEFAULT 'EQUITY';
 -- ALTER TABLE active_trades ADD COLUMN IF NOT EXISTS exchange VARCHAR(10) DEFAULT 'NSE';
 -- ALTER TABLE active_trades ADD COLUMN IF NOT EXISTS asset_class VARCHAR(15) DEFAULT 'EQUITY';
+-- ALTER TABLE signals ADD COLUMN IF NOT EXISTS timeframe VARCHAR(10) DEFAULT '1D';
+-- ALTER TABLE active_trades ADD COLUMN IF NOT EXISTS timeframe VARCHAR(10) DEFAULT '1D';
 -- CREATE INDEX IF NOT EXISTS idx_watchlist_exchange ON watchlist(exchange);
 
 -- ============================================================

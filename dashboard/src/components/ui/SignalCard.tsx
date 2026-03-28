@@ -4,6 +4,23 @@ import { cn } from '../../lib/utils';
 import type { Signal } from '../../types';
 import StatusBadge from './StatusBadge';
 
+const EXCHANGE_COLORS: Record<string, string> = {
+  NSE: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
+  BSE: 'bg-blue-500/15 text-blue-300 border-blue-500/20',
+  MCX: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
+  NFO: 'bg-purple-500/15 text-purple-400 border-purple-500/20',
+  CDS: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
+};
+
+function ExchangeBadge({ exchange }: { exchange: string }) {
+  const color = EXCHANGE_COLORS[exchange] || 'bg-slate-700 text-slate-400 border-slate-600';
+  return (
+    <span className={cn('text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border', color)}>
+      {exchange}
+    </span>
+  );
+}
+
 interface SignalCardProps {
   signal: Signal;
 }
@@ -25,9 +42,9 @@ export default function SignalCard({ signal }: SignalCardProps) {
         isLong ? 'border-l-2 border-l-trading-bull' : 'border-l-2 border-l-trading-bear'
       )}
     >
-      {/* Header: Direction + Ticker + Pattern */}
+      {/* Header: Direction + Ticker + Exchange + TF + Pattern */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div
             className={cn(
               'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold border',
@@ -40,6 +57,8 @@ export default function SignalCard({ signal }: SignalCardProps) {
             {isLong ? 'BUY' : 'SHORT'}
           </div>
           <span className="text-lg font-bold text-white font-mono">{signal.ticker}</span>
+          <ExchangeBadge exchange={signal.exchange} />
+          <span className="text-[10px] font-mono text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">{signal.timeframe || '1D'}</span>
           <span className="text-xs text-slate-400 bg-slate-800 px-2 py-0.5 rounded">{signal.pattern}</span>
         </div>
         <StatusBadge status={signal.status} size="sm" />

@@ -80,22 +80,52 @@ def sync_watchlist(watchlist_items: list[dict]) -> bool:
         return False
 
 
+def _get_segment_sheet_name(exchange: str) -> str:
+    """Map exchange to segment-specific sheet tab name."""
+    segment_map = {
+        "NSE": "SIGNALS_EQUITY",
+        "BSE": "SIGNALS_EQUITY",
+        "MCX": "SIGNALS_COMMODITY",
+        "NFO": "SIGNALS_FNO",
+        "CDS": "SIGNALS_FOREX",
+    }
+    return segment_map.get(exchange.upper(), "SIGNALS_EQUITY")
+
+
+def _ensure_segment_sheet(sheet, tab_name: str):
+    """Get or create a segment-specific sheet tab with headers."""
+    try:
+        return sheet.worksheet(tab_name)
+    except Exception:
+        # Tab doesn't exist — create it with headers
+        ws = sheet.add_worksheet(title=tab_name, rows=1000, cols=20)
+        headers = [
+            "Date", "Time", "Ticker", "Exchange", "Asset Class",
+            "Direction", "Pattern", "Entry", "SL", "Target",
+            "RRR", "Qty", "Risk Amt", "AI Confidence",
+            "TV Confirmed", "MWA Score", "Scanner Count", "Status",
+        ]
+        ws.append_row(headers)
+        logger.info("Created segment sheet tab: %s", tab_name)
+        return ws
+
+
 def log_signal(signal_data: dict) -> bool:
     """
-    Log a signal to the SIGNALS tab.
-    Tab 2 of 5.
+    Log a signal to the SIGNALS tab + segment-specific tab.
+    Tab 2 of 5 (master), plus SIGNALS_EQUITY / SIGNALS_FNO / SIGNALS_COMMODITY / SIGNALS_FOREX.
     """
     _, sheet = _get_sheets_client()
     if not sheet:
         return False
 
     try:
-        ws = sheet.worksheet("SIGNALS")
-
         row = [
             signal_data.get("signal_date", str(date.today())),
             signal_data.get("signal_time", ""),
             signal_data.get("ticker", ""),
+            signal_data.get("exchange", "NSE"),
+            signal_data.get("asset_class", "EQUITY"),
             signal_data.get("direction", ""),
             signal_data.get("pattern", ""),
             signal_data.get("entry_price", 0),
@@ -110,9 +140,18 @@ def log_signal(signal_data: dict) -> bool:
             signal_data.get("scanner_count", 0),
             signal_data.get("status", "OPEN"),
         ]
+
+        # Log to master SIGNALS tab
+        ws = sheet.worksheet("SIGNALS")
         ws.append_row(row)
 
-        logger.info("Logged signal for %s to Sheets", signal_data.get("ticker"))
+        # Log to segment-specific tab
+        exchange = signal_data.get("exchange", "NSE")
+        segment_tab = _get_segment_sheet_name(exchange)
+        seg_ws = _ensure_segment_sheet(sheet, segment_tab)
+        seg_ws.append_row(row)
+
+        logger.info("Logged signal for %s to SIGNALS + %s", signal_data.get("ticker"), segment_tab)
         return True
 
     except Exception as e:

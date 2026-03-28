@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { AccuracyMetrics } from '../types';
 import { accuracyApi } from '../services/api';
+import { useMarketSegment } from '../context/MarketSegmentContext';
 
 export function useAccuracy() {
   const [metrics, setMetrics] = useState<AccuracyMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { filter } = useMarketSegment();
 
   const fetch = useCallback(async () => {
     try {
-      const data = await accuracyApi.getMetrics();
+      const data = await accuracyApi.getMetrics(filter);
       setMetrics(data);
       setError(null);
     } catch (err) {
@@ -17,7 +19,7 @@ export function useAccuracy() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filter]);
 
   useEffect(() => {
     fetch();

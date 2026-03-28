@@ -1,7 +1,20 @@
+export type MarketSegment = 'ALL' | 'NSE_EQUITY' | 'FNO' | 'COMMODITY' | 'FOREX';
+export type TimeframeCategory = 'ALL' | 'INTRADAY' | 'SWING' | 'POSITIONAL';
+export type Exchange = 'NSE' | 'BSE' | 'MCX' | 'CDS' | 'NFO';
+export type AssetClass = 'EQUITY' | 'COMMODITY' | 'CURRENCY' | 'FNO';
+
+export interface SegmentFilter {
+  exchange?: string;
+  asset_class?: string;
+  timeframe?: string;
+}
+
 export interface WatchlistItem {
   id: number;
   ticker: string;
   name: string;
+  exchange: string;
+  asset_class: string;
   timeframe: string;
   tier: number;
   ltrp: number | null;
@@ -18,6 +31,9 @@ export interface Signal {
   signal_date: string;
   signal_time: string | null;
   ticker: string;
+  exchange: string;
+  asset_class: string;
+  timeframe: string;
   direction: 'LONG' | 'SHORT';
   pattern: string;
   entry_price: number;
@@ -74,6 +90,9 @@ export interface ActiveTrade {
   id: number;
   signal_id: number;
   ticker: string;
+  exchange: string;
+  asset_class: string;
+  timeframe: string;
   entry_price: number;
   target: number;
   stop_loss: number;
