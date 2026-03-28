@@ -44,6 +44,16 @@ async def startup():
     logger.info("MCP Server starting on %s:%s", settings.MCP_SERVER_HOST, settings.MCP_SERVER_PORT)
 
 
+@app.get("/")
+async def root():
+    return {
+        "service": "MKUMARAN Trading OS",
+        "version": "1.9",
+        "status": "running",
+        "docs": "/docs",
+    }
+
+
 @app.get("/health")
 async def health():
     return {"status": "healthy", "service": "mkumaran-trading-os"}
