@@ -191,9 +191,49 @@ Multi-leg options payoff diagrams. 6 presets: Bull Call Spread, Bear Put Spread,
 
 ---
 
-## TradingView Alert Setup
+## How Signals Enter the System
 
-TradingView is the entry point for all automated signals. Here's how to wire it up.
+There are **3 ways** signals flow into the Trading OS. You don't need all of them — pick what suits you.
+
+| Source | How It Works | Setup | TradingView Pro Required? |
+|--------|-------------|-------|--------------------------|
+| **n8n Workflows (Recommended)** | Fully automatic. Morning scan at 8:45 AM runs 82 scanners on your watchlist. Market monitor polls every 30 min. EOD report at 3:30 PM. | Import 4 JSON files into n8n, set webhook URL | No |
+| **TradingView Webhooks** | One-time alert setup per strategy/ticker, then fires automatically forever. Optional extra signal source on top of n8n. | Create alert in TradingView with webhook URL | **Yes — Pro+ or higher ($12.95/mo)** |
+| **Paper Trading Page** | Manually place orders from the dashboard. Good for testing and learning the system. | Nothing — just open `/paper` in the dashboard | No |
+
+### What's Already Automatic (No TradingView Needed)
+
+With just n8n running, the system does this every trading day **without any manual work**:
+
+```
+8:45 AM  →  n8n Morning Startup
+             ├─ MWA scan (82 scanners × your watchlist)
+             ├─ Momentum ranking (NSE universe)
+             └─ Telegram summary sent to you
+
+Every 30m →  n8n Market Monitor
+             ├─ News/macro RSS + NewsAPI scan
+             ├─ HIGH impact alerts → Telegram immediately
+             └─ Skips outside market hours
+
+3:30 PM  →  n8n EOD Report
+             ├─ Daily P&L summary
+             ├─ Closed trade reflection (lesson generation)
+             ├─ Momentum rebalance signals
+             └─ Telegram + Google Sheets sync
+```
+
+When n8n detects a signal via the MWA scan, it calls the same validation pipeline (BM25 memory lookup → Claude AI debate → record → Telegram notify) — identical to TradingView alerts but fully hands-off.
+
+**If you're just starting out**: Use n8n + Paper Trading. Add TradingView later if you have custom Pine Script strategies you want to feed in.
+
+---
+
+## TradingView Alert Setup (Optional)
+
+> **Requires TradingView Pro+ or higher** ($12.95/mo). Skip this section if you're using n8n only.
+
+TradingView webhooks are an optional extra signal source. Useful if you have custom Pine Script strategies that detect setups the 82 built-in scanners don't cover.
 
 ### Step 1: Get Your Webhook URL
 
