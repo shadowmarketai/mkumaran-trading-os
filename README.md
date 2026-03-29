@@ -191,6 +191,182 @@ Multi-leg options payoff diagrams. 6 presets: Bull Call Spread, Bear Put Spread,
 
 ---
 
+## TradingView Alert Setup
+
+TradingView is the entry point for all automated signals. Here's how to wire it up.
+
+### Step 1: Get Your Webhook URL
+
+Your webhook endpoint is:
+
+```
+https://your-server-domain/api/tv_webhook
+```
+
+This endpoint is **public** (no auth required) so TradingView can POST to it directly.
+
+### Step 2: Create an Alert in TradingView
+
+1. Open any chart on [TradingView](https://www.tradingview.com)
+2. Apply your indicator or strategy (Pine Script, built-in screener, or manual)
+3. Click **Alert** (clock icon) or press `Alt+A`
+4. Configure the condition (e.g., RSI crosses above 30, MACD crossover, price crosses above SMA)
+5. In the **Notifications** tab, check **Webhook URL** and paste your URL:
+   ```
+   https://your-server-domain/api/tv_webhook
+   ```
+6. In the **Message** field, paste the JSON payload (see below)
+7. Set **Alert name** and click **Create**
+
+### Step 3: Alert Message (JSON Payload)
+
+Paste this in the TradingView alert **Message** box. Replace placeholders with TradingView variables or fixed values:
+
+```json
+{
+  "ticker": "{{exchange}}:{{ticker}}",
+  "direction": "LONG",
+  "entry": {{close}},
+  "sl": 0,
+  "target": 0,
+  "rrr": 0,
+  "qty": 0,
+  "timeframe": "{{interval}}",
+  "source": "tradingview"
+}
+```
+
+#### Payload Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ticker` | string | Yes | Symbol in `EXCHANGE:SYMBOL` format (e.g., `NSE:RELIANCE`, `MCX:GOLD`). If no exchange prefix, defaults to NSE. |
+| `direction` | string | No | `LONG` or `SHORT` (also accepts `BUY`/`SELL`). Default: `LONG` |
+| `entry` | float | No | Entry price. Use `{{close}}` for current price. Default: `0` |
+| `sl` | float | No | Stop loss price. Default: `0` |
+| `target` | float | No | Target price. Default: `0` |
+| `rrr` | float | No | Risk:reward ratio. **Auto-calculated** from entry/sl/target if set to `0`. |
+| `qty` | int | No | Quantity. Default: `0` (RRMS auto-sizes based on capital + risk%) |
+| `timeframe` | string | No | `5m`, `15m`, `1H`, `4H`, `1D`, `1W`. Use `{{interval}}` for auto. Default: `1D` |
+| `source` | string | No | Label for the alert source. Default: `tradingview` |
+
+### Example: Pine Script with Calculated SL/Target
+
+For a strategy where you compute entry, SL, and target in Pine Script:
+
+```json
+{
+  "ticker": "NSE:{{ticker}}",
+  "direction": "{{strategy.order.action}}",
+  "entry": {{strategy.order.price}},
+  "sl": {{plot_0}},
+  "target": {{plot_1}},
+  "qty": {{strategy.order.contracts}},
+  "timeframe": "{{interval}}"
+}
+```
+
+### Example: Simple Crossover Alert (Manual Values)
+
+For a manual alert on RELIANCE with fixed levels:
+
+```json
+{
+  "ticker": "NSE:RELIANCE",
+  "direction": "LONG",
+  "entry": 2850.00,
+  "sl": 2780.00,
+  "target": 3060.00,
+  "qty": 10,
+  "timeframe": "1D"
+}
+```
+
+### Example: MCX Commodity Alert
+
+```json
+{
+  "ticker": "MCX:GOLD",
+  "direction": "LONG",
+  "entry": {{close}},
+  "sl": 0,
+  "target": 0,
+  "timeframe": "1H"
+}
+```
+
+### What Happens After the Alert Fires
+
+Once TradingView POSTs to `/api/tv_webhook`, the system runs this pipeline automatically:
+
+```
+TV Alert received
+    │
+    ├─ 1. Ticker normalized (adds NSE: prefix if missing)
+    ├─ 2. RRR auto-calculated from entry/sl/target if not provided
+    ├─ 3. MWA context loaded (latest scan direction, scanner hits, FII/DII)
+    │      └─ Confidence boosted if MWA aligns with direction (+10%)
+    │      └─ Confidence boosted if 3+ scanners hit this ticker (+5%)
+    ├─ 4. BM25 trade memory searched (finds similar past trades, 0 API calls)
+    ├─ 5. Debate Validator runs (Claude AI)
+    │      ├─ Confidence 40-75%  → Full debate (Bull + Bear + Judge, 6 API calls)
+    │      ├─ Confidence <40%    → Single-pass validation (1 API call)
+    │      └─ Confidence >75%    → Single-pass validation (1 API call)
+    ├─ 6. Signal recorded to DB + Google Sheets
+    ├─ 7. Trade stored in BM25 memory for future lookups
+    └─ 8. Telegram notification sent (if confidence > 50%)
+           ├─ 🟢 ALERT     = high confidence, take action
+           ├─ 🟡 WATCHLIST  = moderate, monitor
+           └─ 🔴 SKIP       = low confidence, pass
+```
+
+### Telegram Notification Format
+
+When a signal passes the 50% confidence threshold, you get:
+
+```
+🟢 TradingView Signal
+━━━━━━━━━━━━━━━━━━━━━━━━
+Ticker: NSE:RELIANCE
+Segment: NSE Equity | EQUITY
+Timeframe: 1D (Swing)
+Direction: LONG
+━━━━━━━━━━━━━━━━━━━━━━━━
+Entry: ₹2850 | SL: ₹2780 | TGT: ₹3060
+RRR: 3.0 | Qty: 10
+━━━━━━━━━━━━━━━━━━━━━━━━
+AI Confidence: 72% (ALERT)
+Signal ID: sig_2026_03_29_001
+```
+
+### Response Format
+
+The webhook returns JSON confirming what happened:
+
+```json
+{
+  "status": "ok",
+  "source": "tradingview",
+  "ticker": "NSE:RELIANCE",
+  "direction": "LONG",
+  "ai_confidence": 72,
+  "recommendation": "ALERT",
+  "signal_id": "sig_2026_03_29_001",
+  "recorded": true
+}
+```
+
+### Tips
+
+- **TradingView Pro+ or higher** is required for webhook alerts (free plan doesn't support webhooks)
+- You can create **multiple alerts** on different tickers/timeframes — each fires independently
+- Use `{{exchange}}:{{ticker}}` in the message to automatically include the correct exchange
+- The system handles all exchanges: NSE, BSE, MCX, CDS, NFO — just prefix the ticker correctly
+- Set `sl` and `target` to `0` if you want the system to use RRMS defaults for position sizing
+- Alerts fire **once per bar close** by default. Change to "once per bar" or "every time" based on your strategy
+
+---
+
 ## Signal Flow (End-to-End)
 
 Here's what happens when a trading signal is generated:
