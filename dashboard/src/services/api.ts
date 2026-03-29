@@ -27,26 +27,36 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // Auto-logout on 401 (except login endpoint itself)
-    if (
-      error.response?.status === 401 &&
-      !error.config?.url?.includes('/auth/login')
-    ) {
-      localStorage.removeItem('mkumaran_auth_token');
-      localStorage.removeItem('mkumaran_auth_email');
-      delete api.defaults.headers.common['Authorization'];
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
-      }
+// Second instance for /tools/* endpoints (no /api prefix)
+const toolsApi = axios.create({
+  baseURL: '/',
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+function handle401(error: unknown) {
+  const err = error as { response?: { status?: number }; config?: { url?: string }; message?: string };
+  if (
+    err.response?.status === 401 &&
+    !err.config?.url?.includes('/auth/login')
+  ) {
+    localStorage.removeItem('mkumaran_auth_token');
+    localStorage.removeItem('mkumaran_auth_email');
+    delete api.defaults.headers.common['Authorization'];
+    delete toolsApi.defaults.headers.common['Authorization'];
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login';
     }
-    const message = error.response?.data?.detail || error.message;
-    console.error('[API Error]', message);
-    return Promise.reject(error);
-  },
-);
+  }
+  const message = err.response && 'data' in (err.response as Record<string, unknown>)
+    ? ((err.response as Record<string, unknown>).data as Record<string, string>)?.detail || err.message
+    : err.message;
+  console.error('[API Error]', message);
+  return Promise.reject(error);
+}
+
+api.interceptors.response.use((r) => r, handle401);
+toolsApi.interceptors.response.use((r) => r, handle401);
 
 export const overviewApi = {
   getOverview: (filter?: SegmentFilter) =>
@@ -104,7 +114,7 @@ export const momentumApi = {
   getRankings: () =>
     api.get<MomentumData>('/momentum').then((r) => r.data),
   triggerRebalance: (topN = 10) =>
-    axios.post<MomentumData>(`/tools/momentum_rebalance`, null, {
+    toolsApi.post<MomentumData>('/tools/momentum_rebalance', null, {
       params: { top_n: topN },
       timeout: 120000,
     }).then((r) => r.data),
@@ -134,15 +144,16 @@ export const optionsApi = {
 
 export const orderApi = {
   getStatus: () =>
-    axios.get<OrderStatus>('/tools/order_status', { timeout: 10000 }).then((r) => r.data),
+    toolsApi.get<OrderStatus>('/tools/order_status', { timeout: 10000 }).then((r) => r.data),
   placeOrder: (order: PlaceOrderRequest) =>
-    axios.post<OrderResult>('/tools/place_order', order, { timeout: 10000 }).then((r) => r.data),
+    toolsApi.post<OrderResult>('/tools/place_order', order, { timeout: 10000 }).then((r) => r.data),
   cancelOrder: (orderId: string) =>
-    axios.post('/tools/cancel_order', { order_id: orderId }, { timeout: 10000 }).then((r) => r.data),
+    toolsApi.post('/tools/cancel_order', { order_id: orderId }, { timeout: 10000 }).then((r) => r.data),
   closePosition: (ticker: string) =>
-    axios.post('/tools/close_position', { ticker }, { timeout: 10000 }).then((r) => r.data),
+    toolsApi.post('/tools/close_position', { ticker }, { timeout: 10000 }).then((r) => r.data),
   closeAll: () =>
-    axios.post('/tools/close_all', null, { timeout: 10000 }).then((r) => r.data),
+    toolsApi.post('/tools/close_all', null, { timeout: 10000 }).then((r) => r.data),
 };
 
+export { toolsApi };
 export default api;

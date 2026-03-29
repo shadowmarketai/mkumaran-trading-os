@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import api from '../services/api';
+import api, { toolsApi } from '../services/api';
 
 interface AuthState {
   token: string | null;
@@ -31,8 +31,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (state.token) {
       api.defaults.headers.common['Authorization'] = `Bearer ${state.token}`;
+      toolsApi.defaults.headers.common['Authorization'] = `Bearer ${state.token}`;
     } else {
       delete api.defaults.headers.common['Authorization'];
+      delete toolsApi.defaults.headers.common['Authorization'];
     }
   }, [state.token]);
 
@@ -47,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       try {
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        toolsApi.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         const resp = await api.get('/auth/me');
         // If auth is disabled on server, still treat as authenticated
         if (resp.data.auth_enabled === false) {
@@ -69,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(EMAIL_KEY);
         delete api.defaults.headers.common['Authorization'];
+        delete toolsApi.defaults.headers.common['Authorization'];
         setState({
           token: null,
           email: null,
@@ -88,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(TOKEN_KEY, access_token);
     localStorage.setItem(EMAIL_KEY, userEmail);
     api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+    toolsApi.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
 
     setState({
       token: access_token,
@@ -101,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(EMAIL_KEY);
     delete api.defaults.headers.common['Authorization'];
+    delete toolsApi.defaults.headers.common['Authorization'];
     setState({
       token: null,
       email: null,
