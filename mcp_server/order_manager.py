@@ -100,15 +100,22 @@ class OrderManager:
         manager.close_all_positions()
     """
 
-    def __init__(self, kite=None, capital: float = 100000):
+    def __init__(self, kite=None, capital: float = 100000, paper_mode: bool = False):
         self.kite = kite
         self.capital = capital
+        self.paper_mode = paper_mode
         self.kill_switch = KillSwitchState(starting_capital=capital)
         self.open_positions: list[dict] = []
         self.order_history: list[OrderResult] = []
+        self._paper_order_counter: int = 0
+
+        if self.paper_mode:
+            logger.info("OrderManager initialized in PAPER MODE (capital=%.0f)", capital)
 
     def _validate_kite(self) -> str | None:
-        """Check if Kite is connected. Returns error message or None."""
+        """Check if Kite is connected. Returns error message or None in paper mode."""
+        if self.paper_mode:
+            return None  # Skip Kite check in paper mode
         if self.kite is None:
             return "Kite not connected — live trading requires active Kite session"
         return None
@@ -232,6 +239,43 @@ class OrderManager:
             logger.warning("Order REJECTED for %s: %s", ticker, validation_error)
             return result
 
+        # ── Paper mode: simulate order ──────────────────────
+        if self.paper_mode:
+            self._paper_order_counter += 1
+            order_id = f"PAPER-{self._paper_order_counter:06d}"
+
+            self.open_positions.append({
+                "order_id": order_id,
+                "ticker": ticker,
+                "direction": direction,
+                "qty": qty,
+                "entry_price": price,
+                "stop_loss": stop_loss,
+                "target": target,
+                "timestamp": timestamp,
+                "tag": tag,
+            })
+
+            result = OrderResult(
+                success=True,
+                order_id=order_id,
+                message=f"[PAPER] Order placed: {direction} {qty}x {ticker} @ {price}",
+                ticker=ticker,
+                direction=direction,
+                qty=qty,
+                price=price,
+                order_type=order_type,
+                timestamp=timestamp,
+            )
+
+            logger.info(
+                "PAPER ORDER: %s %d x %s @ %.2f (ID: %s)",
+                direction, qty, ticker, price, order_id,
+            )
+
+            self.order_history.append(result)
+            return result
+
         # ── Place order via Kite ──────────────────────────────
         try:
             exchange = ticker.split(":")[0] if ":" in ticker else "NSE"
@@ -312,6 +356,25 @@ class OrderManager:
     def cancel_order(self, order_id: str) -> OrderResult:
         """Cancel a pending order."""
         timestamp = datetime.now().isoformat()
+
+        # Paper mode: just remove from positions
+        if self.paper_mode:
+            before = len(self.open_positions)
+            self.open_positions = [
+                p for p in self.open_positions if p["order_id"] != order_id
+            ]
+            if len(self.open_positions) == before:
+                return OrderResult(
+                    success=False, message=f"Paper order {order_id} not found",
+                    order_id=order_id, timestamp=timestamp,
+                )
+            result = OrderResult(
+                success=True, order_id=order_id,
+                message=f"[PAPER] Order {order_id} cancelled", timestamp=timestamp,
+            )
+            logger.info("PAPER ORDER CANCELLED: %s", order_id)
+            self.order_history.append(result)
+            return result
 
         kite_error = self._validate_kite()
         if kite_error:
@@ -675,6 +738,7 @@ class OrderManager:
     def get_status(self) -> dict:
         """Get current order manager status."""
         return {
+            "paper_mode": self.paper_mode,
             "open_positions": len(self.open_positions),
             "max_positions": MAX_OPEN_POSITIONS,
             "kill_switch_active": self.kill_switch.is_triggered,
@@ -689,6 +753,7 @@ class OrderManager:
             ]),
             "positions": [
                 {
+                    "order_id": p.get("order_id", ""),
                     "ticker": p["ticker"],
                     "direction": p["direction"],
                     "qty": p["qty"],

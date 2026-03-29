@@ -10,6 +10,9 @@ import {
   Brain,
   Newspaper,
   Rocket,
+  Calculator,
+  LineChart,
+  FileText,
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -23,6 +26,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/overview', label: 'Overview', icon: <LayoutDashboard size={20} /> },
   { to: '/trades', label: 'Active Trades', icon: <TrendingUp size={20} /> },
+  { to: '/paper', label: 'Paper Trading', icon: <FileText size={20} /> },
   { to: '/accuracy', label: 'Accuracy', icon: <Target size={20} /> },
   { to: '/watchlist', label: 'Watchlist', icon: <Eye size={20} /> },
   { to: '/backtesting', label: 'Backtesting', icon: <FlaskConical size={20} /> },
@@ -30,6 +34,8 @@ const navItems: NavItem[] = [
   { to: '/wallstreet', label: 'Wall Street AI', icon: <Brain size={20} /> },
   { to: '/news', label: 'News & Macro', icon: <Newspaper size={20} /> },
   { to: '/momentum', label: 'Momentum', icon: <Rocket size={20} /> },
+  { to: '/options', label: 'Options Greeks', icon: <Calculator size={20} /> },
+  { to: '/payoff', label: 'Payoff Calc', icon: <LineChart size={20} /> },
 ];
 
 interface MarketStatusProps {

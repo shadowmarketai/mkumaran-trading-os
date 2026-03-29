@@ -17,11 +17,14 @@ import {
 import {
   AreaChart,
   Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from 'recharts';
 import GlassCard from '../components/ui/GlassCard';
 import MetricCard from '../components/ui/MetricCard';
@@ -69,7 +72,119 @@ const STRATEGY_META: Record<string, { label: string; color: string; description:
   confluence: { label: 'Confluence', color: 'text-trading-ai-light', description: '2+ engines agree' },
 };
 
+type SortKey = 'strategy' | 'total_trades' | 'win_rate' | 'max_drawdown' | 'profit_factor' | 'sharpe_ratio' | 'total_return';
+
+const STRATEGY_COLORS: Record<string, string> = {
+  rrms: '#3B82F6',       // blue
+  smc: '#A855F7',        // purple
+  wyckoff: '#F59E0B',    // amber
+  vsa: '#06B6D4',        // cyan
+  harmonic: '#EC4899',   // pink
+  confluence: '#8B5CF6', // violet
+};
+
+function ComparisonEquityCurves({ data }: { data: BacktestCompareResult }) {
+  const curves = data.equity_curves;
+  if (!curves || Object.keys(curves).length === 0) return null;
+
+  // Merge all equity curves into unified date-indexed data
+  const dateMap: Record<string, Record<string, number>> = {};
+  for (const [strat, points] of Object.entries(curves)) {
+    if (!Array.isArray(points)) continue;
+    for (const pt of points) {
+      if (!dateMap[pt.date]) dateMap[pt.date] = {};
+      dateMap[pt.date][strat] = pt.equity;
+    }
+  }
+
+  const merged = Object.entries(dateMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([dateStr, values]) => ({ date: dateStr, ...values }));
+
+  if (merged.length === 0) return null;
+
+  return (
+    <GlassCard>
+      <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
+        Multi-Strategy Equity Curves
+      </h3>
+      <div className="h-80">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={merged} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <XAxis
+              dataKey="date"
+              tick={{ fill: '#94A3B8', fontSize: 10 }}
+              tickFormatter={(d: string) => d.slice(5)}
+              stroke="#334155"
+            />
+            <YAxis
+              tick={{ fill: '#94A3B8', fontSize: 10 }}
+              tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}K`}
+              stroke="#334155"
+            />
+            <Tooltip
+              contentStyle={{ backgroundColor: '#1E293B', border: '1px solid #334155', borderRadius: 8 }}
+              labelStyle={{ color: '#94A3B8' }}
+              formatter={(value: number, name: string) => [
+                `${value.toLocaleString('en-IN')}`,
+                STRATEGY_META[name]?.label || name,
+              ]}
+            />
+            <Legend
+              formatter={(value: string) => STRATEGY_META[value]?.label || value}
+              wrapperStyle={{ fontSize: 12 }}
+            />
+            {Object.keys(curves).map((strat) => (
+              <Line
+                key={strat}
+                type="monotone"
+                dataKey={strat}
+                stroke={STRATEGY_COLORS[strat] || '#94A3B8'}
+                strokeWidth={2}
+                dot={false}
+                connectNulls
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </GlassCard>
+  );
+}
+
 function ComparisonTable({ data }: { data: BacktestCompareResult }) {
+  const [sortKey, setSortKey] = useState<SortKey>('profit_factor');
+  const [sortAsc, setSortAsc] = useState(false);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortKey(key);
+      setSortAsc(false);
+    }
+  };
+
+  const sorted = [...data.strategies].sort((a, b) => {
+    const av = a[sortKey] as number;
+    const bv = b[sortKey] as number;
+    if (typeof av === 'string') return sortAsc ? (av as string).localeCompare(bv as unknown as string) : (bv as unknown as string).localeCompare(av as string);
+    return sortAsc ? av - bv : bv - av;
+  });
+
+  // Find best value per column for green highlighting
+  const bestValues: Record<string, number> = {};
+  const numericKeys: SortKey[] = ['total_trades', 'win_rate', 'profit_factor', 'sharpe_ratio', 'total_return'];
+  for (const key of numericKeys) {
+    bestValues[key] = Math.max(...data.strategies.map((s) => s[key] as number));
+  }
+  bestValues['max_drawdown'] = Math.min(...data.strategies.map((s) => s.max_drawdown));
+
+  const SortIcon = ({ col }: { col: SortKey }) => (
+    sortKey === col ? (sortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : null
+  );
+
   return (
     <GlassCard>
       <div className="flex items-center justify-between mb-4">
@@ -85,17 +200,17 @@ function ComparisonTable({ data }: { data: BacktestCompareResult }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-trading-border">
-              <th className="text-left py-2 px-3 text-xs text-slate-500 uppercase">Strategy</th>
-              <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase">Trades</th>
-              <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase">Win Rate</th>
-              <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase">Max DD</th>
-              <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase">Profit F.</th>
-              <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase">Sharpe</th>
-              <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase">Return</th>
+              <th className="text-left py-2 px-3 text-xs text-slate-500 uppercase cursor-pointer select-none" onClick={() => handleSort('strategy')}>Strategy <SortIcon col="strategy" /></th>
+              <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase cursor-pointer select-none" onClick={() => handleSort('total_trades')}>Trades <SortIcon col="total_trades" /></th>
+              <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase cursor-pointer select-none" onClick={() => handleSort('win_rate')}>Win Rate <SortIcon col="win_rate" /></th>
+              <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase cursor-pointer select-none" onClick={() => handleSort('max_drawdown')}>Max DD <SortIcon col="max_drawdown" /></th>
+              <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase cursor-pointer select-none" onClick={() => handleSort('profit_factor')}>Profit F. <SortIcon col="profit_factor" /></th>
+              <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase cursor-pointer select-none" onClick={() => handleSort('sharpe_ratio')}>Sharpe <SortIcon col="sharpe_ratio" /></th>
+              <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase cursor-pointer select-none" onClick={() => handleSort('total_return')}>Return <SortIcon col="total_return" /></th>
             </tr>
           </thead>
           <tbody>
-            {data.strategies.map((s: StrategyComparison) => {
+            {sorted.map((s: StrategyComparison) => {
               const meta = STRATEGY_META[s.strategy];
               const isBest = s.strategy === data.best_strategy;
               return (
@@ -108,6 +223,7 @@ function ComparisonTable({ data }: { data: BacktestCompareResult }) {
                 >
                   <td className="py-2.5 px-3">
                     <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: STRATEGY_COLORS[s.strategy] || '#94A3B8' }} />
                       {isBest && <Trophy size={12} className="text-trading-alert" />}
                       <span className={cn('font-mono font-medium', meta?.color || 'text-white')}>
                         {meta?.label || s.strategy}
@@ -115,17 +231,19 @@ function ComparisonTable({ data }: { data: BacktestCompareResult }) {
                     </div>
                   </td>
                   <td className="text-right py-2.5 px-3 font-mono text-slate-300">{s.total_trades}</td>
-                  <td className={cn('text-right py-2.5 px-3 font-mono font-medium', s.win_rate >= 50 ? 'text-trading-bull' : 'text-trading-bear')}>
+                  <td className={cn('text-right py-2.5 px-3 font-mono font-medium', s.win_rate === bestValues['win_rate'] ? 'text-trading-bull' : s.win_rate >= 50 ? 'text-trading-bull' : 'text-trading-bear')}>
                     {s.win_rate.toFixed(1)}%
                   </td>
-                  <td className="text-right py-2.5 px-3 font-mono text-trading-bear">{s.max_drawdown.toFixed(1)}%</td>
-                  <td className={cn('text-right py-2.5 px-3 font-mono', s.profit_factor >= 1.5 ? 'text-trading-bull' : 'text-slate-300')}>
+                  <td className={cn('text-right py-2.5 px-3 font-mono', s.max_drawdown === bestValues['max_drawdown'] ? 'text-trading-bull' : 'text-trading-bear')}>
+                    {s.max_drawdown.toFixed(1)}%
+                  </td>
+                  <td className={cn('text-right py-2.5 px-3 font-mono', s.profit_factor === bestValues['profit_factor'] ? 'text-trading-bull font-medium' : s.profit_factor >= 1.5 ? 'text-trading-bull' : 'text-slate-300')}>
                     {s.profit_factor.toFixed(2)}
                   </td>
-                  <td className={cn('text-right py-2.5 px-3 font-mono', s.sharpe_ratio >= 1.0 ? 'text-trading-bull' : 'text-slate-300')}>
+                  <td className={cn('text-right py-2.5 px-3 font-mono', s.sharpe_ratio === bestValues['sharpe_ratio'] ? 'text-trading-bull font-medium' : s.sharpe_ratio >= 1.0 ? 'text-trading-bull' : 'text-slate-300')}>
                     {s.sharpe_ratio.toFixed(2)}
                   </td>
-                  <td className={cn('text-right py-2.5 px-3 font-mono font-medium', s.total_return >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
+                  <td className={cn('text-right py-2.5 px-3 font-mono font-medium', s.total_return === bestValues['total_return'] ? 'text-trading-bull' : s.total_return >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
                     {s.total_return >= 0 ? '+' : ''}{s.total_return.toFixed(1)}%
                   </td>
                 </tr>
@@ -289,8 +407,10 @@ export default function BacktestingPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
+          className="space-y-6"
         >
           <ComparisonTable data={compareResult} />
+          <ComparisonEquityCurves data={compareResult} />
         </motion.div>
       )}
 

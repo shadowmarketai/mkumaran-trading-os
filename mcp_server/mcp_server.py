@@ -1193,6 +1193,11 @@ class BacktestRequest(BaseModel):
     days: int = 180
 
 
+class BacktestCompareRequest(BaseModel):
+    ticker: str
+    days: int = 1095
+
+
 @app.post("/api/backtest")
 async def api_backtest(req: BacktestRequest):
     """Run backtest from dashboard."""
@@ -1200,6 +1205,172 @@ async def api_backtest(req: BacktestRequest):
 
     result = run_backtest(req.ticker, strategy=req.strategy, days=req.days)
     return result
+
+
+@app.post("/api/backtest/compare")
+async def api_backtest_compare(req: BacktestCompareRequest):
+    """Compare all 6 strategies side-by-side with equity curves."""
+    from mcp_server.backtester import run_backtest_all_strategies
+
+    result = run_backtest_all_strategies(req.ticker, days=req.days)
+
+    # Reshape comparison into strategies array for frontend
+    strategies = result.get("comparison", [])
+
+    # Extract equity curves per strategy from detail results
+    equity_curves: dict = {}
+    details = result.get("details", {})
+    for strat_name, detail in details.items():
+        if isinstance(detail, dict) and "equity_curve" in detail:
+            equity_curves[strat_name] = detail["equity_curve"]
+
+    return {
+        "ticker": result.get("ticker", req.ticker),
+        "period": result.get("period", f"{req.days} days"),
+        "strategies": strategies,
+        "equity_curves": equity_curves,
+        "best_strategy": result.get("best_strategy", "none"),
+    }
+
+
+# ============================================================
+# Options Greeks Endpoints
+# ============================================================
+
+
+class GreeksRequest(BaseModel):
+    spot: float
+    strike: float
+    expiry_days: float
+    rate: float = 0.065
+    volatility: float = 0.20
+    option_type: str = "CE"
+
+
+class OptionChainRequest(BaseModel):
+    spot: float
+    expiry_days: float
+    strike_start: float = 0
+    strike_end: float = 0
+    strike_step: float = 50
+    rate: float = 0.065
+
+
+@app.post("/api/options/greeks")
+async def api_options_greeks(req: GreeksRequest):
+    """Calculate Greeks for a single option."""
+    from mcp_server.options_greeks import calculate_greeks
+    from dataclasses import asdict as _asdict
+
+    result = calculate_greeks(
+        spot=req.spot,
+        strike=req.strike,
+        expiry_days=req.expiry_days,
+        rate=req.rate,
+        volatility=req.volatility,
+        option_type=req.option_type,
+    )
+    return {"status": "ok", **_asdict(result)}
+
+
+@app.get("/api/options/chain")
+async def api_options_chain(
+    spot: float = Query(...),
+    expiry_days: float = Query(default=30),
+    strike_start: float = Query(default=0),
+    strike_end: float = Query(default=0),
+    strike_step: float = Query(default=50),
+    rate: float = Query(default=0.065),
+):
+    """Build option chain with Greeks for all strikes."""
+    from mcp_server.options_greeks import build_greeks_chain
+
+    # Auto-calculate strike range if not provided
+    if strike_start <= 0:
+        strike_start = spot * 0.90
+    if strike_end <= 0:
+        strike_end = spot * 1.10
+
+    # Round to nearest step
+    strike_start = round(strike_start / strike_step) * strike_step
+    strike_end = round(strike_end / strike_step) * strike_step
+
+    strikes = []
+    s = strike_start
+    while s <= strike_end:
+        strikes.append(s)
+        s += strike_step
+
+    chain = build_greeks_chain(
+        spot=spot,
+        strikes=strikes,
+        expiry_days=expiry_days,
+        rate=rate,
+    )
+
+    # Find ATM strike and max pain
+    atm_strike = min(strikes, key=lambda k: abs(k - spot)) if strikes else 0
+
+    return {
+        "status": "ok",
+        "spot": spot,
+        "expiry_days": expiry_days,
+        "atm_strike": atm_strike,
+        "strikes_count": len(strikes),
+        "chain": chain,
+    }
+
+
+# ============================================================
+# Options Payoff Endpoints
+# ============================================================
+
+
+class PayoffLegInput(BaseModel):
+    strike: float
+    premium: float
+    qty: int = 1
+    option_type: str = "CE"
+    action: str = "BUY"
+
+
+class PayoffRequest(BaseModel):
+    legs: list[PayoffLegInput]
+    spot_min: float = 0
+    spot_max: float = 0
+    num_points: int = 200
+
+
+@app.post("/api/options/payoff")
+async def api_options_payoff(req: PayoffRequest):
+    """Calculate multi-leg options payoff curve."""
+    from mcp_server.options_payoff import OptionLeg, calculate_payoff
+    from dataclasses import asdict as _asdict
+
+    legs = [
+        OptionLeg(
+            strike=leg.strike,
+            premium=leg.premium,
+            qty=leg.qty,
+            option_type=leg.option_type,
+            action=leg.action,
+        )
+        for leg in req.legs
+    ]
+
+    result = calculate_payoff(
+        legs, spot_min=req.spot_min, spot_max=req.spot_max,
+        num_points=req.num_points,
+    )
+
+    return {
+        "status": "ok",
+        "points": [_asdict(p) for p in result.points],
+        "breakevens": result.breakevens,
+        "max_profit": result.max_profit,
+        "max_loss": result.max_loss,
+        "net_premium": result.net_premium,
+    }
 
 
 # ============================================================
@@ -1236,7 +1407,9 @@ def _get_order_manager():
     global _order_manager
     if _order_manager is None:
         from mcp_server.order_manager import OrderManager
-        _order_manager = OrderManager(kite=None, capital=100000)
+        _order_manager = OrderManager(
+            kite=None, capital=100000, paper_mode=settings.PAPER_MODE,
+        )
     return _order_manager
 
 

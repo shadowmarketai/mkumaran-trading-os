@@ -181,6 +181,7 @@ export interface BacktestCompareResult {
   ticker: string;
   period: string;
   strategies: StrategyComparison[];
+  equity_curves?: Record<string, EquityPoint[]>;
   best_strategy: string;
 }
 
@@ -215,6 +216,100 @@ export interface NewsItem {
   category: 'POLICY' | 'MACRO' | 'GEOPOLITICAL' | 'REGULATORY' | 'MARKET' | 'GENERAL';
   matched_keywords: string[];
   summary: string;
+}
+
+// ── Options Greeks ────────────────────────────────────────
+export interface GreeksResult {
+  price: number;
+  delta: number;
+  gamma: number;
+  theta: number;
+  vega: number;
+  rho: number;
+  iv: number;
+  market_price?: number;
+}
+
+export interface OptionStrike {
+  strike: number;
+  is_atm: boolean;
+  ce: GreeksResult;
+  pe: GreeksResult;
+}
+
+export interface OptionChainData {
+  spot: number;
+  expiry_days: number;
+  atm_strike: number;
+  strikes_count: number;
+  chain: OptionStrike[];
+}
+
+// ── Options Payoff ────────────────────────────────────────
+export interface PayoffLeg {
+  strike: number;
+  premium: number;
+  qty: number;
+  option_type: 'CE' | 'PE';
+  action: 'BUY' | 'SELL';
+}
+
+export interface PayoffPoint {
+  spot: number;
+  pnl: number;
+}
+
+export interface PayoffData {
+  points: PayoffPoint[];
+  breakevens: number[];
+  max_profit: number;
+  max_loss: number;
+  net_premium: number;
+}
+
+// ── Paper Trading ────────────────────────────────────────
+export interface PlaceOrderRequest {
+  ticker: string;
+  direction: 'BUY' | 'SELL';
+  qty: number;
+  price: number;
+  stop_loss?: number;
+  target?: number;
+}
+
+export interface OrderResult {
+  success: boolean;
+  order_id: string;
+  message: string;
+  ticker: string;
+  direction: string;
+  qty: number;
+  price: number;
+  timestamp: string;
+}
+
+export interface PaperPosition {
+  order_id: string;
+  ticker: string;
+  direction: string;
+  qty: number;
+  entry_price: number;
+  stop_loss: number;
+  trail_active: boolean;
+  partial_exits: number;
+}
+
+export interface OrderStatus {
+  paper_mode: boolean;
+  open_positions: number;
+  max_positions: number;
+  kill_switch_active: boolean;
+  kill_switch_reason: string;
+  daily_pnl: number;
+  capital: number;
+  kite_connected: boolean;
+  orders_today: number;
+  positions: PaperPosition[];
 }
 
 export type MarketDirection = 'BULL' | 'BEAR' | 'SIDEWAYS' | 'MILD_BULL' | 'MILD_BEAR';

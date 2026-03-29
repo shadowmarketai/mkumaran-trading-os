@@ -63,6 +63,9 @@ class Settings:
     OHLCV_CACHE_DAILY_TTL_HOURS: int = int(os.getenv("OHLCV_CACHE_DAILY_TTL_HOURS", "12"))
     OHLCV_CACHE_INTRADAY_TTL_MINUTES: int = int(os.getenv("OHLCV_CACHE_INTRADAY_TTL_MINUTES", "5"))
 
+    # Paper Trading (set PAPER_MODE=true to trade without Kite)
+    PAPER_MODE: bool = os.getenv("PAPER_MODE", "false").lower() == "true"
+
     # Authentication (opt-in — set AUTH_ENABLED=true to require login)
     AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "false").lower() == "true"
     ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "sales@shadowmarket.ai")

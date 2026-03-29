@@ -13,6 +13,9 @@ import EnginesPage from './pages/EnginesPage';
 import WallStreetPage from './pages/WallStreetPage';
 import NewsPage from './pages/NewsPage';
 import MomentumPage from './pages/MomentumPage';
+import OptionsPage from './pages/OptionsPage';
+import PayoffPage from './pages/PayoffPage';
+import PaperTradingPage from './pages/PaperTradingPage';
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -42,6 +45,9 @@ function App() {
                     <Route path="/wallstreet" element={<WallStreetPage />} />
                     <Route path="/news" element={<NewsPage />} />
                     <Route path="/momentum" element={<MomentumPage />} />
+                    <Route path="/options" element={<OptionsPage />} />
+                    <Route path="/payoff" element={<PayoffPage />} />
+                    <Route path="/paper" element={<PaperTradingPage />} />
                   </Routes>
                 </main>
               </div>

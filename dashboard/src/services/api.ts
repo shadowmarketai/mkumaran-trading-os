@@ -12,6 +12,13 @@ import type {
   SegmentFilter,
   NewsItem,
   MomentumData,
+  OptionChainData,
+  GreeksResult,
+  PayoffData,
+  PayoffLeg,
+  PlaceOrderRequest,
+  OrderResult,
+  OrderStatus,
 } from '../types';
 
 const api = axios.create({
@@ -78,7 +85,7 @@ export const backtestApi = {
   run: (ticker: string, strategy: string, days: number) =>
     api.post<BacktestResult>('/backtest', { ticker, strategy, days }).then((r) => r.data),
   compareAll: (ticker: string, days: number) =>
-    api.post<BacktestCompareResult>('/backtest/compare', { ticker, days }).then((r) => r.data),
+    api.post<BacktestCompareResult>('/backtest/compare', { ticker, days }, { timeout: 120000 }).then((r) => r.data),
 };
 
 export const engineApi = {
@@ -101,6 +108,41 @@ export const momentumApi = {
       params: { top_n: topN },
       timeout: 120000,
     }).then((r) => r.data),
+};
+
+export const optionsApi = {
+  getChain: (spot: number, expiryDays: number, strikeStep = 50) =>
+    api.get<OptionChainData>('/options/chain', {
+      params: { spot, expiry_days: expiryDays, strike_step: strikeStep },
+    }).then((r) => r.data),
+  calculateGreeks: (params: {
+    spot: number;
+    strike: number;
+    expiry_days: number;
+    rate?: number;
+    volatility?: number;
+    option_type?: string;
+  }) =>
+    api.post<GreeksResult & { status: string }>('/options/greeks', params).then((r) => r.data),
+  calculatePayoff: (legs: PayoffLeg[], spotRange?: [number, number]) =>
+    api.post<PayoffData & { status: string }>('/options/payoff', {
+      legs,
+      spot_min: spotRange?.[0],
+      spot_max: spotRange?.[1],
+    }).then((r) => r.data),
+};
+
+export const orderApi = {
+  getStatus: () =>
+    axios.get<OrderStatus>('/tools/order_status', { timeout: 10000 }).then((r) => r.data),
+  placeOrder: (order: PlaceOrderRequest) =>
+    axios.post<OrderResult>('/tools/place_order', order, { timeout: 10000 }).then((r) => r.data),
+  cancelOrder: (orderId: string) =>
+    axios.post('/tools/cancel_order', { order_id: orderId }, { timeout: 10000 }).then((r) => r.data),
+  closePosition: (ticker: string) =>
+    axios.post('/tools/close_position', { ticker }, { timeout: 10000 }).then((r) => r.data),
+  closeAll: () =>
+    axios.post('/tools/close_all', null, { timeout: 10000 }).then((r) => r.data),
 };
 
 export default api;
