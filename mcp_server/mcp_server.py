@@ -1913,6 +1913,79 @@ async def tool_momentum_rebalance(top_n: int = Query(default=10, ge=1, le=50)):
 
 
 # ============================================================
+# OHLCV Cache Management
+# ============================================================
+
+
+@app.get("/api/cache/stats")
+async def api_cache_stats():
+    """Cache size, hit rate, unique tickers, interval breakdown."""
+    from mcp_server.ohlcv_cache import get_cache_stats
+
+    db_session = SessionLocal()
+    try:
+        stats = get_cache_stats(db_session)
+        return {"status": "ok", **stats}
+    finally:
+        db_session.close()
+
+
+class CacheRefreshRequest(BaseModel):
+    ticker: str
+    interval: str = "1d"
+    period: str = "1y"
+
+
+@app.post("/tools/cache_refresh")
+async def tool_cache_refresh(req: CacheRefreshRequest):
+    """Force-refresh cached data for a ticker (invalidate + re-fetch)."""
+    from mcp_server.ohlcv_cache import invalidate_ticker
+    from mcp_server.data_provider import get_stock_data
+
+    # Invalidate existing cache
+    db_session = SessionLocal()
+    try:
+        deleted = invalidate_ticker(db_session, req.ticker, req.interval)
+    finally:
+        db_session.close()
+
+    # Force re-fetch (will populate cache)
+    df = get_stock_data(req.ticker, period=req.period, interval=req.interval, force_refresh=True)
+
+    return {
+        "status": "ok",
+        "tool": "cache_refresh",
+        "ticker": req.ticker,
+        "interval": req.interval,
+        "deleted_rows": deleted,
+        "new_bars": len(df) if df is not None and not df.empty else 0,
+    }
+
+
+class CachePurgeRequest(BaseModel):
+    days_to_keep: int = 1825
+
+
+@app.post("/tools/cache_purge")
+async def tool_cache_purge(req: CachePurgeRequest):
+    """Delete cached data older than N days (default 5 years)."""
+    from mcp_server.ohlcv_cache import purge_old_data
+
+    db_session = SessionLocal()
+    try:
+        deleted = purge_old_data(db_session, days_to_keep=req.days_to_keep)
+    finally:
+        db_session.close()
+
+    return {
+        "status": "ok",
+        "tool": "cache_purge",
+        "days_to_keep": req.days_to_keep,
+        "deleted_rows": deleted,
+    }
+
+
+# ============================================================
 # Dashboard — serve frontend static files (SPA)
 # ============================================================
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard_dist"

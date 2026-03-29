@@ -52,6 +52,9 @@ def _add_missing_columns():
             "exchange": "VARCHAR(10) DEFAULT 'NSE'",
             "asset_class": "VARCHAR(15) DEFAULT 'EQUITY'",
         },
+        "ohlcv_cache": {
+            "tenant_id": "VARCHAR(36)",
+        },
     }
 
     with engine.begin() as conn:

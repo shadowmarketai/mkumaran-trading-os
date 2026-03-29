@@ -55,6 +55,14 @@ class Settings:
     NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
     NEWS_POLL_INTERVAL_MINUTES: int = int(os.getenv("NEWS_POLL_INTERVAL_MINUTES", "30"))
 
+    # Data Provider
+    DATA_PROVIDER_PRIMARY: str = os.getenv("DATA_PROVIDER_PRIMARY", "kite")  # "kite" or "yfinance"
+
+    # OHLCV Cache
+    OHLCV_CACHE_ENABLED: bool = os.getenv("OHLCV_CACHE_ENABLED", "true").lower() == "true"
+    OHLCV_CACHE_DAILY_TTL_HOURS: int = int(os.getenv("OHLCV_CACHE_DAILY_TTL_HOURS", "12"))
+    OHLCV_CACHE_INTRADAY_TTL_MINUTES: int = int(os.getenv("OHLCV_CACHE_INTRADAY_TTL_MINUTES", "5"))
+
     # Authentication (opt-in — set AUTH_ENABLED=true to require login)
     AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "false").lower() == "true"
     ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "sales@shadowmarket.ai")

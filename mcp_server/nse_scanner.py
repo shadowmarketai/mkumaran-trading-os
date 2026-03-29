@@ -1,58 +1,13 @@
 import logging
-import time
-import yfinance as yf
-import pandas as pd
-from datetime import datetime, timedelta
 
-from mcp_server.asset_registry import (
-    parse_ticker,
-    resolve_yf_symbol,
-    get_universe,
-    Exchange,
-)
+import pandas as pd
+import yfinance as yf
+from datetime import datetime
+
+from mcp_server.asset_registry import get_universe
+from mcp_server.data_provider import get_stock_data  # noqa: F401 — re-exported
 
 logger = logging.getLogger(__name__)
-
-# ── Rate Limiter for yfinance ────────────────────────────────
-_YF_MIN_DELAY = 0.5         # Minimum 0.5s between yfinance requests
-_YF_MAX_RETRIES = 3          # Retry up to 3 times on failure
-_YF_RETRY_BACKOFF = 2.0      # Exponential backoff multiplier
-_last_yf_request_time = 0.0
-
-
-def _rate_limited_download(symbol: str, **kwargs) -> pd.DataFrame:
-    """
-    yfinance download with rate limiting and retry logic.
-
-    Prevents rate-limit blocks when scanning 400+ stocks.
-    """
-    global _last_yf_request_time
-
-    for attempt in range(_YF_MAX_RETRIES):
-        # Enforce minimum delay between requests
-        elapsed = time.time() - _last_yf_request_time
-        if elapsed < _YF_MIN_DELAY:
-            time.sleep(_YF_MIN_DELAY - elapsed)
-
-        try:
-            _last_yf_request_time = time.time()
-            data = yf.download(symbol, progress=False, **kwargs)
-            if not data.empty:
-                return data
-            # Empty data — retry with backoff
-            if attempt < _YF_MAX_RETRIES - 1:
-                wait = _YF_RETRY_BACKOFF ** attempt
-                logger.warning("Empty data for %s, retry %d/%d in %.1fs", symbol, attempt + 1, _YF_MAX_RETRIES, wait)
-                time.sleep(wait)
-        except Exception as e:
-            if attempt < _YF_MAX_RETRIES - 1:
-                wait = _YF_RETRY_BACKOFF ** attempt
-                logger.warning("yfinance error for %s: %s — retry %d/%d in %.1fs", symbol, e, attempt + 1, _YF_MAX_RETRIES, wait)
-                time.sleep(wait)
-            else:
-                logger.error("yfinance failed after %d retries for %s: %s", _YF_MAX_RETRIES, symbol, e)
-
-    return pd.DataFrame()
 
 # Minimum thresholds for liquid stocks
 MIN_VOLUME = 100000  # Average daily volume
@@ -100,66 +55,6 @@ def _get_nse_universe() -> list[str]:
         "TANLA", "IRCTC", "IDEA", "IRB", "NBCC",
         "CHENNPETRO", "NFL", "APLLTD", "INDIACEM", "LICI",
     ]
-
-
-def get_stock_data(
-    ticker: str,
-    period: str = "1y",
-    interval: str = "1d",
-    **kwargs,
-) -> pd.DataFrame:
-    """
-    Fetch OHLCV data for any instrument using yfinance.
-
-    Supports multi-exchange tickers:
-        NSE:RELIANCE  -> RELIANCE.NS
-        BSE:RELIANCE  -> RELIANCE.BO
-        MCX:GOLD      -> GC=F (global proxy)
-        CDS:USDINR    -> USDINR=X
-        RELIANCE      -> RELIANCE.NS (default NSE)
-
-    Args:
-        ticker: Symbol with optional exchange prefix (EXCHANGE:SYMBOL)
-        period: Data period (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y)
-        interval: Data interval (1m, 5m, 15m, 1h, 1d, 1wk)
-
-    Returns:
-        DataFrame with open, high, low, close, volume columns (lowercase)
-    """
-    # Resolve to yfinance symbol
-    yf_symbol = resolve_yf_symbol(ticker)
-    if yf_symbol is None:
-        logger.warning("No yfinance symbol for %s — Kite API required", ticker)
-        return pd.DataFrame()
-
-    try:
-        data = _rate_limited_download(yf_symbol, period=period, interval=interval)
-
-        if data.empty:
-            logger.warning("No data returned for %s (yf: %s)", ticker, yf_symbol)
-            return pd.DataFrame()
-
-        # Normalize column names to lowercase
-        data.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in data.columns]
-
-        # Ensure required columns exist
-        required = ['open', 'high', 'low', 'close', 'volume']
-        for col in required:
-            if col not in data.columns:
-                logger.error("Missing column %s in data for %s", col, ticker)
-                return pd.DataFrame()
-
-        # Handle MultiIndex columns from yfinance
-        if isinstance(data.columns, pd.MultiIndex):
-            data.columns = data.columns.get_level_values(0)
-            data.columns = [c.lower() for c in data.columns]
-
-        logger.info("Fetched %d bars for %s (yf: %s, %s, %s)", len(data), ticker, yf_symbol, period, interval)
-        return data[required]
-
-    except Exception as e:
-        logger.error("Failed to fetch data for %s (yf: %s): %s", ticker, yf_symbol, e)
-        return pd.DataFrame()
 
 
 def get_multi_asset_data(

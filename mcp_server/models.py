@@ -12,6 +12,8 @@ from sqlalchemy import (
     Text,
     ForeignKey,
     JSON,
+    UniqueConstraint,
+    Index,
     func,
 )
 from sqlalchemy.orm import relationship
@@ -155,4 +157,35 @@ class ActiveTrade(Base):
         return (
             f"<ActiveTrade(id={self.id}, ticker='{self.ticker}', "
             f"entry={self.entry_price}, current={self.current_price})>"
+        )
+
+
+class OHLCVCache(Base):
+    __tablename__ = "ohlcv_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticker = Column(String(30), nullable=False)
+    exchange = Column(String(10), nullable=False, default="NSE")
+    interval = Column(String(10), nullable=False)
+    bar_date = Column(DateTime, nullable=False)
+    open = Column(Numeric(14, 4), nullable=False)
+    high = Column(Numeric(14, 4), nullable=False)
+    low = Column(Numeric(14, 4), nullable=False)
+    close = Column(Numeric(14, 4), nullable=False)
+    volume = Column(Numeric(18, 0), nullable=False)
+    source = Column(String(10), nullable=False, default="yfinance")
+    fetched_at = Column(DateTime, nullable=False, server_default=func.now())
+    tenant_id = Column(String(36), nullable=True, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("ticker", "interval", "bar_date", name="uq_ohlcv_ticker_interval_bardate"),
+        Index("ix_ohlcv_lookup", "ticker", "interval", "bar_date"),
+        Index("ix_ohlcv_staleness", "ticker", "interval", "fetched_at"),
+        Index("ix_ohlcv_tenant", "tenant_id", "ticker", "interval"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<OHLCVCache(ticker='{self.ticker}', interval='{self.interval}', "
+            f"bar_date={self.bar_date}, close={self.close})>"
         )
