@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
@@ -14,6 +15,10 @@ import NewsPage from './pages/NewsPage';
 import MomentumPage from './pages/MomentumPage';
 
 function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+  const toggleSidebar = useCallback(() => setSidebarOpen((prev) => !prev), []);
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -22,10 +27,10 @@ function App() {
         element={
           <ProtectedRoute>
             <div className="flex h-screen overflow-hidden">
-              <Sidebar />
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <TopBar />
-                <main className="flex-1 overflow-auto p-6">
+              <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
+              <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+                <TopBar onMenuClick={toggleSidebar} />
+                <main className="flex-1 overflow-auto p-3 md:p-6">
                   <Routes>
                     <Route path="/" element={<Navigate to="/overview" replace />} />
                     <Route path="/overview" element={<OverviewPage />} />

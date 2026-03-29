@@ -12,10 +12,13 @@ Setup:
 4. Run: python -m mcp_server.telegram_receiver
 
 Google Sheet columns:
-A: Signal ID | B: Date | C: Ticker | D: Exchange | E: Direction
-F: Entry Price | G: Stop Loss | H: Target | I: RRR | J: Pattern
-K: Confidence | L: Status | M: Exit Price | N: Exit Date
-O: P&L % | P: P&L Rs | Q: Result | R: Notes
+A: Signal ID | B: Date | C: Ticker | D: Exchange | E: Asset Class
+F: Direction | G: Entry Price | H: Stop Loss | I: Target | J: RRR
+K: Pattern | L: Confidence | M: Status | N: Exit Price | O: Exit Date
+P: P&L % | Q: P&L Rs | R: Result | S: Notes
+
+Segment routing: signals also written to segment-specific tabs
+(SIGNALS_EQUITY, SIGNALS_COMMODITY, SIGNALS_FNO, SIGNALS_FOREX)
 """
 
 import logging
@@ -32,6 +35,23 @@ logger = logging.getLogger(__name__)
 
 # ── Signal Data Model ────────────────────────────────────────
 
+EXCHANGE_TO_ASSET_CLASS = {
+    "NSE": "EQUITY",
+    "BSE": "EQUITY",
+    "MCX": "COMMODITY",
+    "CDS": "CURRENCY",
+    "NFO": "FNO",
+}
+
+EXCHANGE_TO_SEGMENT_TAB = {
+    "NSE": "SIGNALS_EQUITY",
+    "BSE": "SIGNALS_EQUITY",
+    "MCX": "SIGNALS_COMMODITY",
+    "NFO": "SIGNALS_FNO",
+    "CDS": "SIGNALS_FOREX",
+}
+
+
 @dataclass
 class TelegramSignal:
     """Parsed signal from Telegram message."""
@@ -39,6 +59,7 @@ class TelegramSignal:
     date: str = ""
     ticker: str = ""
     exchange: str = "NSE"
+    asset_class: str = "EQUITY"
     direction: str = ""  # BUY / SELL / LONG / SHORT
     entry_price: float = 0.0
     stop_loss: float = 0.0
@@ -143,6 +164,9 @@ def parse_signal_message(text: str) -> TelegramSignal | None:
     if conf_match:
         signal.confidence = int(conf_match.group(1))
 
+    # Derive asset_class from exchange
+    signal.asset_class = EXCHANGE_TO_ASSET_CLASS.get(signal.exchange, "EQUITY")
+
     return signal
 
 
@@ -209,7 +233,7 @@ class SheetsTracker:
             try:
                 self._worksheet = self._sheet.worksheet("Signals")
             except gspread.WorksheetNotFound:
-                self._worksheet = self._sheet.add_worksheet("Signals", rows=1000, cols=18)
+                self._worksheet = self._sheet.add_worksheet("Signals", rows=1000, cols=19)
                 self._write_headers()
 
             logger.info("Connected to Google Sheet: %s", self.sheet_id)
@@ -221,16 +245,33 @@ class SheetsTracker:
     def _write_headers(self):
         """Write column headers to the worksheet."""
         headers = [
-            "Signal ID", "Date", "Ticker", "Exchange", "Direction",
-            "Entry Price", "Stop Loss", "Target", "RRR", "Pattern",
-            "Confidence", "Status", "Exit Price", "Exit Date",
+            "Signal ID", "Date", "Ticker", "Exchange", "Asset Class",
+            "Direction", "Entry Price", "Stop Loss", "Target", "RRR",
+            "Pattern", "Confidence", "Status", "Exit Price", "Exit Date",
             "P&L %", "P&L Rs", "Result", "Notes",
         ]
         if self._worksheet:
-            self._worksheet.update("A1:R1", [headers])
+            self._worksheet.update("A1:S1", [headers])
+
+    def _ensure_segment_tab(self, exchange: str):
+        """Get or create a segment-specific tab for the given exchange."""
+        tab_name = EXCHANGE_TO_SEGMENT_TAB.get(exchange, "SIGNALS_EQUITY")
+        try:
+            return self._sheet.worksheet(tab_name)
+        except Exception:
+            ws = self._sheet.add_worksheet(title=tab_name, rows=1000, cols=19)
+            headers = [
+                "Signal ID", "Date", "Ticker", "Exchange", "Asset Class",
+                "Direction", "Entry Price", "Stop Loss", "Target", "RRR",
+                "Pattern", "Confidence", "Status", "Exit Price", "Exit Date",
+                "P&L %", "P&L Rs", "Result", "Notes",
+            ]
+            ws.update("A1:S1", [headers])
+            logger.info("Created segment sheet tab: %s", tab_name)
+            return ws
 
     def record_signal(self, signal: TelegramSignal) -> bool:
-        """Record a new signal to Google Sheets."""
+        """Record a new signal to master Signals tab + segment-specific tab."""
         self._connect()
         if self._worksheet is None:
             logger.warning("Cannot record signal — Sheets not connected")
@@ -239,14 +280,28 @@ class SheetsTracker:
         try:
             row = [
                 signal.signal_id, signal.date, signal.ticker, signal.exchange,
-                signal.direction, signal.entry_price, signal.stop_loss,
-                signal.target, signal.rrr, signal.pattern,
+                signal.asset_class, signal.direction, signal.entry_price,
+                signal.stop_loss, signal.target, signal.rrr, signal.pattern,
                 signal.confidence, signal.status, signal.exit_price,
                 signal.exit_date, signal.pnl_pct, signal.pnl_rs,
                 signal.result, signal.notes,
             ]
+            # Write to master Signals tab
             self._worksheet.append_row(row, value_input_option="USER_ENTERED")
-            logger.info("Recorded signal %s to Google Sheets", signal.signal_id)
+
+            # Write to segment-specific tab (SIGNALS_EQUITY, SIGNALS_COMMODITY, etc.)
+            if self._sheet:
+                try:
+                    seg_ws = self._ensure_segment_tab(signal.exchange)
+                    seg_ws.append_row(row, value_input_option="USER_ENTERED")
+                    logger.info("Recorded signal %s to Signals + %s",
+                                signal.signal_id,
+                                EXCHANGE_TO_SEGMENT_TAB.get(signal.exchange, "SIGNALS_EQUITY"))
+                except Exception as e:
+                    logger.warning("Segment tab write failed (master succeeded): %s", e)
+            else:
+                logger.info("Recorded signal %s to Signals tab", signal.signal_id)
+
             return True
         except Exception as e:
             logger.error("Failed to record signal: %s", e)
@@ -273,9 +328,9 @@ class SheetsTracker:
 
             row = cell.row
 
-            # Get entry price and direction for P&L calc
-            entry_price = float(self._worksheet.cell(row, 6).value or 0)
-            direction = self._worksheet.cell(row, 5).value or "BUY"
+            # Get entry price (col G=7) and direction (col F=6) for P&L calc
+            entry_price = float(self._worksheet.cell(row, 7).value or 0)
+            direction = self._worksheet.cell(row, 6).value or "BUY"
 
             # Calculate P&L
             if exit_price > 0 and entry_price > 0:
@@ -300,12 +355,12 @@ class SheetsTracker:
             else:
                 result = "BREAKEVEN"
 
-            # Update columns L through R
+            # Update columns M (Status) through S (Notes)
             updates = [
                 [status, exit_price, date.today().isoformat(),
                  round(pnl_pct, 2), round(pnl_rs, 2), result, notes],
             ]
-            self._worksheet.update(f"L{row}:R{row}", updates, value_input_option="USER_ENTERED")
+            self._worksheet.update(f"M{row}:S{row}", updates, value_input_option="USER_ENTERED")
             logger.info("Updated signal %s: %s (P&L: %.2f%%)", signal_id, status, pnl_pct)
             return True
 
@@ -511,11 +566,13 @@ def record_signal_to_sheets(signal_data: dict) -> dict:
 
     Called by MCP server / n8n webhook when a signal is generated.
     """
+    exchange = signal_data.get("exchange", "NSE")
     signal = TelegramSignal(
         signal_id=signal_data.get("signal_id", f"SIG-{datetime.now().strftime('%Y%m%d%H%M%S')}"),
         date=signal_data.get("date", date.today().isoformat()),
         ticker=signal_data.get("ticker", ""),
-        exchange=signal_data.get("exchange", "NSE"),
+        exchange=exchange,
+        asset_class=signal_data.get("asset_class", EXCHANGE_TO_ASSET_CLASS.get(exchange, "EQUITY")),
         direction=signal_data.get("direction", ""),
         entry_price=float(signal_data.get("entry_price", 0)),
         stop_loss=float(signal_data.get("stop_loss", 0)),

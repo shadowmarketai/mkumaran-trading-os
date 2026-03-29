@@ -317,7 +317,7 @@ export default function AccuracyPage() {
           <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
             Monthly P&L
           </h3>
-          <div className="flex items-end justify-around gap-2 pt-2">
+          <div className="flex items-end justify-around gap-2 pt-2 overflow-x-auto">
             {metrics.monthly_pnl.map((month, idx) => (
               <MonthlyPnLBar key={month.month} month={month} index={idx} maxPnl={maxMonthlyPnl} />
             ))}

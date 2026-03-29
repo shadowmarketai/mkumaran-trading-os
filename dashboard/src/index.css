@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    @apply bg-trading-bg text-slate-100 font-sans;
+    @apply bg-trading-bg text-slate-100 font-sans overflow-x-hidden;
   }
 
   ::-webkit-scrollbar {

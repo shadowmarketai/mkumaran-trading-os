@@ -349,7 +349,7 @@ export default function OverviewPage() {
                       {layer}
                       <span className="text-slate-600">({scanners.length})</span>
                     </p>
-                    <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-1.5">
                       {scanners.map((scanner) => (
                         <ScannerCell key={scanner.name} scanner={scanner} />
                       ))}

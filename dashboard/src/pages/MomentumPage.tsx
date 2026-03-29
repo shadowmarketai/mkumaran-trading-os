@@ -75,15 +75,15 @@ function RankingsTable({ rankings }: { rankings: MomentumStock[] }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="text-[10px] uppercase tracking-wider text-slate-500 border-b border-trading-border">
-            <th className="py-2.5 px-3 text-left">#</th>
+            <th className="py-2.5 px-2 md:px-3 text-left">#</th>
             <th className="py-2.5 px-2 text-center w-12"></th>
-            <th className="py-2.5 px-3 text-left">Symbol</th>
-            <th className="py-2.5 px-3 text-left">Sector</th>
-            <th className="py-2.5 px-3 text-left">Score</th>
-            <th className="py-2.5 px-3 text-right">3M</th>
-            <th className="py-2.5 px-3 text-right">6M</th>
-            <th className="py-2.5 px-3 text-right">12M</th>
-            <th className="py-2.5 px-3 text-right">Vol</th>
+            <th className="py-2.5 px-2 md:px-3 text-left">Symbol</th>
+            <th className="py-2.5 px-3 text-left hidden md:table-cell">Sector</th>
+            <th className="py-2.5 px-2 md:px-3 text-left">Score</th>
+            <th className="py-2.5 px-2 md:px-3 text-right">3M</th>
+            <th className="py-2.5 px-3 text-right hidden md:table-cell">6M</th>
+            <th className="py-2.5 px-2 md:px-3 text-right">12M</th>
+            <th className="py-2.5 px-3 text-right hidden md:table-cell">Vol</th>
           </tr>
         </thead>
         <tbody>
@@ -96,26 +96,26 @@ function RankingsTable({ rankings }: { rankings: MomentumStock[] }) {
                 exit={{ opacity: 0 }}
                 className="border-b border-trading-border/50 hover:bg-slate-800/30 transition-colors"
               >
-                <td className="py-2.5 px-3 font-mono font-bold text-white">{stock.rank}</td>
+                <td className="py-2.5 px-2 md:px-3 font-mono font-bold text-white">{stock.rank}</td>
                 <td className="py-2.5 px-2 text-center">
                   <RankChange current={stock.rank} prev={stock.prev_rank} />
                 </td>
-                <td className="py-2.5 px-3 font-medium text-white">{stock.ticker}</td>
-                <td className="py-2.5 px-3">
+                <td className="py-2.5 px-2 md:px-3 font-medium text-white">{stock.ticker}</td>
+                <td className="py-2.5 px-3 hidden md:table-cell">
                   <span className="text-xs text-slate-400 bg-slate-700/50 px-2 py-0.5 rounded">
                     {stock.sector}
                   </span>
                 </td>
-                <td className="py-2.5 px-3">
+                <td className="py-2.5 px-2 md:px-3">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs text-white">{stock.score.toFixed(3)}</span>
                     <ScoreBar score={stock.score} />
                   </div>
                 </td>
-                <td className="py-2.5 px-3 text-right"><ReturnCell value={stock.ret_3m} /></td>
-                <td className="py-2.5 px-3 text-right"><ReturnCell value={stock.ret_6m} /></td>
-                <td className="py-2.5 px-3 text-right"><ReturnCell value={stock.ret_12m} /></td>
-                <td className="py-2.5 px-3 text-right">
+                <td className="py-2.5 px-2 md:px-3 text-right"><ReturnCell value={stock.ret_3m} /></td>
+                <td className="py-2.5 px-3 text-right hidden md:table-cell"><ReturnCell value={stock.ret_6m} /></td>
+                <td className="py-2.5 px-2 md:px-3 text-right"><ReturnCell value={stock.ret_12m} /></td>
+                <td className="py-2.5 px-3 text-right hidden md:table-cell">
                   <span className="font-mono text-xs text-slate-400">{stock.volatility.toFixed(1)}%</span>
                 </td>
               </motion.tr>
@@ -231,7 +231,7 @@ export default function MomentumPage() {
       className="space-y-4"
     >
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Rocket size={20} className="text-trading-ai" />
           <h2 className="text-lg font-semibold text-white">Momentum Ranking</h2>
@@ -242,7 +242,7 @@ export default function MomentumPage() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Top N selector */}
           <div className="flex items-center gap-1">
             {[5, 10, 15, 20].map((n) => (
@@ -261,7 +261,7 @@ export default function MomentumPage() {
             ))}
           </div>
 
-          <div className="w-px h-5 bg-trading-border" />
+          <div className="w-px h-5 bg-trading-border hidden sm:block" />
 
           <button
             onClick={() => triggerRebalance(topN)}
@@ -290,7 +290,7 @@ export default function MomentumPage() {
 
       {/* Stats row */}
       {rankings.length > 0 && (
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <GlassCard className="!p-3 text-center">
             <p className="text-[10px] text-slate-500 uppercase tracking-wider">Ranked</p>
             <p className="text-xl font-mono font-bold text-white">{rankings.length}</p>

@@ -151,7 +151,7 @@ export default function WatchlistPage() {
             className="overflow-hidden"
           >
             <GlassCard glowColor="ai">
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
                 <div>
                   <label className="text-xs text-slate-500 uppercase tracking-wider block mb-1.5">Ticker</label>
                   <input
@@ -235,7 +235,7 @@ export default function WatchlistPage() {
             placeholder="Search ticker or name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-slate-800 border border-trading-border rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai w-64"
+            className="bg-slate-800 border border-trading-border rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai w-full sm:w-64"
           />
           {searchQuery && (
             <button
@@ -254,15 +254,15 @@ export default function WatchlistPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-trading-border">
-                <th className="text-left py-3 px-3">Ticker</th>
-                <th className="text-left py-3 px-3">Name</th>
-                <th className="text-center py-3 px-2">Exch</th>
-                <th className="text-center py-3 px-2">TF</th>
+                <th className="text-left py-3 px-2 md:px-3">Ticker</th>
+                <th className="text-left py-3 px-3 hidden md:table-cell">Name</th>
+                <th className="text-center py-3 px-2 hidden md:table-cell">Exch</th>
+                <th className="text-center py-3 px-2 hidden lg:table-cell">TF</th>
                 <th className="text-center py-3 px-2">Tier</th>
-                <th className="text-right py-3 px-2 font-mono">LTRP</th>
-                <th className="text-right py-3 px-2 font-mono">Pivot High</th>
+                <th className="text-right py-3 px-2 font-mono hidden lg:table-cell">LTRP</th>
+                <th className="text-right py-3 px-2 font-mono hidden lg:table-cell">Pivot High</th>
                 <th className="text-center py-3 px-2">Active</th>
-                <th className="text-center py-3 px-2">Source</th>
+                <th className="text-center py-3 px-2 hidden md:table-cell">Source</th>
                 <th className="text-center py-3 px-2">
                   <Filter size={12} className="inline" />
                 </th>
@@ -282,11 +282,11 @@ export default function WatchlistPage() {
                       !item.active && 'opacity-50'
                     )}
                   >
-                    <td className="py-2.5 px-3">
+                    <td className="py-2.5 px-2 md:px-3">
                       <span className="font-mono font-bold text-white">{item.ticker}</span>
                     </td>
-                    <td className="py-2.5 px-3 text-slate-400">{item.name}</td>
-                    <td className="py-2.5 px-2 text-center">
+                    <td className="py-2.5 px-3 text-slate-400 hidden md:table-cell">{item.name}</td>
+                    <td className="py-2.5 px-2 text-center hidden md:table-cell">
                       <span className={cn(
                         'text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border',
                         item.exchange === 'MCX' ? 'bg-amber-500/15 text-amber-400 border-amber-500/20' :
@@ -297,7 +297,7 @@ export default function WatchlistPage() {
                         {item.exchange || 'NSE'}
                       </span>
                     </td>
-                    <td className="py-2.5 px-2 text-center">
+                    <td className="py-2.5 px-2 text-center hidden lg:table-cell">
                       <span className="text-xs font-mono bg-slate-800 px-1.5 py-0.5 rounded">{item.timeframe}</span>
                     </td>
                     <td className="py-2.5 px-2 text-center">
@@ -310,10 +310,10 @@ export default function WatchlistPage() {
                         T{item.tier}
                       </span>
                     </td>
-                    <td className="py-2.5 px-2 text-right font-mono text-slate-300">
+                    <td className="py-2.5 px-2 text-right font-mono text-slate-300 hidden lg:table-cell">
                       {item.ltrp ? item.ltrp.toFixed(2) : '--'}
                     </td>
-                    <td className="py-2.5 px-2 text-right font-mono text-slate-300">
+                    <td className="py-2.5 px-2 text-right font-mono text-slate-300 hidden lg:table-cell">
                       {item.pivot_high ? item.pivot_high.toFixed(2) : '--'}
                     </td>
                     <td className="py-2.5 px-2 text-center">
@@ -327,7 +327,7 @@ export default function WatchlistPage() {
                         {item.active ? <Eye size={16} /> : <EyeOff size={16} />}
                       </button>
                     </td>
-                    <td className="py-2.5 px-2 text-center">
+                    <td className="py-2.5 px-2 text-center hidden md:table-cell">
                       <StatusBadge
                         status={item.source === 'AI' ? 'STRONG' : item.source === 'RRMS' ? 'BULL' : 'NEUTRAL'}
                         size="sm"

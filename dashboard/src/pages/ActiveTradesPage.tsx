@@ -103,18 +103,18 @@ export default function ActiveTradesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-trading-border">
-                <th className="text-left py-3 px-3">Ticker</th>
-                <th className="text-center py-3 px-2">Exch</th>
-                <th className="text-center py-3 px-2">TF</th>
+                <th className="text-left py-3 px-2 md:px-3">Ticker</th>
+                <th className="text-center py-3 px-2 hidden md:table-cell">Exch</th>
+                <th className="text-center py-3 px-2 hidden lg:table-cell">TF</th>
                 <th className="text-center py-3 px-2">Dir</th>
                 <th className="text-right py-3 px-2 font-mono">Entry</th>
-                <th className="text-right py-3 px-2 font-mono">SL</th>
-                <th className="text-right py-3 px-2 font-mono">Target</th>
-                <th className="text-center py-3 px-2 font-mono">PRRR</th>
-                <th className="text-right py-3 px-2 font-mono">Current</th>
-                <th className="text-center py-3 px-2 font-mono">CRRR</th>
+                <th className="text-right py-3 px-2 font-mono hidden lg:table-cell">SL</th>
+                <th className="text-right py-3 px-2 font-mono hidden lg:table-cell">Target</th>
+                <th className="text-center py-3 px-2 font-mono hidden lg:table-cell">PRRR</th>
+                <th className="text-right py-3 px-2 font-mono hidden md:table-cell">Current</th>
+                <th className="text-center py-3 px-2 font-mono hidden lg:table-cell">CRRR</th>
                 <th className="text-right py-3 px-2 font-mono">P&L%</th>
-                <th className="text-center py-3 px-2 w-32">Progress</th>
+                <th className="text-center py-3 px-2 w-32 hidden md:table-cell">Progress</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-trading-border/50">
@@ -133,7 +133,7 @@ export default function ActiveTradesPage() {
                       trade.alert_sent && 'bg-trading-alert/5'
                     )}
                   >
-                    <td className="py-3 px-3">
+                    <td className="py-3 px-2 md:px-3">
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-white">{trade.ticker}</span>
                         {trade.alert_sent && (
@@ -141,7 +141,7 @@ export default function ActiveTradesPage() {
                         )}
                       </div>
                     </td>
-                    <td className="py-3 px-2 text-center">
+                    <td className="py-3 px-2 text-center hidden md:table-cell">
                       <span className={cn(
                         'text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border',
                         trade.exchange === 'MCX' ? 'bg-amber-500/15 text-amber-400 border-amber-500/20' :
@@ -152,7 +152,7 @@ export default function ActiveTradesPage() {
                         {trade.exchange || 'NSE'}
                       </span>
                     </td>
-                    <td className="py-3 px-2 text-center">
+                    <td className="py-3 px-2 text-center hidden lg:table-cell">
                       <span className="text-[10px] font-mono text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">
                         {trade.timeframe || '1D'}
                       </span>
@@ -169,19 +169,19 @@ export default function ActiveTradesPage() {
                     <td className="py-3 px-2 text-right font-mono text-slate-300">
                       {trade.entry_price.toFixed(2)}
                     </td>
-                    <td className="py-3 px-2 text-right font-mono text-trading-bear">
+                    <td className="py-3 px-2 text-right font-mono text-trading-bear hidden lg:table-cell">
                       {trade.stop_loss.toFixed(2)}
                     </td>
-                    <td className="py-3 px-2 text-right font-mono text-trading-bull">
+                    <td className="py-3 px-2 text-right font-mono text-trading-bull hidden lg:table-cell">
                       {trade.target.toFixed(2)}
                     </td>
-                    <td className="py-3 px-2 text-center font-mono text-trading-info">
+                    <td className="py-3 px-2 text-center font-mono text-trading-info hidden lg:table-cell">
                       {trade.prrr.toFixed(1)}
                     </td>
-                    <td className="py-3 px-2 text-right font-mono font-semibold text-white">
+                    <td className="py-3 px-2 text-right font-mono font-semibold text-white hidden md:table-cell">
                       {trade.current_price.toFixed(2)}
                     </td>
-                    <td className="py-3 px-2 text-center font-mono text-trading-ai">
+                    <td className="py-3 px-2 text-center font-mono text-trading-ai hidden lg:table-cell">
                       {trade.crrr.toFixed(2)}
                     </td>
                     <td className={cn(
@@ -193,7 +193,7 @@ export default function ActiveTradesPage() {
                         {isProfit ? '+' : ''}{trade.pnl_pct.toFixed(2)}%
                       </div>
                     </td>
-                    <td className="py-3 px-2">
+                    <td className="py-3 px-2 hidden md:table-cell">
                       <ProgressBar
                         current={progressValues.current}
                         min={progressValues.min}

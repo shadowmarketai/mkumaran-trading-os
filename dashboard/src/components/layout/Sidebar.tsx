@@ -10,6 +10,7 @@ import {
   Brain,
   Newspaper,
   Rocket,
+  X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -60,47 +61,80 @@ function MarketStatusIndicator({ status }: MarketStatusProps) {
   );
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   return (
-    <aside className="w-[240px] min-w-[240px] h-screen flex flex-col bg-[#0C1222] border-r border-trading-border">
-      {/* Logo */}
-      <div className="px-5 py-6 border-b border-trading-border">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg gradient-ai flex items-center justify-center">
-            <Activity size={20} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-white tracking-tight">MKUMARAN</h1>
-            <p className="text-xs text-slate-400 -mt-0.5">Trading OS</p>
-          </div>
-        </div>
-      </div>
+    <>
+      {/* Mobile overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 md:hidden"
+          onClick={onClose}
+        />
+      )}
 
-      {/* Navigation */}
-      <nav className="flex-1 py-4 px-3 space-y-1">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
-                isActive
-                  ? 'bg-trading-card text-white border-l-2 border-trading-ai'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-trading-card/50 border-l-2 border-transparent'
-              )
-            }
+      {/* Sidebar */}
+      <aside
+        className={cn(
+          'h-screen flex flex-col bg-[#0C1222] border-r border-trading-border z-50 transition-transform duration-300 ease-in-out',
+          // Mobile: fixed drawer
+          'fixed inset-y-0 left-0 w-[240px] md:relative md:translate-x-0',
+          isOpen ? 'translate-x-0' : '-translate-x-full',
+          // Desktop: always visible, static width
+          'md:min-w-[240px]',
+        )}
+      >
+        {/* Logo */}
+        <div className="px-5 py-6 border-b border-trading-border flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg gradient-ai flex items-center justify-center">
+              <Activity size={20} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-white tracking-tight">MKUMARAN</h1>
+              <p className="text-xs text-slate-400 -mt-0.5">Trading OS</p>
+            </div>
+          </div>
+          {/* Close button on mobile */}
+          <button
+            onClick={onClose}
+            className="md:hidden p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
           >
-            {item.icon}
-            {item.label}
-          </NavLink>
-        ))}
-      </nav>
+            <X size={20} />
+          </button>
+        </div>
 
-      {/* Market Status */}
-      <div className="border-t border-trading-border">
-        <MarketStatusIndicator status="CLOSED" />
-      </div>
-    </aside>
+        {/* Navigation */}
+        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={onClose}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                  isActive
+                    ? 'bg-trading-card text-white border-l-2 border-trading-ai'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-trading-card/50 border-l-2 border-transparent'
+                )
+              }
+            >
+              {item.icon}
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Market Status */}
+        <div className="border-t border-trading-border">
+          <MarketStatusIndicator status="CLOSED" />
+        </div>
+      </aside>
+    </>
   );
 }

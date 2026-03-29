@@ -52,8 +52,9 @@ def sync_watchlist(watchlist_items: list[dict]) -> bool:
         ws.clear()
 
         # Headers
-        headers = ["Ticker", "Name", "Timeframe", "Tier", "LTRP", "Pivot High",
-                    "Active", "Source", "Added By", "Notes"]
+        headers = ["Ticker", "Name", "Exchange", "Asset Class", "Timeframe",
+                    "Tier", "LTRP", "Pivot High", "Active", "Source",
+                    "Added By", "Notes"]
         ws.append_row(headers)
 
         # Data rows
@@ -61,6 +62,8 @@ def sync_watchlist(watchlist_items: list[dict]) -> bool:
             row = [
                 item.get("ticker", ""),
                 item.get("name", ""),
+                item.get("exchange", "NSE"),
+                item.get("asset_class", "EQUITY"),
                 item.get("timeframe", "day"),
                 item.get("tier", 2),
                 item.get("ltrp", ""),
@@ -172,14 +175,17 @@ def update_accuracy(outcomes: list[dict]) -> bool:
         ws = sheet.worksheet("ACCURACY")
         ws.clear()
 
-        headers = ["Signal ID", "Ticker", "Direction", "Entry", "Exit",
-                    "Outcome", "P&L", "Days Held", "Exit Reason"]
+        headers = ["Signal ID", "Ticker", "Exchange", "Asset Class",
+                    "Direction", "Entry", "Exit", "Outcome", "P&L",
+                    "Days Held", "Exit Reason"]
         ws.append_row(headers)
 
         for outcome in outcomes:
             row = [
                 outcome.get("signal_id", ""),
                 outcome.get("ticker", ""),
+                outcome.get("exchange", "NSE"),
+                outcome.get("asset_class", "EQUITY"),
                 outcome.get("direction", ""),
                 outcome.get("entry_price", 0),
                 outcome.get("exit_price", 0),
@@ -241,7 +247,8 @@ def sync_active_trades(trades: list[dict]) -> bool:
         ws = sheet.worksheet("ACTIVE TRADES")
         ws.clear()
 
-        headers = ["Ticker", "Entry", "Target", "SL", "PRRR", "Current",
+        headers = ["Ticker", "Exchange", "Asset Class", "Direction",
+                    "Entry", "Target", "SL", "PRRR", "Current",
                     "CRRR", "P&L %", "Last Updated"]
         ws.append_row(headers)
 
@@ -252,6 +259,9 @@ def sync_active_trades(trades: list[dict]) -> bool:
 
             row = [
                 trade.get("ticker", ""),
+                trade.get("exchange", "NSE"),
+                trade.get("asset_class", "EQUITY"),
+                trade.get("direction", "LONG"),
                 entry,
                 trade.get("target", 0),
                 trade.get("stop_loss", 0),

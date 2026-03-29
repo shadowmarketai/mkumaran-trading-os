@@ -275,7 +275,7 @@ export default function EnginesPage() {
 
       {/* Engine Results Grid */}
       {Object.keys(results).length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {ENGINES.map((engine) => (
             <EngineResultCard
               key={engine.id}

@@ -199,7 +199,7 @@ export default function BacktestingPage() {
 
       {/* Input Form */}
       <GlassCard glowColor="ai">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
           <div>
             <label className="text-xs text-slate-500 uppercase tracking-wider block mb-1.5">
               Ticker
@@ -320,7 +320,7 @@ export default function BacktestingPage() {
           </div>
 
           {/* Metric Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <MetricCard
               title="Win Rate"
               value={result.win_rate ? `${result.win_rate}%` : '--'}

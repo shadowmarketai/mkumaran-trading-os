@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { TrendingUp, TrendingDown, Wifi, WifiOff, LogOut } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wifi, WifiOff, LogOut, Menu } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { MarketDirection } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -91,31 +91,43 @@ function MarketStatusLabel({ status }: MarketStatusLabelProps) {
   );
 }
 
-export default function TopBar() {
+interface TopBarProps {
+  onMenuClick?: () => void;
+}
+
+export default function TopBar({ onMenuClick }: TopBarProps) {
   const location = useLocation();
   const currentPage = pageNames[location.pathname] || 'Dashboard';
   const { logout, email } = useAuth();
 
   return (
     <div className="sticky top-0 z-30">
-      <header className="h-14 min-h-[56px] glass-card rounded-none border-x-0 border-t-0 flex items-center justify-between px-6">
-        {/* Left: Breadcrumb */}
+      <header className="h-14 min-h-[56px] glass-card rounded-none border-x-0 border-t-0 flex items-center justify-between px-3 md:px-6">
+        {/* Left: Hamburger + Breadcrumb */}
         <div className="flex items-center gap-2">
-          <span className="text-slate-500 text-sm">Dashboard</span>
-          <span className="text-slate-600">/</span>
+          <button
+            onClick={onMenuClick}
+            className="md:hidden p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
+          >
+            <Menu size={20} />
+          </button>
+          <span className="text-slate-500 text-sm hidden sm:inline">Dashboard</span>
+          <span className="text-slate-600 hidden sm:inline">/</span>
           <span className="text-white text-sm font-medium">{currentPage}</span>
         </div>
 
-        {/* Center: Index Prices */}
-        <div className="flex items-center gap-6">
+        {/* Center: Index Prices (hidden on mobile) */}
+        <div className="hidden md:flex items-center gap-6">
           <IndexPrice name="NIFTY" price={24850.3} change={127.5} changePct={0.52} />
           <div className="w-px h-5 bg-trading-border" />
           <IndexPrice name="BANKNIFTY" price={53420.8} change={-85.2} changePct={-0.16} />
         </div>
 
         {/* Right: MWA + Market Status + Sign Out */}
-        <div className="flex items-center gap-4">
-          <DirectionBadge direction="MILD_BULL" />
+        <div className="flex items-center gap-2 sm:gap-4">
+          <div className="hidden sm:block">
+            <DirectionBadge direction="MILD_BULL" />
+          </div>
           <MarketStatusLabel status="CLOSED" />
           <button
             onClick={logout}

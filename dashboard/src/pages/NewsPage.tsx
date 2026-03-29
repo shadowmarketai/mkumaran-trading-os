@@ -265,7 +265,7 @@ export default function NewsPage() {
 
       {/* Filters */}
       <GlassCard className="!p-3">
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-2 sm:gap-4">
           {/* Impact filter */}
           <div className="flex items-center gap-1.5">
             <Filter size={12} className="text-slate-500" />
@@ -289,7 +289,7 @@ export default function NewsPage() {
             ))}
           </div>
 
-          <div className="w-px h-5 bg-trading-border" />
+          <div className="w-px h-5 bg-trading-border hidden sm:block" />
 
           {/* Category filter */}
           <div className="flex items-center gap-1.5">
@@ -310,7 +310,7 @@ export default function NewsPage() {
             ))}
           </div>
 
-          <div className="w-px h-5 bg-trading-border" />
+          <div className="w-px h-5 bg-trading-border hidden sm:block" />
 
           {/* Time range */}
           <div className="flex items-center gap-1.5">
