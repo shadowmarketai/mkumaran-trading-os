@@ -1,9 +1,41 @@
+import json
 import os
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+
+
+def _bootstrap_service_account():
+    """Write service_account.json from env var if file doesn't exist.
+
+    This allows Docker deployments to inject the credential as an env var
+    (GOOGLE_SERVICE_ACCOUNT_JSON) instead of volume-mounting the file.
+    """
+    creds_path = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "data/service_account.json")
+    if not creds_path:
+        creds_path = "data/service_account.json"
+
+    if Path(creds_path).exists():
+        return  # File already on disk
+
+    raw_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    if not raw_json:
+        return  # No env var set either
+
+    try:
+        # Validate it's real JSON
+        json.loads(raw_json)
+        Path(creds_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(creds_path).write_text(raw_json)
+        logger.info("Wrote service_account.json from env var → %s", creds_path)
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.error("Failed to write service_account.json: %s", exc)
+
+
+_bootstrap_service_account()
 
 
 class Settings:
@@ -26,7 +58,7 @@ class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/trading_os")
 
     # Google Sheets
-    GOOGLE_SHEETS_CREDENTIALS: str = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "")
+    GOOGLE_SHEETS_CREDENTIALS: str = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "data/service_account.json")
     GOOGLE_SHEET_ID: str = os.getenv("GOOGLE_SHEET_ID", "")
 
     # n8n
