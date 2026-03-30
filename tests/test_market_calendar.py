@@ -21,7 +21,7 @@ class TestHolidays:
         assert is_market_holiday("NSE", date(2026, 1, 26))
 
     def test_diwali_is_holiday(self):
-        assert is_market_holiday("NSE", date(2026, 11, 9))
+        assert is_market_holiday("NSE", date(2026, 11, 10))  # Balipratipada
 
     def test_regular_day_not_holiday(self):
         assert not is_market_holiday("NSE", date(2026, 3, 12))
@@ -58,11 +58,8 @@ class TestWeekend:
 
 class TestMarketOpen:
     def test_nse_open_during_hours(self):
-        # Tuesday 10:00 AM
-        dt = datetime(2026, 3, 10, 10, 0)  # But this is Maha Shivaratri holiday!
-        # Use a regular Tuesday
-        dt = datetime(2026, 3, 17, 10, 0)  # Holi — also holiday
-        dt = datetime(2026, 3, 12, 10, 0)  # Regular Thursday
+        # Thursday 10:00 AM — regular trading day
+        dt = datetime(2026, 3, 12, 10, 0)
         assert is_market_open("NSE", dt)
 
     def test_nse_closed_before_open(self):
