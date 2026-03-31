@@ -528,6 +528,21 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
     promoted = get_promoted_stocks(raw_results)
     brief = format_morning_brief(score)
 
+    # Build structured scanner_results for the frontend
+    from mcp_server.mwa_scanner import SCANNERS
+    structured_results = {}
+    for k, v in raw_results.items():
+        stocks = v if isinstance(v, list) else []
+        cfg = SCANNERS.get(k, {})
+        structured_results[k] = {
+            "name": k,
+            "group": cfg.get("layer", "Other"),
+            "weight": cfg.get("weight", 0),
+            "count": len(stocks),
+            "direction": cfg.get("type", "NEUTRAL"),
+            "stocks": stocks[:20],  # cap to avoid bloating DB
+        }
+
     # Persist to DB
     today = date.today()
     existing = db.query(MWAScore).filter(MWAScore.score_date == today).first()
@@ -537,7 +552,7 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
         existing.bear_score = score["bear_score"]
         existing.bull_pct = score["bull_pct"]
         existing.bear_pct = score["bear_pct"]
-        existing.scanner_results = {k: len(v) if isinstance(v, list) else v for k, v in raw_results.items()}
+        existing.scanner_results = structured_results
         existing.promoted_stocks = promoted
     else:
         mwa = MWAScore(
@@ -547,7 +562,7 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
             bear_score=score["bear_score"],
             bull_pct=score["bull_pct"],
             bear_pct=score["bear_pct"],
-            scanner_results={k: len(v) if isinstance(v, list) else v for k, v in raw_results.items()},
+            scanner_results=structured_results,
             promoted_stocks=promoted,
         )
         db.add(mwa)
@@ -1015,6 +1030,25 @@ async def api_mwa_latest(db: Session = Depends(get_db)):
     if not score:
         return {"status": "no_data"}
 
+    # Normalize scanner_results: upgrade old int-count format to ScannerResult
+    raw_sr = score.scanner_results or {}
+    scanner_results = {}
+    from mcp_server.mwa_scanner import SCANNERS
+    for k, v in raw_sr.items():
+        if isinstance(v, dict) and "name" in v:
+            scanner_results[k] = v  # already structured
+        else:
+            cfg = SCANNERS.get(k, {})
+            count = v if isinstance(v, (int, float)) else 0
+            scanner_results[k] = {
+                "name": k,
+                "group": cfg.get("layer", "Other"),
+                "weight": cfg.get("weight", 0),
+                "count": int(count),
+                "direction": cfg.get("type", "NEUTRAL"),
+                "stocks": [],
+            }
+
     return {
         "id": score.id,
         "score_date": str(score.score_date),
@@ -1023,7 +1057,7 @@ async def api_mwa_latest(db: Session = Depends(get_db)):
         "bear_score": float(score.bear_score or 0),
         "bull_pct": float(score.bull_pct or 0),
         "bear_pct": float(score.bear_pct or 0),
-        "scanner_results": score.scanner_results or {},
+        "scanner_results": scanner_results,
         "promoted_stocks": score.promoted_stocks or [],
         "fii_net": float(score.fii_net or 0),
         "dii_net": float(score.dii_net or 0),

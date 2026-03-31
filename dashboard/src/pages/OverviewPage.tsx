@@ -112,6 +112,9 @@ const layerColors: Record<string, string> = {
   Wyckoff: 'bg-amber-500',
   VSA: 'bg-cyan-500',
   Harmonic: 'bg-pink-400',
+  RL: 'bg-emerald-400',
+  Forex: 'bg-indigo-400',
+  Commodity: 'bg-orange-400',
 };
 
 function groupByLayer(scanners: ScannerResult[]): [string, ScannerResult[]][] {
@@ -122,7 +125,7 @@ function groupByLayer(scanners: ScannerResult[]): [string, ScannerResult[]][] {
     groups[layer].push(s);
   }
   // Sort layers in a logical order
-  const order = ['Trend', 'Volume', 'Breakout', 'RSI', 'Gap', 'MA', 'Filter', 'SMC', 'Wyckoff', 'VSA', 'Harmonic'];
+  const order = ['Trend', 'Volume', 'Breakout', 'RSI', 'Gap', 'MA', 'Filter', 'SMC', 'Wyckoff', 'VSA', 'Harmonic', 'RL', 'Forex', 'Commodity'];
   const entries = Object.entries(groups);
   entries.sort((a, b) => {
     const ia = order.indexOf(a[0]);
