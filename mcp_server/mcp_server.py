@@ -72,6 +72,10 @@ AUTH_PUBLIC_PATHS = {
     "/auth/login", "/api/auth/login", "/api/info", "/health", "/docs",
     "/openapi.json", "/redoc",
     "/api/tv_webhook", "/api/telegram_webhook",
+    # n8n workflow endpoints (read-only scan/data tools)
+    "/tools/run_mwa_scan", "/tools/get_stock_data",
+    "/tools/order_status", "/tools/get_fo_signal",
+    "/tools/update_all_trailing_sl", "/tools/check_exit_strategies",
 }
 AUTH_PUBLIC_PREFIXES = ("/assets/", "/docs/", "/redoc/")
 
