@@ -1,6 +1,5 @@
 """Tests for news_monitor.py — keyword classification, RSS parsing, dedup."""
 
-import pytest
 from unittest.mock import patch, MagicMock
 
 from mcp_server.news_monitor import (

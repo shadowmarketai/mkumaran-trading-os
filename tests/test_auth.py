@@ -1,6 +1,5 @@
 """Tests for authentication — login, JWT, middleware, protected endpoints."""
 
-import pytest
 from unittest.mock import patch
 
 from mcp_server.auth import (

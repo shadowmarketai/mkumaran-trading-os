@@ -256,7 +256,7 @@ def test_supported_exchanges_structure():
 
 def test_nse_scanner_backward_compat():
     """Existing NSE code should still work with bare tickers."""
-    from mcp_server.nse_scanner import get_stock_data, _get_nse_universe
+    from mcp_server.nse_scanner import _get_nse_universe
 
     universe = _get_nse_universe()
     assert len(universe) >= 50

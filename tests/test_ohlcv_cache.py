@@ -8,8 +8,8 @@ get_stock_data cache integration.
 
 import os
 import pytest
-from datetime import datetime, timedelta, time
-from unittest.mock import patch, MagicMock
+from datetime import datetime, timedelta
+from unittest.mock import patch
 
 import pandas as pd
 from sqlalchemy import create_engine

@@ -1,6 +1,5 @@
 """Tests for market calendar — trading hours, holidays, order timing validation."""
 
-import pytest
 from datetime import datetime, date, time
 
 from mcp_server.market_calendar import (

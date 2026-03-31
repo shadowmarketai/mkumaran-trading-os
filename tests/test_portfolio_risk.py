@@ -1,13 +1,11 @@
 """Tests for portfolio risk management — sector concentration, asset class limits."""
 
-import pytest
 from mcp_server.portfolio_risk import (
     get_sector,
     check_sector_concentration,
     check_asset_class_concentration,
     validate_portfolio_risk,
     get_portfolio_exposure,
-    SECTOR_MAP,
     MAX_SECTOR_PCT,
     MAX_ASSET_CLASS_PCT,
 )

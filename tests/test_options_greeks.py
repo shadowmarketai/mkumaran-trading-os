@@ -8,7 +8,6 @@ Validates:
 - Chain: all strikes returned, IV computed when market prices provided
 """
 
-import pytest
 import math
 
 from mcp_server.options_greeks import (

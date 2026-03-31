@@ -21,7 +21,7 @@ def _make_df(closes, volume=100000):
 # ── SCANNERS Dict Structure ─────────────────────────────────
 
 def test_scanners_count():
-    assert len(SCANNERS) == 82
+    assert len(SCANNERS) == 98
 
 
 def test_scanners_required_keys():
@@ -44,7 +44,7 @@ def test_scanners_valid_types():
 
 def test_scanners_valid_layers():
     valid = {"Trend", "Volume", "Breakout", "RSI", "Gap", "MA", "Filter",
-             "SMC", "Wyckoff", "VSA", "Harmonic", "RL"}
+             "SMC", "Wyckoff", "VSA", "Harmonic", "RL", "Forex", "Commodity"}
     for key, cfg in SCANNERS.items():
         assert cfg["layer"] in valid, f"Scanner '{key}' has invalid layer: {cfg['layer']}"
 
@@ -69,14 +69,14 @@ def test_scanners_type_counts():
     counts = {"BULL": 0, "BEAR": 0, "FILTER": 0}
     for cfg in SCANNERS.values():
         counts[cfg["type"]] += 1
-    assert counts["BULL"] >= 44
-    assert counts["BEAR"] >= 24
+    assert counts["BULL"] >= 52
+    assert counts["BEAR"] >= 30
     assert counts["FILTER"] >= 4
 
 
 def test_scanners_layer_coverage():
     layers = {cfg["layer"] for cfg in SCANNERS.values()}
-    assert len(layers) >= 12
+    assert len(layers) >= 14
 
 
 def test_scanners_pairs_with_valid():
@@ -90,7 +90,7 @@ def test_scanners_pairs_with_valid():
 # ── SIGNAL_CHAINS Dict ──────────────────────────────────────
 
 def test_signal_chains_count():
-    assert len(SIGNAL_CHAINS) >= 20
+    assert len(SIGNAL_CHAINS) >= 25
 
 
 def test_signal_chains_required_keys():
@@ -178,6 +178,12 @@ def test_run_python_scanners_with_data():
     # Harmonic
     assert "harmonic_gartley_bull" in results
     assert "harmonic_any_bear" in results
+    # Forex
+    assert "cds_ema_crossover" in results
+    assert "cds_dxy_divergence" in results
+    # Commodity
+    assert "mcx_ema_crossover" in results
+    assert "mcx_crude_momentum" in results
 
 
 def test_run_python_scanners_returns_lists():

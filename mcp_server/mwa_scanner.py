@@ -1,11 +1,11 @@
 """
-MKUMARAN Trading OS — 82-Scanner MWA System
+MKUMARAN Trading OS — 98-Scanner MWA System
 
 FINAL COUNT:
-  82 total = 52 BULL + 26 BEAR + 4 FILTER
-  34 Chartink + 48 Python
-  12 layers: Trend / Volume / Breakout / RSI / Gap / MA / Filter / SMC / Wyckoff / VSA / Harmonic / RL
-  23 signal chains (10 original + 3 SMC + 8 cross-engine + 3 RL)
+  98 total = 60 BULL + 30 BEAR + 4 FILTER + 4 BEAR(CDS/MCX)
+  34 Chartink + 64 Python
+  14 layers: Trend / Volume / Breakout / RSI / Gap / MA / Filter / SMC / Wyckoff / VSA / Harmonic / RL / Forex / Commodity
+  28 signal chains (10 original + 3 SMC + 8 cross-engine + 3 RL + 5 Forex/Commodity)
 """
 
 import logging
@@ -14,7 +14,6 @@ import re
 import time
 import json
 from datetime import datetime
-from collections import Counter
 
 import requests
 
@@ -635,6 +634,124 @@ SCANNERS = {
         "pairs_with": ["rl_trend_bear", "rl_vwap_bear", "rl_momentum_bear"],
         "status": "ACTIVE",
     },
+
+    # ── LAYER 13 — FOREX / CDS (8 scanners) ─────────────────────
+
+    "cds_ema_crossover": {
+        "no": 83, "slug": "python:scan_cds_ema_crossover",
+        "type": "BULL", "weight": 1.5, "layer": "Forex", "source": "Python",
+        "desc": "CDS 9/21 EMA bullish crossover on currency pairs.",
+        "pairs_with": ["cds_ema_crossover_bear", "cds_rsi_oversold", "cds_bb_squeeze"],
+        "status": "ACTIVE",
+    },
+    "cds_ema_crossover_bear": {
+        "no": 84, "slug": "python:scan_cds_ema_crossover_bear",
+        "type": "BEAR", "weight": 1.5, "layer": "Forex", "source": "Python",
+        "desc": "CDS 9/21 EMA bearish crossover on currency pairs.",
+        "pairs_with": ["cds_ema_crossover", "cds_rsi_overbought", "cds_bb_squeeze_bear"],
+        "status": "ACTIVE",
+    },
+    "cds_rsi_oversold": {
+        "no": 85, "slug": "python:scan_cds_rsi_oversold",
+        "type": "BULL", "weight": 1.0, "layer": "Forex", "source": "Python",
+        "desc": "CDS RSI(14) < 30 oversold on currency pairs.",
+        "pairs_with": ["cds_ema_crossover", "cds_bb_squeeze"],
+        "status": "ACTIVE",
+    },
+    "cds_rsi_overbought": {
+        "no": 86, "slug": "python:scan_cds_rsi_overbought",
+        "type": "BEAR", "weight": 1.0, "layer": "Forex", "source": "Python",
+        "desc": "CDS RSI(14) > 70 overbought on currency pairs.",
+        "pairs_with": ["cds_ema_crossover_bear", "cds_bb_squeeze_bear"],
+        "status": "ACTIVE",
+    },
+    "cds_bb_squeeze": {
+        "no": 87, "slug": "python:scan_cds_bb_squeeze",
+        "type": "BULL", "weight": 1.5, "layer": "Forex", "source": "Python",
+        "desc": "CDS Bollinger Band squeeze (bandwidth < 20-period low) with price above middle.",
+        "pairs_with": ["cds_ema_crossover", "cds_rsi_oversold"],
+        "status": "ACTIVE",
+    },
+    "cds_bb_squeeze_bear": {
+        "no": 88, "slug": "python:scan_cds_bb_squeeze_bear",
+        "type": "BEAR", "weight": 1.5, "layer": "Forex", "source": "Python",
+        "desc": "CDS BB squeeze with price below middle band — bearish.",
+        "pairs_with": ["cds_ema_crossover_bear", "cds_rsi_overbought"],
+        "status": "ACTIVE",
+    },
+    "cds_carry_trade": {
+        "no": 89, "slug": "python:scan_cds_carry_trade",
+        "type": "BULL", "weight": 2.0, "layer": "Forex", "source": "Python",
+        "desc": "USDINR trending with positive carry differential.",
+        "pairs_with": ["cds_ema_crossover", "cds_bb_squeeze"],
+        "status": "ACTIVE",
+    },
+    "cds_dxy_divergence": {
+        "no": 90, "slug": "python:scan_cds_dxy_divergence",
+        "type": "BEAR", "weight": 2.0, "layer": "Forex", "source": "Python",
+        "desc": "INR pairs diverging from DXY correlation — bearish.",
+        "pairs_with": ["cds_ema_crossover_bear", "cds_rsi_overbought"],
+        "status": "ACTIVE",
+    },
+
+    # ── LAYER 14 — COMMODITY / MCX (8 scanners) ─────────────────
+
+    "mcx_ema_crossover": {
+        "no": 91, "slug": "python:scan_mcx_ema_crossover",
+        "type": "BULL", "weight": 1.5, "layer": "Commodity", "source": "Python",
+        "desc": "MCX 9/21 EMA bullish crossover on metals/energy.",
+        "pairs_with": ["mcx_ema_crossover_bear", "mcx_rsi_oversold", "mcx_crude_momentum"],
+        "status": "ACTIVE",
+    },
+    "mcx_ema_crossover_bear": {
+        "no": 92, "slug": "python:scan_mcx_ema_crossover_bear",
+        "type": "BEAR", "weight": 1.5, "layer": "Commodity", "source": "Python",
+        "desc": "MCX 9/21 EMA bearish crossover.",
+        "pairs_with": ["mcx_ema_crossover", "mcx_rsi_overbought"],
+        "status": "ACTIVE",
+    },
+    "mcx_rsi_oversold": {
+        "no": 93, "slug": "python:scan_mcx_rsi_oversold",
+        "type": "BULL", "weight": 1.0, "layer": "Commodity", "source": "Python",
+        "desc": "MCX RSI(14) < 30 oversold commodities.",
+        "pairs_with": ["mcx_ema_crossover", "mcx_gold_silver_ratio"],
+        "status": "ACTIVE",
+    },
+    "mcx_rsi_overbought": {
+        "no": 94, "slug": "python:scan_mcx_rsi_overbought",
+        "type": "BEAR", "weight": 1.0, "layer": "Commodity", "source": "Python",
+        "desc": "MCX RSI(14) > 70 overbought commodities.",
+        "pairs_with": ["mcx_ema_crossover_bear", "mcx_gold_silver_ratio_bear"],
+        "status": "ACTIVE",
+    },
+    "mcx_gold_silver_ratio": {
+        "no": 95, "slug": "python:scan_mcx_gold_silver_ratio",
+        "type": "BULL", "weight": 2.0, "layer": "Commodity", "source": "Python",
+        "desc": "Gold/Silver ratio mean-reversion signal — bullish for metals.",
+        "pairs_with": ["mcx_metal_strength", "mcx_ema_crossover"],
+        "status": "ACTIVE",
+    },
+    "mcx_gold_silver_ratio_bear": {
+        "no": 96, "slug": "python:scan_mcx_gold_silver_ratio_bear",
+        "type": "BEAR", "weight": 2.0, "layer": "Commodity", "source": "Python",
+        "desc": "Gold/Silver ratio expansion — bearish for silver.",
+        "pairs_with": ["mcx_rsi_overbought", "mcx_ema_crossover_bear"],
+        "status": "ACTIVE",
+    },
+    "mcx_crude_momentum": {
+        "no": 97, "slug": "python:scan_mcx_crude_momentum",
+        "type": "BULL", "weight": 2.5, "layer": "Commodity", "source": "Python",
+        "desc": "Crude oil MACD + volume breakout.",
+        "pairs_with": ["mcx_ema_crossover", "mcx_rsi_oversold"],
+        "status": "ACTIVE",
+    },
+    "mcx_metal_strength": {
+        "no": 98, "slug": "python:scan_mcx_metal_strength",
+        "type": "BULL", "weight": 1.5, "layer": "Commodity", "source": "Python",
+        "desc": "Multi-metal relative strength index — outperforming 20-day avg.",
+        "pairs_with": ["mcx_gold_silver_ratio", "mcx_ema_crossover"],
+        "status": "ACTIVE",
+    },
 }
 
 # ── SIGNAL CHAINS ────────────────────────────────────────────
@@ -772,6 +889,33 @@ SIGNAL_CHAINS = {
                      "wyckoff_accumulation"],
         "desc": "RL optimal entry + VWAP + SMC demand OB + Wyckoff accumulation",
         "boost": 30, "best_for": "Maximum conviction RL + institutional confluence longs",
+    },
+    # Forex chains
+    "forex_momentum": {
+        "scanners": ["cds_ema_crossover", "cds_rsi_oversold", "cds_bb_squeeze"],
+        "desc": "CDS EMA crossover + RSI oversold + BB squeeze — forex momentum long",
+        "boost": 20, "best_for": "Forex momentum entries on currency pairs",
+    },
+    "forex_reversal": {
+        "scanners": ["cds_rsi_overbought", "cds_dxy_divergence", "cds_bb_squeeze_bear"],
+        "desc": "CDS RSI overbought + DXY divergence + BB squeeze bear — forex reversal",
+        "boost": 20, "best_for": "Forex reversal shorts on INR pairs",
+    },
+    # Commodity chains
+    "commodity_momentum": {
+        "scanners": ["mcx_ema_crossover", "mcx_crude_momentum", "mcx_rsi_oversold"],
+        "desc": "MCX EMA crossover + crude momentum + RSI oversold — commodity momentum",
+        "boost": 20, "best_for": "Commodity momentum entries on MCX",
+    },
+    "commodity_reversal": {
+        "scanners": ["mcx_rsi_overbought", "mcx_ema_crossover_bear", "mcx_gold_silver_ratio_bear"],
+        "desc": "MCX RSI overbought + EMA bear + gold/silver ratio expansion — reversal",
+        "boost": 20, "best_for": "Commodity reversal shorts on MCX",
+    },
+    "gold_silver_mean_reversion": {
+        "scanners": ["mcx_gold_silver_ratio", "mcx_metal_strength"],
+        "desc": "Gold/silver ratio mean-reversion + multi-metal relative strength",
+        "boost": 15, "best_for": "Precious metals mean-reversion trades",
     },
 }
 
@@ -1001,6 +1145,78 @@ class MWAScanner:
                     results[key] = []
         except ImportError:
             logger.warning("harmonic_engine not available — skipping Harmonic scanners")
+
+        # Forex (CDS) scanners
+        try:
+            from mcp_server.forex_scanners import (
+                scan_cds_ema_crossover, scan_cds_ema_crossover_bear,
+                scan_cds_rsi_oversold, scan_cds_rsi_overbought,
+                scan_cds_bb_squeeze, scan_cds_bb_squeeze_bear,
+                scan_cds_carry_trade, scan_cds_dxy_divergence,
+            )
+            if stock_data:
+                forex_scanners = {
+                    "cds_ema_crossover": scan_cds_ema_crossover,
+                    "cds_ema_crossover_bear": scan_cds_ema_crossover_bear,
+                    "cds_rsi_oversold": scan_cds_rsi_oversold,
+                    "cds_rsi_overbought": scan_cds_rsi_overbought,
+                    "cds_bb_squeeze": scan_cds_bb_squeeze,
+                    "cds_bb_squeeze_bear": scan_cds_bb_squeeze_bear,
+                    "cds_carry_trade": scan_cds_carry_trade,
+                    "cds_dxy_divergence": scan_cds_dxy_divergence,
+                }
+                for key, scanner_fn in forex_scanners.items():
+                    try:
+                        results[key] = scanner_fn(stock_data)
+                    except Exception as e:
+                        logger.error("Forex scanner %s failed: %s", key, e)
+                        results[key] = []
+            else:
+                for key in [
+                    "cds_ema_crossover", "cds_ema_crossover_bear",
+                    "cds_rsi_oversold", "cds_rsi_overbought",
+                    "cds_bb_squeeze", "cds_bb_squeeze_bear",
+                    "cds_carry_trade", "cds_dxy_divergence",
+                ]:
+                    results[key] = []
+        except ImportError:
+            logger.warning("forex_scanners not available — skipping Forex scanners")
+
+        # Commodity (MCX) scanners
+        try:
+            from mcp_server.commodity_scanners import (
+                scan_mcx_ema_crossover, scan_mcx_ema_crossover_bear,
+                scan_mcx_rsi_oversold, scan_mcx_rsi_overbought,
+                scan_mcx_gold_silver_ratio, scan_mcx_gold_silver_ratio_bear,
+                scan_mcx_crude_momentum, scan_mcx_metal_strength,
+            )
+            if stock_data:
+                commodity_scanners = {
+                    "mcx_ema_crossover": scan_mcx_ema_crossover,
+                    "mcx_ema_crossover_bear": scan_mcx_ema_crossover_bear,
+                    "mcx_rsi_oversold": scan_mcx_rsi_oversold,
+                    "mcx_rsi_overbought": scan_mcx_rsi_overbought,
+                    "mcx_gold_silver_ratio": scan_mcx_gold_silver_ratio,
+                    "mcx_gold_silver_ratio_bear": scan_mcx_gold_silver_ratio_bear,
+                    "mcx_crude_momentum": scan_mcx_crude_momentum,
+                    "mcx_metal_strength": scan_mcx_metal_strength,
+                }
+                for key, scanner_fn in commodity_scanners.items():
+                    try:
+                        results[key] = scanner_fn(stock_data)
+                    except Exception as e:
+                        logger.error("Commodity scanner %s failed: %s", key, e)
+                        results[key] = []
+            else:
+                for key in [
+                    "mcx_ema_crossover", "mcx_ema_crossover_bear",
+                    "mcx_rsi_oversold", "mcx_rsi_overbought",
+                    "mcx_gold_silver_ratio", "mcx_gold_silver_ratio_bear",
+                    "mcx_crude_momentum", "mcx_metal_strength",
+                ]:
+                    results[key] = []
+        except ImportError:
+            logger.warning("commodity_scanners not available — skipping Commodity scanners")
 
         # RL scanners
         try:

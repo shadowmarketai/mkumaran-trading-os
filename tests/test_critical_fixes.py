@@ -352,7 +352,6 @@ class TestOrderManagerSafety:
         assert "Invalid quantity" in error
 
     def test_validate_order_exceeds_max_value(self):
-        from mcp_server.order_manager import MAX_ORDER_VALUE
         mgr = self._manager()
         # Try to place an order worth more than Rs.2L
         error = mgr._validate_order("NSE:RELIANCE", "BUY", qty=100, price=2500)

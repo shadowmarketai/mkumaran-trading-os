@@ -1,10 +1,8 @@
 """Tests for Trade Reflector — trade_reflector.py"""
 
-import json
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
 
 from mcp_server.trade_memory import TradeRecord, TradeMemory
 from mcp_server.trade_reflector import TradeReflector

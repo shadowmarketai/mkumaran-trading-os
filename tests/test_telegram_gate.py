@@ -1,7 +1,6 @@
 """Tests for Telegram market hours gate in send_telegram_message()."""
 
-import logging
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 

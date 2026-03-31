@@ -8,14 +8,11 @@
 #   cal = EarningsCalendar(kite, db, telegram, claude_client)
 #   cal.run_daily_check()  # called by n8n at 8:45 AM daily
 
-import os
 import logging
 import time
 import requests
 import anthropic
-import pandas as pd
 from datetime import date, datetime, timedelta
-from typing import Optional
 
 from mcp_server.db import SessionLocal
 from mcp_server.models import Watchlist, ActiveTrade

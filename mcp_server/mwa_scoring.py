@@ -6,7 +6,6 @@ detects signal chains, and auto-promotes stocks.
 """
 
 import logging
-from collections import Counter
 from datetime import date
 
 from mcp_server.mwa_scanner import SCANNERS, SIGNAL_CHAINS
@@ -170,6 +169,9 @@ def get_promoted_stocks(
         "vsa_selling_climax", "vsa_stopping_bull", "vsa_effort_bull",
         "harmonic_gartley_bull", "harmonic_any_bull",
         "rl_trend_bull", "rl_momentum_bull", "rl_optimal_entry_bull",
+        "cds_ema_crossover", "cds_carry_trade",
+        "mcx_ema_crossover", "mcx_crude_momentum",
+        "mcx_gold_silver_ratio", "mcx_metal_strength",
     ]
 
     stock_counts: dict[str, int] = {}
@@ -235,14 +237,14 @@ def format_morning_brief(score: dict) -> str:
     fired_bear = score.get("fired_bear", [])
 
     if fired_bull:
-        lines.append(f"-" * 33)
+        lines.append("-" * 33)
         lines.append(f"Bull ({len(fired_bull)}):")
         for k in fired_bull[:8]:
             layer = SCANNERS.get(k, {}).get("layer", "")
             lines.append(f"  {k:28} [{layer}]")
 
     if fired_bear:
-        lines.append(f"-" * 33)
+        lines.append("-" * 33)
         lines.append(f"Bear ({len(fired_bear)}):")
         for k in fired_bear:
             lines.append(f"  {k}")

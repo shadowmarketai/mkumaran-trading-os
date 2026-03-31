@@ -10,7 +10,7 @@ Gracefully degrades if rank-bm25 is not installed (returns empty results).
 import json
 import logging
 import os
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Optional
 

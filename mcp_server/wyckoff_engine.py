@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 from mcp_server.pattern_engine import PatternResult
-from mcp_server.volatility import scaled_tolerance, calculate_atr_pct
+from mcp_server.volatility import scaled_tolerance
 
 logger = logging.getLogger(__name__)
 

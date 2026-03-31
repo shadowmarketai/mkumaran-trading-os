@@ -1,0 +1,98 @@
+{
+  "name": "MKUMARAN - 05 MCX EOD Report (11:35 PM after MCX close)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "35 23 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "f1000000-0005-4000-8000-000000000001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 350]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://money.shadowmarket.ai/tools/get_stock_data",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "ticker", "value": "MCX:GOLD" },
+            { "name": "timeframe", "value": "day" },
+            { "name": "days", "value": "30" }
+          ]
+        },
+        "options": { "timeout": 30000, "allowUnauthorizedCerts": true }
+      },
+      "id": "f1000000-0005-4000-8000-000000000002",
+      "name": "Fetch MCX EOD Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 350]
+    },
+    {
+      "parameters": {
+        "functionCode": "const data = $input.first().json;\n\n// Build EOD summary from latest data\nconst latest = data.latest || {};\nconst ticker = data.ticker || 'MCX:GOLD';\nconst bars = data.bars || 0;\n\n// Simple daily PnL calculation\nconst close = latest.close || 0;\nconst open = latest.open || 0;\nconst pnl = close - open;\nconst pnlPct = open > 0 ? ((pnl / open) * 100).toFixed(2) : 0;\n\nreturn [{\n  json: {\n    ticker,\n    close,\n    open,\n    high: latest.high || 0,\n    low: latest.low || 0,\n    volume: latest.volume || 0,\n    pnl: pnl.toFixed(2),\n    pnl_pct: pnlPct,\n    bars,\n    date: latest.date || new Date().toISOString().split('T')[0]\n  }\n}];"
+      },
+      "id": "f1000000-0005-4000-8000-000000000003",
+      "name": "Calculate PnL",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [750, 350]
+    },
+    {
+      "parameters": {
+        "functionCode": "const d = $input.first().json;\n\nconst emoji = parseFloat(d.pnl) >= 0 ? '\\u{1F7E2}' : '\\u{1F534}';\n\nconst report = `${emoji} MCX EOD Report\\n` +\n  `\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\n` +\n  `Date: ${d.date}\\n` +\n  `Ticker: ${d.ticker}\\n` +\n  `Open: ${d.open} | Close: ${d.close}\\n` +\n  `High: ${d.high} | Low: ${d.low}\\n` +\n  `Volume: ${d.volume}\\n` +\n  `\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\n` +\n  `Daily P&L: ${d.pnl} (${d.pnl_pct}%)\\n` +\n  `Bars: ${d.bars}`;\n\nreturn [{ json: { text: report } }];"
+      },
+      "id": "f1000000-0005-4000-8000-000000000004",
+      "name": "Generate Report",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [1000, 350]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot7601124337:AAHOqcdTTNbLJ_RoxAUXTDOtQ6mN9qCOHEk/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "=699992965" },
+            { "name": "text", "value": "={{ $json.text }}" }
+          ]
+        },
+        "options": { "allowUnauthorizedCerts": true }
+      },
+      "id": "f1000000-0005-4000-8000-000000000005",
+      "name": "Send MCX EOD Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 350]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{"node": "Fetch MCX EOD Data", "type": "main", "index": 0}]]
+    },
+    "Fetch MCX EOD Data": {
+      "main": [[{"node": "Calculate PnL", "type": "main", "index": 0}]]
+    },
+    "Calculate PnL": {
+      "main": [[{"node": "Generate Report", "type": "main", "index": 0}]]
+    },
+    "Generate Report": {
+      "main": [[{"node": "Send MCX EOD Report", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "mkumaran-trading-os" }]
+}

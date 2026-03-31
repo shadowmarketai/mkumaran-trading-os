@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-import time
 from datetime import datetime, date
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs

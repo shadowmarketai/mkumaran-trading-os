@@ -8,14 +8,12 @@ Validates:
 - Presets: each returns correct number of legs
 """
 
-import pytest
 
 from mcp_server.options_payoff import (
     OptionLeg,
     _single_leg_payoff,
     calculate_payoff,
     bull_call_spread,
-    bear_put_spread,
     long_straddle,
     long_strangle,
     iron_condor,

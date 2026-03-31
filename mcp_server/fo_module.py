@@ -10,7 +10,7 @@ Fixes over v1:
 """
 
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 
 import pandas as pd
 from mcp_server.technical_scanners import compute_ema, detect_ema_crossover

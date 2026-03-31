@@ -18,8 +18,7 @@ import logging
 from datetime import datetime, date
 from dataclasses import dataclass, field
 
-from mcp_server.config import settings
-from mcp_server.market_calendar import validate_order_timing, is_market_open
+from mcp_server.market_calendar import validate_order_timing
 from mcp_server.portfolio_risk import validate_portfolio_risk
 
 logger = logging.getLogger(__name__)

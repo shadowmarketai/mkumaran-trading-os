@@ -1,11 +1,8 @@
 """Tests for momentum_ranker.py — score calculation, ranking, rebalance signals, persistence."""
 
-import json
-import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import patch, MagicMock
-from pathlib import Path
+from unittest.mock import patch
 from datetime import datetime
 
 from mcp_server.momentum_ranker import (
@@ -17,8 +14,6 @@ from mcp_server.momentum_ranker import (
     save_momentum_portfolio,
     MomentumStock,
     RebalanceSignal,
-    MomentumPortfolio,
-    PORTFOLIO_FILE,
 )
 
 

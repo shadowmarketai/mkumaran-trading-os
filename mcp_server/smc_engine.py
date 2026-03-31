@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 from mcp_server.pattern_engine import PatternResult
-from mcp_server.volatility import scaled_tolerance, atr_distance
+from mcp_server.volatility import scaled_tolerance
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +149,7 @@ def _calculate_dealing_range(
     if len(swing_highs) >= 2:
         high = max(h[1] for h in swing_highs[-3:])
     if len(swing_lows) >= 2:
-        low = min(l[1] for l in swing_lows[-3:])
+        low = min(sl[1] for sl in swing_lows[-3:])
 
     equilibrium = (high + low) / 2
     return high, low, equilibrium
@@ -425,7 +425,6 @@ class SMCEngine:
 
         highs = df["high"].values
         lows = df["low"].values
-        closes = df["close"].values
 
         scan_start = max(0, n - 15)
 

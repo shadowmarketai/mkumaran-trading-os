@@ -1,7 +1,7 @@
 """Tests for Unified Data Provider: Kite primary + yfinance fallback."""
 
 from unittest.mock import patch, MagicMock
-from datetime import date, datetime, timedelta
+from datetime import datetime
 
 import pandas as pd
 import pytest
@@ -14,7 +14,6 @@ from mcp_server.data_provider import (
     _yfinance_fetch,
     fetch_kite_historical,
     get_stock_data,
-    _instrument_cache,
     _rate_limited_download,
 )
 

@@ -50,7 +50,6 @@ class TestSeedTradeGeneration:
     def test_realistic_win_rate(self):
         seeds = _generate_seed_trades()
         wins = sum(1 for t in seeds if t.outcome == "WIN")
-        losses = sum(1 for t in seeds if t.outcome == "LOSS")
         breakevens = sum(1 for t in seeds if t.outcome == "BREAKEVEN")
         # Expect roughly 55-65% wins
         win_rate = wins / len(seeds) * 100

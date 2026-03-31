@@ -2,14 +2,9 @@
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from mcp_server.smc_engine import (
     SMCEngine,
-    _find_swing_points,
-    _identify_trend,
-    _find_equal_levels,
-    _calculate_dealing_range,
     scan_bos_bull,
     scan_bos_bear,
     scan_choch_bull,
@@ -210,7 +205,6 @@ def test_choch_none_in_clean_trend():
 def test_demand_order_block():
     """Demand OB: bearish candle followed by impulsive bullish move."""
     np.random.seed(50)
-    n = 60
     closes = [100.0] * 40
     # Bearish candle at index 40
     closes.append(98.0)
@@ -235,7 +229,6 @@ def test_demand_order_block():
 def test_supply_order_block():
     """Supply OB: bullish candle followed by impulsive bearish move."""
     np.random.seed(51)
-    n = 60
     closes = [200.0] * 40
     # Bullish candle
     closes.append(202.0)

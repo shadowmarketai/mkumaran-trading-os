@@ -1,5 +1,5 @@
 import logging
-import os
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import date
 from pathlib import Path
@@ -10,8 +10,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, case
+from sqlalchemy import func, desc, case, text
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
@@ -20,15 +23,34 @@ from mcp_server.db import get_db, init_db, SessionLocal
 from mcp_server.models import Watchlist, Signal, Outcome, MWAScore, ActiveTrade
 from mcp_server.asset_registry import (
     parse_ticker, get_asset_class, get_exchange,
-    get_supported_exchanges, Exchange, AssetClass,
+    get_supported_exchanges,
 )
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup — configure structured logging
+    from mcp_server.logging_config import setup_logging
+    setup_logging()
+    try:
+        logger.info("Initializing database...")
+        init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.warning("Database init skipped (not available): %s", e)
+    logger.info("MCP Server starting on %s:%s", settings.MCP_SERVER_HOST, settings.MCP_SERVER_PORT)
+    yield
+    # Shutdown
+    logger.info("MCP Server shutting down")
+
 
 app = FastAPI(
     title="MKUMARAN Trading OS - MCP Server",
     description="Hybrid Trading Intelligence MCP Server",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -38,6 +60,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ── Auth Middleware (opt-in via AUTH_ENABLED=true) ──────────
 
@@ -98,15 +124,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(AuthMiddleware)
 
 
-@app.on_event("startup")
-async def startup():
-    try:
-        logger.info("Initializing database...")
-        init_db()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.warning("Database init skipped (not available): %s", e)
-    logger.info("MCP Server starting on %s:%s", settings.MCP_SERVER_HOST, settings.MCP_SERVER_PORT)
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled error on %s: %s", request.url.path, exc, exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "internal_server_error",
+            "message": "An unexpected error occurred",
+            "path": request.url.path,
+        },
+    )
+
+
+
 
 
 @app.get("/api/info")
@@ -121,7 +152,32 @@ async def api_info():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "mkumaran-trading-os"}
+    checks = {"api": "ok"}
+
+    # Check database
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"error: {e}"
+
+    # Check Kite connection
+    if _order_manager and _order_manager.kite:
+        checks["kite"] = "connected"
+    else:
+        checks["kite"] = "not_connected"
+
+    # Overall status
+    db_ok = checks["database"] == "ok"
+    status = "healthy" if db_ok else "degraded"
+
+    return {
+        "status": status,
+        "service": "mkumaran-trading-os",
+        "checks": checks,
+    }
 
 
 # ============================================================
@@ -136,7 +192,8 @@ class LoginRequest(BaseModel):
 
 @app.post("/auth/login")
 @app.post("/api/auth/login", include_in_schema=False)
-async def auth_login(req: LoginRequest):
+@limiter.limit("5/minute")
+async def auth_login(request: Request, req: LoginRequest):
     """Authenticate admin user and return JWT token."""
     from mcp_server.auth import authenticate_admin, create_access_token
 
@@ -430,13 +487,42 @@ async def tool_get_mwa_score(db: Session = Depends(get_db)):
 
 
 @app.post("/tools/run_mwa_scan")
-async def tool_run_mwa_scan(db: Session = Depends(get_db)):
-    """Run the full 40-scanner MWA scan and persist score to DB."""
-    from mcp_server.mwa_scanner import MWAScanner, SCANNERS
+@limiter.limit("30/minute")
+async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
+    """Run the full 98-scanner MWA scan and persist score to DB."""
+    from mcp_server.mwa_scanner import MWAScanner
     from mcp_server.mwa_scoring import calculate_mwa_score, get_promoted_stocks, format_morning_brief
+    from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, resolve_yf_symbol
+
+    # Build extended stock_data dict including CDS and MCX tickers
+    stock_data: dict = {}
+    try:
+        from mcp_server.nse_scanner import get_stock_data as _get_stock
+        # Fetch CDS data
+        for ticker in CDS_UNIVERSE:
+            yf_sym = resolve_yf_symbol(f"CDS:{ticker}")
+            if yf_sym:
+                try:
+                    df = _get_stock(f"CDS:{ticker}", period="6mo", interval="1d")
+                    if df is not None and not df.empty:
+                        stock_data[ticker] = df
+                except Exception as e:
+                    logger.debug("CDS fetch failed for %s: %s", ticker, e)
+        # Fetch MCX data (top 6 liquid instruments)
+        for ticker in MCX_UNIVERSE[:6]:
+            yf_sym = resolve_yf_symbol(f"MCX:{ticker}")
+            if yf_sym:
+                try:
+                    df = _get_stock(f"MCX:{ticker}", period="6mo", interval="1d")
+                    if df is not None and not df.empty:
+                        stock_data[ticker] = df
+                except Exception as e:
+                    logger.debug("MCX fetch failed for %s: %s", ticker, e)
+    except Exception as e:
+        logger.warning("Extended data fetch (CDS/MCX) skipped: %s", e)
 
     scanner = MWAScanner()
-    raw_results = scanner.run_all(save=True)
+    raw_results = scanner.run_all(stock_data=stock_data if stock_data else None, save=True)
 
     score = calculate_mwa_score(raw_results)
     promoted = get_promoted_stocks(raw_results)
@@ -642,7 +728,9 @@ async def tool_get_active_trades(db: Session = Depends(get_db)):
 
 
 @app.post("/tools/validate_signal")
+@limiter.limit("30/minute")
 async def tool_validate_signal(
+    request: Request,
     ticker: str,
     direction: str,
     pattern: str,
@@ -737,7 +825,6 @@ async def tool_ws_technical_summary(ticker: str, ohlcv_summary: str = ""):
 @app.post("/tools/wallstreet/sector_analysis")
 async def tool_ws_sector_analysis(ticker: str, company_name: str = ""):
     """Bain competitive sector analysis."""
-    from mcp_server.sector_picker import SectorPicker
 
     # SectorPicker needs kite; use without kite for fundamental-only analysis
     from mcp_server.sector_picker import fetch_stock_fundamentals, get_sector_peers
@@ -1414,7 +1501,8 @@ def _get_order_manager():
 
 
 @app.post("/tools/place_order")
-async def tool_place_order(req: PlaceOrderRequest):
+@limiter.limit("5/minute")
+async def tool_place_order(request: Request, req: PlaceOrderRequest):
     """Place a live order with safety controls."""
     from dataclasses import asdict as _asdict
     manager = _get_order_manager()
@@ -1451,7 +1539,8 @@ async def tool_close_position(req: ClosePositionRequest):
 
 
 @app.post("/tools/close_all")
-async def tool_close_all():
+@limiter.limit("5/minute")
+async def tool_close_all(request: Request):
     """EMERGENCY: Close all open positions at market."""
     from dataclasses import asdict as _asdict
     manager = _get_order_manager()
@@ -1749,7 +1838,8 @@ class TVWebhookPayload(BaseModel):
 
 
 @app.post("/api/tv_webhook")
-async def api_tv_webhook(payload: TVWebhookPayload):
+@limiter.limit("60/minute")
+async def api_tv_webhook(request: Request, payload: TVWebhookPayload):
     """
     TradingView webhook receiver.
 
@@ -2048,7 +2138,8 @@ async def tool_momentum_rankings(top_n: int = Query(default=10, ge=1, le=50)):
 
 
 @app.post("/tools/momentum_rebalance")
-async def tool_momentum_rebalance(top_n: int = Query(default=10, ge=1, le=50)):
+@limiter.limit("30/minute")
+async def tool_momentum_rebalance(request: Request, top_n: int = Query(default=10, ge=1, le=50)):
     """
     Trigger full universe momentum scan and generate rebalance signals.
     Takes ~40-75s due to rate-limited yfinance calls.

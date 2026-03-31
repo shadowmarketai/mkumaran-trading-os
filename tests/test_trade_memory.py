@@ -2,9 +2,7 @@
 
 import json
 import os
-import tempfile
 
-import pytest
 
 from mcp_server.trade_memory import TradeRecord, TradeMemory
 

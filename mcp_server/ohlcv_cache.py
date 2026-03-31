@@ -16,7 +16,7 @@ import logging
 from datetime import datetime, timedelta
 
 import pandas as pd
-from sqlalchemy import delete, func, text
+from sqlalchemy import delete, func
 from sqlalchemy.orm import Session
 
 from mcp_server.models import OHLCVCache

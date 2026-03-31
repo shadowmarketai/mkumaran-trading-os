@@ -10,7 +10,6 @@ Two modes:
 """
 
 import logging
-import json
 
 from mcp_server.config import settings
 from mcp_server.trade_memory import TradeMemory, TradeRecord

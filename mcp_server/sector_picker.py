@@ -9,7 +9,6 @@
 #   result = picker.analyse(ticker="NSE:TATASTEEL")
 #   -> Returns: "ADD NSE:TATASTEEL" or "CONSIDER NSE:JSWSTEEL INSTEAD -- reason"
 
-import os
 import re
 import logging
 import time

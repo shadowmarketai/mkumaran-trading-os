@@ -2,18 +2,12 @@
 
 import pytest
 from unittest.mock import MagicMock, patch
-from datetime import datetime, time, date
+from datetime import date
 
 from mcp_server.order_manager import (
     OrderManager,
-    OrderResult,
     KillSwitchState,
     MAX_OPEN_POSITIONS,
-    DAILY_LOSS_LIMIT_PCT,
-    MAX_POSITION_SIZE_PCT,
-    MAX_ORDER_VALUE,
-    DEFAULT_TRAIL_PCT,
-    DEFAULT_TRAIL_ACTIVATION_PCT,
 )
 
 

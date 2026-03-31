@@ -37,7 +37,7 @@ from datetime import datetime, timedelta, date
 from typing import Optional, Dict
 from functools import wraps
 
-from mcp_server.asset_registry import parse_ticker, resolve_yf_symbol, EXCHANGE_CONFIG, Exchange
+from mcp_server.asset_registry import parse_ticker, resolve_yf_symbol
 from mcp_server.config import settings
 
 logger = logging.getLogger(__name__)

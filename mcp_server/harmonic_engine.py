@@ -15,7 +15,6 @@ that integrate with the RRMS position sizing engine.
 import logging
 from typing import Optional
 
-import numpy as np
 import pandas as pd
 
 from mcp_server.pattern_engine import PatternResult

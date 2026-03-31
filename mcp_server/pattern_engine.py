@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 
-from mcp_server.volatility import scaled_tolerance, atr_distance, calculate_atr_pct
+from mcp_server.volatility import scaled_tolerance, calculate_atr_pct
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,168 @@
+{
+  "name": "MKUMARAN - 04 Extended Market Monitor (MCX + CDS Evening)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/10 16-23 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "e1000000-0004-4000-8000-000000000001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 350]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Check if MCX is open (9:00 - 23:30 IST, Mon-Fri)\nconst now = new Date();\nconst istHour = (now.getUTCHours() + 5) % 24 + (now.getUTCMinutes() + 30 >= 60 ? 1 : 0);\nconst istMin = (now.getUTCMinutes() + 30) % 60;\nconst mcxOpen = (istHour >= 9 && (istHour < 23 || (istHour === 23 && istMin <= 30)));\nreturn [{ json: { mcx_open: mcxOpen, ist_hour: istHour, ist_min: istMin } }];"
+      },
+      "id": "e1000000-0004-4000-8000-000000000002",
+      "name": "Check MCX Hours",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [500, 250]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.mcx_open }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "e1000000-0004-4000-8000-000000000003",
+      "name": "MCX Open?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [750, 250]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://money.shadowmarket.ai/tools/run_mwa_scan",
+        "options": { "timeout": 120000, "allowUnauthorizedCerts": true }
+      },
+      "id": "e1000000-0004-4000-8000-000000000004",
+      "name": "Run MWA Scan (Extended)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 150]
+    },
+    {
+      "parameters": {
+        "functionCode": "const data = $input.first().json;\nconst alerts = [];\n\n// Check for fired forex scanners\nconst firedBull = data.fired_bull || [];\nconst firedBear = data.fired_bear || [];\n\nconst forexBull = firedBull.filter(s => s.startsWith('cds_'));\nconst forexBear = firedBear.filter(s => s.startsWith('cds_'));\nconst mcxBull = firedBull.filter(s => s.startsWith('mcx_'));\nconst mcxBear = firedBear.filter(s => s.startsWith('mcx_'));\n\nif (forexBull.length > 0) {\n  alerts.push({ json: { text: `\\u{1F4B1} CDS Forex BULL signals (${forexBull.length}):\\n${forexBull.join(', ')}` } });\n}\nif (forexBear.length > 0) {\n  alerts.push({ json: { text: `\\u{1F4B1} CDS Forex BEAR signals (${forexBear.length}):\\n${forexBear.join(', ')}` } });\n}\nif (mcxBull.length > 0) {\n  alerts.push({ json: { text: `\\u{26CF} MCX Commodity BULL signals (${mcxBull.length}):\\n${mcxBull.join(', ')}` } });\n}\nif (mcxBear.length > 0) {\n  alerts.push({ json: { text: `\\u{26CF} MCX Commodity BEAR signals (${mcxBear.length}):\\n${mcxBear.join(', ')}` } });\n}\n\n// Active chains\nconst chains = data.active_chains || [];\nconst extChains = chains.filter(c => \n  c.name.startsWith('forex_') || c.name.startsWith('commodity_') || c.name === 'gold_silver_mean_reversion'\n);\nfor (const c of extChains) {\n  alerts.push({ json: { text: `\\u{1F517} Chain: ${c.name} (${c.complete ? 'COMPLETE' : 'partial'}) +${c.boost}%\\n${c.desc}` } });\n}\n\nreturn alerts;"
+      },
+      "id": "e1000000-0004-4000-8000-000000000005",
+      "name": "Filter Extended Signals",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [1250, 150]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot7601124337:AAHOqcdTTNbLJ_RoxAUXTDOtQ6mN9qCOHEk/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "=699992965" },
+            { "name": "text", "value": "={{ $json.text }}" }
+          ]
+        },
+        "options": { "allowUnauthorizedCerts": true }
+      },
+      "id": "e1000000-0004-4000-8000-000000000006",
+      "name": "Send Extended Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1500, 150]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Check if CDS is open (9:00 - 17:00 IST, Mon-Fri)\nconst now = new Date();\nconst istHour = (now.getUTCHours() + 5) % 24 + (now.getUTCMinutes() + 30 >= 60 ? 1 : 0);\nconst cdsOpen = (istHour >= 9 && istHour < 17);\nreturn [{ json: { cds_open: cdsOpen, ist_hour: istHour } }];"
+      },
+      "id": "e1000000-0004-4000-8000-000000000007",
+      "name": "Check CDS Hours",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [500, 500]
+    },
+    {
+      "parameters": {},
+      "id": "e1000000-0004-4000-8000-000000000008",
+      "name": "MCX Closed",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1000, 350]
+    },
+    {
+      "parameters": {},
+      "id": "e1000000-0004-4000-8000-000000000009",
+      "name": "CDS Closed",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1000, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.cds_open }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "e1000000-0004-4000-8000-000000000010",
+      "name": "CDS Open?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [750, 500]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[
+        {"node": "Check MCX Hours", "type": "main", "index": 0},
+        {"node": "Check CDS Hours", "type": "main", "index": 0}
+      ]]
+    },
+    "Check MCX Hours": {
+      "main": [[{"node": "MCX Open?", "type": "main", "index": 0}]]
+    },
+    "MCX Open?": {
+      "main": [
+        [{"node": "Run MWA Scan (Extended)", "type": "main", "index": 0}],
+        [{"node": "MCX Closed", "type": "main", "index": 0}]
+      ]
+    },
+    "Run MWA Scan (Extended)": {
+      "main": [[{"node": "Filter Extended Signals", "type": "main", "index": 0}]]
+    },
+    "Filter Extended Signals": {
+      "main": [[{"node": "Send Extended Alert", "type": "main", "index": 0}]]
+    },
+    "Check CDS Hours": {
+      "main": [[{"node": "CDS Open?", "type": "main", "index": 0}]]
+    },
+    "CDS Open?": {
+      "main": [
+        [{"node": "Run MWA Scan (Extended)", "type": "main", "index": 0}],
+        [{"node": "CDS Closed", "type": "main", "index": 0}]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "mkumaran-trading-os" }]
+}

@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-import pandas as pd
 
 from mcp_server.nse_scanner import get_stock_data, _get_nse_universe
 from mcp_server.portfolio_risk import get_sector

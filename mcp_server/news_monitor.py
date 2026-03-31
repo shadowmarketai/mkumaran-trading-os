@@ -13,7 +13,6 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
-from typing import Optional
 
 import requests
 
