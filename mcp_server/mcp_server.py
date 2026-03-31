@@ -498,11 +498,24 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
     from mcp_server.mwa_scoring import calculate_mwa_score, get_promoted_stocks, format_morning_brief
     from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, resolve_yf_symbol
 
-    # Build extended stock_data dict including CDS and MCX tickers
+    # Build stock_data dict: NSE equities + CDS + MCX tickers
     stock_data: dict = {}
+    data_diag: dict = {"nse": 0, "cds": 0, "mcx": 0, "errors": []}
     try:
-        from mcp_server.nse_scanner import get_stock_data as _get_stock
-        # Fetch CDS data
+        from mcp_server.nse_scanner import get_stock_data as _get_stock, _get_nse_universe
+
+        # 1) Fetch NSE equity OHLCV (top stocks for Python scanners)
+        nse_stocks = _get_nse_universe()
+        for ticker in nse_stocks:
+            try:
+                df = _get_stock(ticker, period="6mo", interval="1d")
+                if df is not None and not df.empty:
+                    stock_data[ticker] = df
+                    data_diag["nse"] += 1
+            except Exception as e:
+                logger.debug("NSE fetch failed for %s: %s", ticker, e)
+
+        # 2) Fetch CDS data
         for ticker in CDS_UNIVERSE:
             yf_sym = resolve_yf_symbol(f"CDS:{ticker}")
             if yf_sym:
@@ -510,9 +523,12 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
                     df = _get_stock(f"CDS:{ticker}", period="6mo", interval="1d")
                     if df is not None and not df.empty:
                         stock_data[ticker] = df
+                        data_diag["cds"] += 1
                 except Exception as e:
-                    logger.debug("CDS fetch failed for %s: %s", ticker, e)
-        # Fetch MCX data (top 6 liquid instruments)
+                    data_diag["errors"].append(f"CDS:{ticker}: {e}")
+                    logger.warning("CDS fetch failed for %s: %s", ticker, e)
+
+        # 3) Fetch MCX data (top 6 liquid instruments)
         for ticker in MCX_UNIVERSE[:6]:
             yf_sym = resolve_yf_symbol(f"MCX:{ticker}")
             if yf_sym:
@@ -520,10 +536,16 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
                     df = _get_stock(f"MCX:{ticker}", period="6mo", interval="1d")
                     if df is not None and not df.empty:
                         stock_data[ticker] = df
+                        data_diag["mcx"] += 1
                 except Exception as e:
-                    logger.debug("MCX fetch failed for %s: %s", ticker, e)
+                    data_diag["errors"].append(f"MCX:{ticker}: {e}")
+                    logger.warning("MCX fetch failed for %s: %s", ticker, e)
+
+        logger.info("Data fetched: NSE=%d, CDS=%d, MCX=%d, total=%d",
+                     data_diag["nse"], data_diag["cds"], data_diag["mcx"], len(stock_data))
     except Exception as e:
-        logger.warning("Extended data fetch (CDS/MCX) skipped: %s", e)
+        logger.error("Data fetch failed: %s", e)
+        data_diag["errors"].append(str(e))
 
     scanner = MWAScanner()
     raw_results = scanner.run_all(stock_data=stock_data if stock_data else None, save=True)
@@ -596,6 +618,7 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
         "promoted_stocks": promoted,
         "scanner_count": len(raw_results),
         "morning_brief": brief,
+        "data_fetched": data_diag,
     }
 
 
