@@ -215,7 +215,7 @@ class HarmonicEngine:
                 logger.error("Harmonic %s check failed: %s", name, e)
 
         if patterns:
-            logger.info(
+            logger.debug(
                 "Harmonic detected %d patterns: %s",
                 len(patterns),
                 [p.name for p in patterns],

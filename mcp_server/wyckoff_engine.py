@@ -153,7 +153,7 @@ class WyckoffEngine:
                 )
 
         if patterns:
-            logger.info(
+            logger.debug(
                 "Wyckoff detected %d patterns: %s",
                 len(patterns),
                 [p.name for p in patterns],

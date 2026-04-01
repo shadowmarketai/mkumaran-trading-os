@@ -215,7 +215,7 @@ class SMCEngine:
                 )
 
         if patterns:
-            logger.info(
+            logger.debug(
                 "SMC detected %d patterns: %s",
                 len(patterns),
                 [p.name for p in patterns],

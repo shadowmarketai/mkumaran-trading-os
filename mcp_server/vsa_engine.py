@@ -100,7 +100,7 @@ class VSAEngine:
                 logger.error("VSA detector %s failed: %s", detector.__name__, e)
 
         if patterns:
-            logger.info(
+            logger.debug(
                 "VSA detected %d patterns: %s",
                 len(patterns),
                 [p.name for p in patterns],
