@@ -605,6 +605,45 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
         "bear_pct": score["bear_pct"],
     }))
 
+    # Send MWA scan results to Telegram
+    try:
+        from mcp_server.telegram_bot import send_telegram_message
+
+        direction_emoji = {"BULL": "\U0001f7e2", "BEAR": "\U0001f534", "SIDEWAYS": "\U0001f7e1"}
+        d_emoji = direction_emoji.get(score["direction"], "\u26aa")
+
+        # Build promoted stocks list (top 10)
+        promo_lines = ""
+        if promoted:
+            top_promo = promoted[:10]
+            promo_lines = "\n\U0001f31f Promoted Stocks:\n" + "\n".join(
+                f"  {s.get('ticker', s) if isinstance(s, dict) else s}" for s in top_promo
+            )
+            if len(promoted) > 10:
+                promo_lines += f"\n  ... +{len(promoted) - 10} more"
+
+        # Build complete chains list
+        complete_chains = [c for c in score.get("active_chains", []) if c.get("complete")]
+        chain_lines = ""
+        if complete_chains:
+            chain_lines = "\n\u26d3 Signal Chains:\n" + "\n".join(
+                f"  \u2713 {c['name']} (+{c['boost']}%)" for c in complete_chains[:8]
+            )
+
+        tg_msg = (
+            f"{d_emoji} MWA Scan \u2014 {today}\n"
+            f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+            f"Direction: {score['direction']}\n"
+            f"Bull: {score['bull_pct']}% | Bear: {score['bear_pct']}%\n"
+            f"Fired: {len(score.get('fired_bull', []))} BULL / {len(score.get('fired_bear', []))} BEAR\n"
+            f"Scanners: {len(raw_results)} active"
+            f"{chain_lines}"
+            f"{promo_lines}"
+        )
+        asyncio.ensure_future(send_telegram_message(tg_msg, force=True))
+    except Exception as e:
+        logger.debug("MWA Telegram notification skipped: %s", e)
+
     return {
         "status": "ok",
         "tool": "run_mwa_scan",
