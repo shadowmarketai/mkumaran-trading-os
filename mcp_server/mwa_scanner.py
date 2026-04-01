@@ -1019,7 +1019,6 @@ class MWAScanner:
                         f"{self.BASE}/login",
                         headers={
                             "x-csrf-token": self._csrf,
-                            "X-XSRF-TOKEN": self._csrf,
                             "Content-Type": "application/x-www-form-urlencoded",
                             "Referer": f"{self.BASE}/login",
                         },
@@ -1031,13 +1030,16 @@ class MWAScanner:
                         allow_redirects=True,
                         timeout=15,
                     )
-                    # Refresh CSRF after login (Laravel rotates it)
-                    xsrf2 = self.session.cookies.get("XSRF-TOKEN", "")
-                    if xsrf2:
-                        self._csrf = unquote(xsrf2)
 
-                    # Verify by checking userId on any page
+                    # After login, re-fetch screener page to get fresh CSRF
+                    # (Laravel rotates CSRF on login)
                     check = self.session.get(f"{self.BASE}/screener/", timeout=15)
+                    soup2 = BeautifulSoup(check.text, "html.parser")
+                    meta2 = soup2.select_one('meta[name="csrf-token"]')
+                    if meta2 and meta2.get("content"):
+                        self._csrf = meta2["content"]
+                        logger.info("[CHARTINK] Refreshed CSRF from meta tag (%d chars)", len(self._csrf))
+
                     uid_m = re.search(r'userId:\s*(\d+)', check.text)
                     if uid_m and uid_m.group(1) != "0":
                         self.logged_in = True
