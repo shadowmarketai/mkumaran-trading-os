@@ -155,7 +155,7 @@ class NSESource:
             "52w_low": hl.get("min", 0),
         }
 
-    @retry(max_attempts=3, delay=1.0)
+    @retry(max_attempts=2, delay=0.5)
     def get_historical(self, symbol: str,
                        from_date: str, to_date: str) -> pd.DataFrame:
         """Free historical EOD data from NSE. from_date, to_date: DD-MM-YYYY."""
@@ -163,8 +163,18 @@ class NSESource:
                f"?symbol={symbol.upper()}&series=[%22EQ%22]"
                f"&from={from_date}&to={to_date}&csv=true")
         resp = self.session.get(url, timeout=15)
+
+        # Guard: NSE may return HTML error pages instead of CSV
+        text = resp.text.strip()
+        if not text or text.startswith("<!") or text.startswith("<html"):
+            logger.warning("NSE returned HTML instead of CSV for %s", symbol)
+            return pd.DataFrame()
+
         from io import StringIO
-        df = pd.read_csv(StringIO(resp.text))
+        df = pd.read_csv(StringIO(text))
+        if df.empty:
+            return pd.DataFrame()
+
         df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
 
         rename = {
@@ -173,9 +183,25 @@ class NSESource:
             "total_traded_quantity": "volume",
             "open": "open", "high": "high", "low": "low",
             "close": "close", "volume": "volume",
+            # NSE sometimes uses these column names
+            "ch_timestamp": "date", "ch_opening_price": "open",
+            "ch_trade_high_price": "high", "ch_trade_low_price": "low",
+            "ch_closing_price": "close", "ch_total_traded_quantity": "volume",
+            "HistoricalDate": "date",  # alternate JSON-sourced format
         }
         df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
-        df["date"] = pd.to_datetime(df["date"])
+
+        # Find date column — try common names
+        if "date" not in df.columns:
+            date_candidates = [c for c in df.columns if "date" in c or "timestamp" in c]
+            if date_candidates:
+                df = df.rename(columns={date_candidates[0]: "date"})
+            else:
+                logger.warning("NSE CSV has no date column for %s. Columns: %s", symbol, list(df.columns))
+                return pd.DataFrame()
+
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df = df.dropna(subset=["date"])
         df = df.sort_values("date").reset_index(drop=True)
 
         needed = ["date", "open", "high", "low", "close", "volume"]
@@ -920,14 +946,21 @@ def get_provider() -> MarketDataProvider:
 
 _instrument_cache: dict[str, int] = {}
 _cache_loaded_date: str | None = None
+_kite_failed_today: str | None = None  # Cache Kite auth failures to prevent retry storm
 
 
 def _load_instrument_cache() -> None:
     """Load instrument tokens from Kite (used if Kite fallback is needed)."""
-    global _instrument_cache, _cache_loaded_date
+    global _instrument_cache, _cache_loaded_date, _kite_failed_today
 
     today = str(date.today())
+
+    # Already loaded successfully today
     if _cache_loaded_date == today and _instrument_cache:
+        return
+
+    # Kite auth already failed today — don't retry (prevents TOTP storm)
+    if _kite_failed_today == today:
         return
 
     try:
@@ -946,9 +979,11 @@ def _load_instrument_cache() -> None:
                 logger.warning("Failed to load instruments for %s: %s", exch, e)
 
         _cache_loaded_date = today
+        _kite_failed_today = None  # Clear failure flag on success
         logger.info("Instrument cache loaded: %d total tokens", len(_instrument_cache))
     except Exception as e:
-        logger.warning("Instrument cache load failed (Kite unavailable): %s", e)
+        _kite_failed_today = today  # Cache failure — skip retries for rest of today
+        logger.warning("Instrument cache load failed (Kite unavailable): %s — skipping Kite for today", e)
 
 
 def _resolve_instrument_token(ticker: str) -> int | None:

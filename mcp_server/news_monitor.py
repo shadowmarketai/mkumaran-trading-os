@@ -39,7 +39,7 @@ class NewsItem:
 
 RSS_FEEDS: dict[str, str] = {
     "moneycontrol": "https://www.moneycontrol.com/rss/MCtopnews.xml",
-    "economic_times": "https://economictimes.indiatimes.com/rssfeedstopnews.cms",
+    "economic_times": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
     "livemint": "https://www.livemint.com/rss/markets",
 }
 
