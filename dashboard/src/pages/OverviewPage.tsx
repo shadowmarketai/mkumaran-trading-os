@@ -19,11 +19,11 @@ import StatusBadge from '../components/ui/StatusBadge';
 import SignalCard from '../components/ui/SignalCard';
 import { useMWA } from '../hooks/useMWA';
 import { useSignals } from '../hooks/useSignals';
-import { overviewApi } from '../services/api';
+import { overviewApi, mwaApi } from '../services/api';
 import { useMarketSegment } from '../context/MarketSegmentContext';
 import { useNews } from '../hooks/useNews';
 import { cn } from '../lib/utils';
-import type { ScannerResult, SectorStrength } from '../types';
+import type { Signal, ScannerResult, SectorStrength } from '../types';
 
 // --- Scanner Heatmap ---
 interface ScannerCellProps {
@@ -198,6 +198,7 @@ export default function OverviewPage() {
   const { signals, loading: signalsLoading } = useSignals(20);
   const { filter } = useMarketSegment();
   const [stats, setStats] = useState({ active_trades: 0, win_rate: 0, today_signals: 0 });
+  const [mwaSignals, setMwaSignals] = useState<Signal[]>([]);
 
   useEffect(() => {
     overviewApi.getOverview(filter).then((data) => {
@@ -207,6 +208,10 @@ export default function OverviewPage() {
         win_rate: d.win_rate ?? 0,
         today_signals: d.today_signals ?? 0,
       });
+    }).catch(() => {});
+    // Fetch MWA signal cards (recent MWA Scan signals from DB)
+    mwaApi.getSignalCards().then((data) => {
+      if (Array.isArray(data)) setMwaSignals(data);
     }).catch(() => {});
   }, [filter]);
 
@@ -230,7 +235,16 @@ export default function OverviewPage() {
     );
   }
 
-  const scannerEntries = mwa?.scanner_results ? Object.values(mwa.scanner_results) : [];
+  // Filter scanners by segment
+  const allScannerEntries = mwa?.scanner_results ? Object.values(mwa.scanner_results) : [];
+  const segmentLayerMap: Record<string, string[]> = {
+    NSE: ['Trend', 'Volume', 'Breakout', 'RSI', 'Gap', 'MA', 'Filter', 'SMC', 'Wyckoff', 'VSA', 'Harmonic', 'RL'],
+    MCX: ['Commodity'],
+    CDS: ['Forex'],
+  };
+  const scannerEntries = filter.exchange && segmentLayerMap[filter.exchange]
+    ? allScannerEntries.filter((s) => segmentLayerMap[filter.exchange!].includes(s.group))
+    : allScannerEntries;
   const scannerLayers = groupByLayer(scannerEntries);
   const sectorEntries = mwa?.sector_strength ? Object.entries(mwa.sector_strength) : [];
 
@@ -384,6 +398,26 @@ export default function OverviewPage() {
             ))}
           </div>
         </GlassCard>
+      )}
+
+      {/* MWA Signal Cards */}
+      {mwaSignals.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+              <Zap size={14} className="text-trading-ai" />
+              MWA Signal Cards
+            </h3>
+            <a href="/monitor" className="text-[10px] text-trading-ai hover:underline">
+              View Monitor
+            </a>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+            {mwaSignals.map((signal) => (
+              <SignalCard key={signal.id} signal={signal} />
+            ))}
+          </div>
+        </div>
       )}
 
       {/* News Ticker */}

@@ -13,6 +13,7 @@ import {
   Calculator,
   LineChart,
   FileText,
+  Shield,
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -27,6 +28,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/overview', label: 'Overview', icon: <LayoutDashboard size={20} /> },
   { to: '/trades', label: 'Active Trades', icon: <TrendingUp size={20} /> },
+  { to: '/monitor', label: 'Signal Monitor', icon: <Shield size={20} /> },
   { to: '/paper', label: 'Paper Trading', icon: <FileText size={20} /> },
   { to: '/accuracy', label: 'Accuracy', icon: <Target size={20} /> },
   { to: '/watchlist', label: 'Watchlist', icon: <Eye size={20} /> },

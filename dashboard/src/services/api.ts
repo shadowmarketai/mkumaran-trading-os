@@ -19,6 +19,8 @@ import type {
   PlaceOrderRequest,
   OrderResult,
   OrderStatus,
+  MWASignalCard,
+  CheckSignalsResult,
 } from '../types';
 
 const api = axios.create({
@@ -75,6 +77,10 @@ export const tradeApi = {
 
 export const mwaApi = {
   getLatest: () => api.get<MWAScore>('/mwa/latest').then((r) => r.data),
+  runScan: () =>
+    toolsApi.post<{ mwa_signal_cards: MWASignalCard[] }>('/tools/run_mwa_scan', null, { timeout: 300000 }).then((r) => r.data),
+  getSignalCards: () =>
+    api.get<Signal[]>('/signals', { params: { limit: 10, pattern: 'MWA Scan' } }).then((r) => r.data),
 };
 
 export const watchlistApi = {
@@ -153,6 +159,13 @@ export const orderApi = {
     toolsApi.post('/tools/close_position', { ticker }, { timeout: 10000 }).then((r) => r.data),
   closeAll: () =>
     toolsApi.post('/tools/close_all', null, { timeout: 10000 }).then((r) => r.data),
+};
+
+export const signalMonitorApi = {
+  checkNow: () =>
+    toolsApi.post<CheckSignalsResult>('/tools/check_signals', null, { timeout: 60000 }).then((r) => r.data),
+  getOpenSignals: (filter?: SegmentFilter) =>
+    api.get<Signal[]>('/signals', { params: { limit: 50, status: 'OPEN', ...filter } }).then((r) => r.data),
 };
 
 export { toolsApi };

@@ -359,3 +359,37 @@ export interface MomentumData {
   signals: RebalanceSignal[];
   message?: string;
 }
+
+// ── MWA Signal Cards ────────────────────────────────────────
+export interface MWASignalCard {
+  ticker: string;
+  direction: 'LONG' | 'SHORT';
+  entry: number;
+  sl: number;
+  target: number;
+  rrr: number;
+  qty: number;
+  confidence: number;
+  recommendation: string;
+  signal_id: string;
+}
+
+// ── Signal Monitor ──────────────────────────────────────────
+export interface ClosedSignal {
+  signal_id: number;
+  ticker: string;
+  direction: string;
+  status: 'TARGET_HIT' | 'SL_HIT';
+  entry: number;
+  exit: number;
+  pnl_pct: number;
+  pnl_rs: number;
+  outcome: 'WIN' | 'LOSS';
+  days_held: number;
+}
+
+export interface CheckSignalsResult {
+  checked: boolean;
+  closed_count: number;
+  closed_signals: ClosedSignal[];
+}
