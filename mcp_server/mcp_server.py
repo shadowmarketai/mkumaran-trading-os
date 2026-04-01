@@ -40,9 +40,26 @@ async def lifespan(app: FastAPI):
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.warning("Database init skipped (not available): %s", e)
+
+    # Start signal auto-monitor background task
+    import asyncio
+    monitor_task = None
+    try:
+        from mcp_server.signal_monitor import signal_monitor_loop
+        monitor_task = asyncio.create_task(signal_monitor_loop())
+        logger.info("Signal auto-monitor background task started")
+    except Exception as e:
+        logger.warning("Signal monitor startup skipped: %s", e)
+
     logger.info("MCP Server starting on %s:%s", settings.MCP_SERVER_HOST, settings.MCP_SERVER_PORT)
     yield
-    # Shutdown
+    # Shutdown — cancel monitor task
+    if monitor_task and not monitor_task.done():
+        monitor_task.cancel()
+        try:
+            await monitor_task
+        except asyncio.CancelledError:
+            pass
     logger.info("MCP Server shutting down")
 
 
@@ -644,6 +661,155 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.debug("MWA Telegram notification skipped: %s", e)
 
+    # ── MWA Signal Cards: detailed trade levels for top promoted stocks ──
+    mwa_signal_cards = []
+    try:
+        from mcp_server.mwa_signal_generator import generate_mwa_signals
+
+        mwa_signals = generate_mwa_signals(
+            promoted=promoted[:10],
+            stock_data=stock_data,
+            mwa_direction=score["direction"],
+            scanner_results=raw_results,
+        )
+
+        for sig in mwa_signals:
+            # Build pre_confidence from scanner count + MWA alignment
+            pre_confidence = 50 + min(sig["scanner_count"] * 3, 15)
+            if (score["direction"] in ("BULL", "MILD_BULL") and sig["direction"] == "LONG") or \
+               (score["direction"] in ("BEAR", "MILD_BEAR") and sig["direction"] == "SHORT"):
+                pre_confidence += 10
+
+            confidence_boosts = [f"MWA Promoted ({sig['scanner_count']} scanners)"]
+
+            # AI validation (same as TV signals)
+            try:
+                from mcp_server.debate_validator import run_debate
+                result = run_debate(
+                    ticker=sig["ticker"], direction=sig["direction"],
+                    pattern="MWA Scan", rrr=sig["rrr"],
+                    entry_price=sig["entry"], stop_loss=sig["sl"], target=sig["target"],
+                    mwa_direction=score["direction"], scanner_count=sig["scanner_count"],
+                    tv_confirmed=False, sector_strength="NEUTRAL",
+                    fii_net=0, delivery_pct=0,
+                    confidence_boosts=confidence_boosts, pre_confidence=pre_confidence,
+                )
+                confidence = result.final_confidence
+                recommendation = result.recommendation
+            except Exception as debate_err:
+                logger.warning("Debate failed for %s, using pre_confidence: %s", sig["ticker"], debate_err)
+                confidence = pre_confidence
+                recommendation = "WATCHLIST" if confidence > 50 else "SKIP"
+
+            if confidence <= 50:
+                logger.info("MWA signal %s skipped: confidence %d <= 50", sig["ticker"], confidence)
+                continue
+
+            # Record signal to DB + Sheets
+            signal_data = {
+                "ticker": sig["ticker"],
+                "direction": "BUY" if sig["direction"] == "LONG" else "SELL",
+                "entry_price": sig["entry"], "stop_loss": sig["sl"], "target": sig["target"],
+                "rrr": sig["rrr"], "qty": sig["qty"],
+                "pattern": "MWA Scan", "confidence": confidence,
+                "exchange": sig["exchange"], "asset_class": sig["asset_class"],
+                "timeframe": "day",
+                "notes": f"MWA Promoted | {sig['scanner_count']} scanners | {recommendation}",
+            }
+            try:
+                from mcp_server.telegram_receiver import record_signal_to_sheets
+                record_result = record_signal_to_sheets(signal_data)
+            except Exception as rec_err:
+                logger.warning("Signal recording failed for %s: %s", sig["ticker"], rec_err)
+                record_result = {"signal_id": "N/A"}
+
+            # Save to DB Signal + ActiveTrade for auto-monitor tracking
+            try:
+                from datetime import datetime as _dt
+                db_signal = Signal(
+                    signal_date=date.today(),
+                    signal_time=_dt.now().time(),
+                    ticker=sig["ticker"],
+                    exchange=sig["exchange"],
+                    asset_class=sig["asset_class"],
+                    direction="BUY" if sig["direction"] == "LONG" else "SELL",
+                    pattern="MWA Scan",
+                    entry_price=sig["entry"],
+                    stop_loss=sig["sl"],
+                    target=sig["target"],
+                    rrr=sig["rrr"],
+                    qty=sig["qty"],
+                    risk_amt=round((sig["entry"] - sig["sl"]) * sig["qty"], 2) if sig["direction"] == "LONG"
+                        else round((sig["sl"] - sig["entry"]) * sig["qty"], 2),
+                    ai_confidence=confidence,
+                    tv_confirmed=False,
+                    mwa_score=score["direction"],
+                    scanner_count=sig["scanner_count"],
+                    source="mwa_scan",
+                    timeframe="1D",
+                    status="OPEN",
+                )
+                db.add(db_signal)
+                db.flush()  # Get db_signal.id
+
+                db_active = ActiveTrade(
+                    signal_id=db_signal.id,
+                    ticker=sig["ticker"],
+                    exchange=sig["exchange"],
+                    asset_class=sig["asset_class"],
+                    entry_price=sig["entry"],
+                    target=sig["target"],
+                    stop_loss=sig["sl"],
+                    prrr=sig["rrr"],
+                    current_price=sig["entry"],
+                    crrr=sig["rrr"],
+                    last_updated=_dt.now(),
+                    timeframe="1D",
+                )
+                db.add(db_active)
+                db.commit()
+                logger.info("Saved MWA signal to DB: %s (id=%d)", sig["ticker"], db_signal.id)
+            except Exception as db_err:
+                logger.warning("DB save failed for %s: %s", sig["ticker"], db_err)
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+
+            # Send detailed Telegram card
+            emoji_map = {"ALERT": "\U0001f7e2", "WATCHLIST": "\U0001f7e1"}
+            emoji = emoji_map.get(recommendation, "\U0001f7e1")
+            segment_map = {"NSE": "NSE Equity", "MCX": "Commodity", "CDS": "Forex"}
+            segment = segment_map.get(sig["exchange"], sig["exchange"])
+
+            msg = (
+                f"{emoji} MWA Signal\n"
+                f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                f"Ticker: {sig['ticker']}\n"
+                f"Segment: {segment} | {sig['asset_class']}\n"
+                f"Timeframe: Daily (Swing)\n"
+                f"Direction: {sig['direction']}\n"
+                f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                f"Entry: \u20b9{sig['entry']:.1f} | SL: \u20b9{sig['sl']:.1f} | TGT: \u20b9{sig['target']:.1f}\n"
+                f"RRR: {sig['rrr']:.1f} | Qty: {sig['qty']}\n"
+                f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                f"Scanners: {sig['scanner_count']} fired\n"
+                f"AI Confidence: {confidence}% ({recommendation})\n"
+                f"Signal ID: {record_result.get('signal_id', 'N/A')}"
+            )
+            asyncio.ensure_future(send_telegram_message(msg, exchange=sig["exchange"], force=True))
+            mwa_signal_cards.append({
+                "ticker": sig["ticker"], "direction": sig["direction"],
+                "entry": sig["entry"], "sl": sig["sl"], "target": sig["target"],
+                "rrr": sig["rrr"], "qty": sig["qty"],
+                "confidence": confidence, "recommendation": recommendation,
+                "signal_id": record_result.get("signal_id", "N/A"),
+            })
+            logger.info("MWA signal card sent: %s %s conf=%d", sig["ticker"], sig["direction"], confidence)
+
+    except Exception as e:
+        logger.error("MWA signal generation failed: %s", e)
+
     return {
         "status": "ok",
         "tool": "run_mwa_scan",
@@ -658,6 +824,7 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
         "scanner_count": len(raw_results),
         "morning_brief": brief,
         "data_fetched": data_diag,
+        "mwa_signal_cards": mwa_signal_cards,
     }
 
 
@@ -1897,6 +2064,23 @@ async def tool_signal_accuracy():
     from mcp_server.telegram_receiver import get_sheets_tracker
     tracker = get_sheets_tracker()
     return tracker.get_accuracy_stats()
+
+
+@app.post("/tools/check_signals")
+async def tool_check_signals():
+    """Manually trigger signal monitor — check all OPEN signals for SL/TGT hit."""
+    from mcp_server.signal_monitor import monitor_open_signals, _send_close_alert
+    closed = monitor_open_signals()
+    for c in closed:
+        try:
+            await _send_close_alert(c)
+        except Exception:
+            pass
+    return {
+        "checked": True,
+        "closed_count": len(closed),
+        "closed_signals": closed,
+    }
 
 
 @app.post("/api/telegram_webhook")
