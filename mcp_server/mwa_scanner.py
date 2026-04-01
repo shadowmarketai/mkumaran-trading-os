@@ -937,140 +937,221 @@ class MWAScanner:
         self.session.headers.update(self.HEADERS)
         self.logged_in = False
         self.delay = delay
+        self._csrf = ""
+        self._diag_logged = False  # log diagnostics only once per scan
 
     def login(self) -> bool:
-        """Login to Chartink (Laravel SPA with XSRF-TOKEN cookie)."""
-        email = os.environ.get("CHARTINK_EMAIL", "")
-        password = os.environ.get("CHARTINK_PASSWORD", "")
-        if not email:
-            logger.warning("[CHARTINK] CHARTINK_EMAIL env var not set — skipping Chartink scanners")
-            return False
-        logger.info("[CHARTINK] Attempting login with %s...", email[:5] + "***")
+        """Establish Chartink session and cache CSRF token.
+
+        Public screeners don't need login — we just need a valid session
+        with a CSRF token.  If CHARTINK_EMAIL is set we also attempt a
+        cookie-based login so that private screeners become available.
+        """
         try:
-            # Step 1: GET any page to obtain XSRF-TOKEN cookie (Laravel SPA pattern)
-            self.session.get(f"{self.BASE}", timeout=15)
-            xsrf = self.session.cookies.get("XSRF-TOKEN", "")
-            if not xsrf:
-                # Try login page specifically
-                self.session.get(f"{self.BASE}/login", timeout=15)
-                xsrf = self.session.cookies.get("XSRF-TOKEN", "")
-
-            if not xsrf:
-                logger.error("[CHARTINK] No XSRF-TOKEN cookie received")
-                return False
-
-            # URL-decode the token (Laravel double-encodes it)
+            # ── Step 1: hit the main screener page to establish session ──
+            from bs4 import BeautifulSoup
             from urllib.parse import unquote
-            xsrf_decoded = unquote(xsrf)
-            logger.info("[CHARTINK] Got XSRF token (%d chars)", len(xsrf_decoded))
 
-            # Step 2: POST login with XSRF token in header (Laravel Sanctum/Fortify pattern)
-            r = self.session.post(
-                f"{self.BASE}/login",
-                headers={
-                    "X-XSRF-TOKEN": xsrf_decoded,
-                    "X-Requested-With": "XMLHttpRequest",
-                    "Referer": f"{self.BASE}/login",
-                    "Accept": "application/json, text/plain, */*",
-                    "Content-Type": "application/json",
-                },
-                json={"email": email, "password": password},
-                allow_redirects=True,
-                timeout=15,
-            )
+            r = self.session.get(f"{self.BASE}/screener/", timeout=15)
+            logger.info("[CHARTINK] Session init: status=%d, len=%d, cookies=%s",
+                        r.status_code, len(r.text),
+                        list(self.session.cookies.keys()))
 
-            # Check for successful login (various indicators)
-            if r.status_code in (200, 302):
-                # Try visiting dashboard/home to verify session
-                check = self.session.get(f"{self.BASE}/screener/mk-macd-buy-call-daily", timeout=15)
-                if "logout" in check.text.lower() or "userId: " in check.text:
-                    # Check if userId > 0 (logged in)
-                    uid_match = re.search(r'userId:\s*(\d+)', check.text)
-                    if uid_match and uid_match.group(1) != "0":
-                        self.logged_in = True
-                        logger.info("[CHARTINK] Login successful (userId=%s)", uid_match.group(1))
-                        return True
-
-            # Fallback: try traditional form POST
-            page = self.session.get(f"{self.BASE}/login", timeout=15)
-            csrf_meta = re.search(r'meta name="csrf-token" content="([^"]+)"', page.text)
-            csrf_token = csrf_meta.group(1) if csrf_meta else xsrf_decoded
-            r2 = self.session.post(
-                f"{self.BASE}/login",
-                headers={
-                    "X-CSRF-Token": csrf_token,
-                    "Referer": f"{self.BASE}/login",
-                },
-                data={"_token": csrf_token, "email": email, "password": password},
-                allow_redirects=True,
-                timeout=15,
-            )
-            self.logged_in = "logout" in r2.text.lower()
-            if self.logged_in:
-                logger.info("[CHARTINK] Login successful (fallback)")
+            # ── Step 2: extract CSRF token ──
+            # Method A: meta tag (traditional Laravel)
+            soup = BeautifulSoup(r.text, "html.parser")
+            meta = soup.select_one('meta[name="csrf-token"]')
+            if meta and meta.get("content"):
+                self._csrf = meta["content"]
+                logger.info("[CHARTINK] CSRF from meta tag (%d chars)", len(self._csrf))
             else:
-                logger.warning("[CHARTINK] Login failed (status=%d/%d)", r.status_code, r2.status_code)
-            return self.logged_in
+                # Method B: XSRF-TOKEN cookie (Laravel SPA / Sanctum)
+                xsrf = self.session.cookies.get("XSRF-TOKEN", "")
+                if xsrf:
+                    self._csrf = unquote(xsrf)
+                    logger.info("[CHARTINK] CSRF from XSRF cookie (%d chars)", len(self._csrf))
+                else:
+                    logger.error("[CHARTINK] No CSRF token found (no meta tag, no XSRF cookie)")
+                    # Log first 500 chars for diagnostics
+                    logger.error("[CHARTINK] Page head: %.500s", r.text[:500])
+                    return False
+
+            # ── Step 3: optional login for private screeners ──
+            email = os.environ.get("CHARTINK_EMAIL", "")
+            password = os.environ.get("CHARTINK_PASSWORD", "")
+            if email and password:
+                logger.info("[CHARTINK] Attempting login as %s...", email[:5] + "***")
+                try:
+                    login_r = self.session.post(
+                        f"{self.BASE}/login",
+                        headers={
+                            "x-csrf-token": self._csrf,
+                            "X-XSRF-TOKEN": self._csrf,
+                            "Content-Type": "application/x-www-form-urlencoded",
+                            "Referer": f"{self.BASE}/login",
+                        },
+                        data={
+                            "_token": self._csrf,
+                            "email": email,
+                            "password": password,
+                        },
+                        allow_redirects=True,
+                        timeout=15,
+                    )
+                    # Refresh CSRF after login (Laravel rotates it)
+                    xsrf2 = self.session.cookies.get("XSRF-TOKEN", "")
+                    if xsrf2:
+                        self._csrf = unquote(xsrf2)
+
+                    # Verify by checking userId on any page
+                    check = self.session.get(f"{self.BASE}/screener/", timeout=15)
+                    uid_m = re.search(r'userId:\s*(\d+)', check.text)
+                    if uid_m and uid_m.group(1) != "0":
+                        self.logged_in = True
+                        logger.info("[CHARTINK] Login OK (userId=%s, status=%d)",
+                                    uid_m.group(1), login_r.status_code)
+                    else:
+                        logger.warning("[CHARTINK] Login returned %d but userId=0 — "
+                                       "continuing without login (public screeners still work)",
+                                       login_r.status_code)
+                except Exception as e:
+                    logger.warning("[CHARTINK] Login failed: %s — continuing without login", e)
+
+            self.logged_in = self.logged_in or bool(self._csrf)
+            logger.info("[CHARTINK] Ready: csrf=%d chars, authenticated=%s",
+                        len(self._csrf), self.logged_in)
+            return bool(self._csrf)
         except Exception as e:
-            logger.error("[CHARTINK] Login error: %s", e)
+            logger.error("[CHARTINK] Session init error: %s", e)
             return False
 
-    def _get_csrf(self) -> str:
-        """Get CSRF token from cookies or page meta tag."""
-        from urllib.parse import unquote
-        # Try XSRF-TOKEN cookie first (Laravel SPA)
-        xsrf = self.session.cookies.get("XSRF-TOKEN", "")
-        if xsrf:
-            return unquote(xsrf)
-        return ""
+    def _ensure_csrf(self) -> str:
+        """Return cached CSRF or re-fetch it."""
+        if self._csrf:
+            return self._csrf
+        self.login()
+        return self._csrf
 
     def _extract_scan_clause(self, html: str) -> str:
-        """Try multiple patterns to extract scan_clause from Chartink page."""
-        patterns = [
-            # Inertia.js / Vue page props (most likely for modern Chartink)
-            r'"scan_clause"\s*:\s*"((?:[^"\\]|\\.)*)"',
-            # JavaScript variable
-            r'var\s+scan_clause\s*=\s*["\'](.+?)["\']',
-            # Textarea
-            r'<textarea[^>]*id=["\']scan_clause["\'][^>]*>(.*?)</textarea>',
-            # Hidden input
-            r'name=["\']scan_clause["\'][^>]*value=["\']([^"\']*)["\']',
-            # data attribute
-            r'data-scan-clause=["\']([^"\']+)["\']',
-            # Broader: any assignment
-            r'scan_clause["\s:=]+["\'](.+?)["\']',
-            # Inertia page data JSON blob
-            r'"scanClause"\s*:\s*"((?:[^"\\]|\\.)*)"',
-        ]
-        for pat in patterns:
-            m = re.search(pat, html, re.DOTALL)
-            if m:
-                clause = (m.group(1) or "").strip()
+        """Extract scan_clause from Chartink page HTML.
+
+        Tries multiple strategies:
+        1. Inertia.js data-page attribute (modern SPA)
+        2. JSON page props embedded in script tags
+        3. Traditional form elements / JS variables
+        """
+        import html as htmlmod
+
+        # ── Strategy 1: Inertia.js data-page attribute ──
+        # Inertia.js embeds all page props as JSON in data-page="..."
+        m = re.search(r'data-page="([^"]*(?:scan_clause|scan)[^"]*)"', html)
+        if not m:
+            # Try broader match — data-page can be very large
+            m = re.search(r'data-page="({.*?})"', html)
+        if not m:
+            m = re.search(r"data-page='({.*?})'", html)
+        if m:
+            try:
+                raw = htmlmod.unescape(m.group(1))
+                page_data = json.loads(raw)
+                props = page_data.get("props", {})
+                clause = props.get("scan_clause", "")
+                if not clause:
+                    for key in ("screener", "scanner", "screen"):
+                        sub = props.get(key, {})
+                        if isinstance(sub, dict):
+                            clause = sub.get("scan_clause", sub.get("scanClause", ""))
+                            if clause:
+                                break
                 if clause:
                     return clause.replace("\\n", "\n").replace('\\"', '"')
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # ── Strategy 2: JSON blob in script tag or inline JS ──
+        patterns = [
+            r'"scan_clause"\s*:\s*"((?:[^"\\]|\\.)*)"',
+            r'"scanClause"\s*:\s*"((?:[^"\\]|\\.)*)"',
+            r"'scan_clause'\s*:\s*'((?:[^'\\]|\\.)*)'",
+            r'var\s+scan_clause\s*=\s*["\'](.+?)["\']',
+            r'scan_clause["\s:=]+["\'](.+?)["\']',
+        ]
+        for pat in patterns:
+            found = re.search(pat, html, re.DOTALL)
+            if found:
+                clause = (found.group(1) or "").strip()
+                if clause and len(clause) > 10:
+                    return clause.replace("\\n", "\n").replace('\\"', '"')
+
+        # ── Strategy 3: Traditional form elements ──
+        patterns_form = [
+            r'<textarea[^>]*id=["\']scan_clause["\'][^>]*>(.*?)</textarea>',
+            r'name=["\']scan_clause["\'][^>]*value=["\']([^"\']*)["\']',
+            r'data-scan-clause=["\']([^"\']+)["\']',
+        ]
+        for pat in patterns_form:
+            found = re.search(pat, html, re.DOTALL)
+            if found:
+                clause = (found.group(1) or "").strip()
+                if clause:
+                    return htmlmod.unescape(clause)
+
         return ""
 
     def fetch_chartink(self, slug: str) -> list[str]:
-        """Fetch stock list from a Chartink screener by slug."""
+        """Fetch stock list from a Chartink screener by slug.
+
+        Flow (based on working reference implementations):
+        1. GET screener page → extract scan_clause from HTML
+        2. POST scan_clause to /screener/process with CSRF header
+        """
         try:
+            csrf = self._ensure_csrf()
+            if not csrf:
+                return []
+
+            # ── Get the screener page ──
             page = self.session.get(f"{self.BASE}/screener/{slug}", timeout=15)
             if page.status_code != 200:
                 logger.warning("[CHARTINK] %s returned status %d", slug, page.status_code)
                 return []
 
-            # Get CSRF from cookie (SPA) or meta tag (traditional)
-            csrf_token = self._get_csrf()
-            if not csrf_token:
-                csrf_meta = re.search(r'meta name="csrf-token" content="([^"]+)"', page.text)
-                csrf_token = csrf_meta.group(1) if csrf_meta else ""
-            if not csrf_token:
-                logger.warning("[CHARTINK] No CSRF for %s", slug)
-                return []
-
-            # Try to extract scan_clause from page
+            # ── Extract scan_clause ──
             scan_clause = self._extract_scan_clause(page.text)
 
-            # Fallback: try Chartink API endpoint for screener data
+            # Fallback: try X-Inertia JSON request
+            if not scan_clause:
+                try:
+                    inertia_r = self.session.get(
+                        f"{self.BASE}/screener/{slug}",
+                        headers={
+                            "X-Inertia": "true",
+                            "X-Inertia-Version": "",
+                            "X-Requested-With": "XMLHttpRequest",
+                            "Accept": "text/html, application/xhtml+xml",
+                        },
+                        timeout=10,
+                    )
+                    if inertia_r.status_code == 200:
+                        try:
+                            idata = inertia_r.json()
+                            props = idata.get("props", {})
+                            scan_clause = props.get("scan_clause", "")
+                            if not scan_clause:
+                                for key in ("screener", "scanner", "screen"):
+                                    sub = props.get(key, {})
+                                    if isinstance(sub, dict):
+                                        scan_clause = sub.get("scan_clause", sub.get("scanClause", ""))
+                                        if scan_clause:
+                                            break
+                            if scan_clause:
+                                logger.info("[CHARTINK] Got scan_clause via X-Inertia for %s", slug)
+                        except (ValueError, KeyError):
+                            pass
+                except Exception:
+                    pass
+
+            # Fallback: try /screener/data/{slug} API endpoint
             if not scan_clause:
                 try:
                     api_r = self.session.get(
@@ -1084,25 +1165,45 @@ class MWAScanner:
                     if api_r.status_code == 200:
                         api_data = api_r.json()
                         scan_clause = api_data.get("scan_clause", api_data.get("scanClause", ""))
+                        if scan_clause:
+                            logger.info("[CHARTINK] Got scan_clause via API for %s", slug)
                 except Exception:
                     pass
 
             if not scan_clause:
-                logger.warning("[CHARTINK] No scan_clause for %s", slug)
+                # Log diagnostics once per scan session
+                if not self._diag_logged:
+                    has_data_page = "data-page" in page.text
+                    has_app_div = 'id="app"' in page.text
+                    has_inertia = "inertia" in page.text.lower()
+                    logger.warning(
+                        "[CHARTINK] No scan_clause for %s — page diagnostics: "
+                        "len=%d, data-page=%s, #app=%s, inertia=%s, "
+                        "first_300=%.300s",
+                        slug, len(page.text), has_data_page, has_app_div,
+                        has_inertia, page.text[:300],
+                    )
+                    self._diag_logged = True
+                else:
+                    logger.warning("[CHARTINK] No scan_clause for %s", slug)
                 return []
 
+            # ── POST to /screener/process ──
             r = self.session.post(
                 self.PROCESS_URL,
                 timeout=15,
                 headers={
-                    "X-XSRF-TOKEN": csrf_token,
-                    "X-CSRF-Token": csrf_token,
-                    "X-Requested-With": "XMLHttpRequest",
-                    "Referer": f"{self.BASE}/screener/{slug}",
+                    "x-csrf-token": csrf,
                     "Content-Type": "application/x-www-form-urlencoded",
                 },
                 data={"scan_clause": scan_clause},
             )
+
+            if r.status_code != 200:
+                logger.warning("[CHARTINK] /screener/process returned %d for %s (body=%.200s)",
+                               r.status_code, slug, r.text[:200])
+                return []
+
             stocks = [
                 i.get("nsecode", i.get("symbol", ""))
                 for i in r.json().get("data", [])
@@ -1387,17 +1488,18 @@ class MWAScanner:
             stock_data: Dict of {ticker: DataFrame} for Python scanners
             save: Whether to save results to JSON file
         """
-        if not self.logged_in:
+        if not self._csrf:
             self.login()
 
         results: dict[str, list[str]] = {}
+        self._diag_logged = False  # reset diagnostics flag per scan run
         skip_types = {"FILTER", "UNKNOWN"}
         layers = ["Trend", "Volume", "Breakout", "RSI", "Gap", "MA"]
 
-        logger.info("MWA Scan started at %s (chartink_logged_in=%s)",
-                     datetime.now().strftime("%d %b %Y %H:%M"), self.logged_in)
+        logger.info("MWA Scan started at %s (csrf=%d chars)",
+                     datetime.now().strftime("%d %b %Y %H:%M"), len(self._csrf))
 
-        # Chartink scanners by layer (even without login — some pages work without auth)
+        # Chartink scanners by layer
         for layer in layers:
             items = {
                 k: v for k, v in SCANNERS.items()
