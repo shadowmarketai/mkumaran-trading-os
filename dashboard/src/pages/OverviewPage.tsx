@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Zap,
@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Newspaper,
   ExternalLink,
+  RefreshCw,
 } from 'lucide-react';
 import MetricCard from '../components/ui/MetricCard';
 import GlassCard from '../components/ui/GlassCard';
@@ -194,11 +195,32 @@ function NewsWidget() {
 
 // --- Main Page ---
 export default function OverviewPage() {
-  const { mwa, loading: mwaLoading, error: mwaError } = useMWA();
+  const { mwa, loading: mwaLoading, error: mwaError, refetch: refreshMwa } = useMWA();
   const { signals, loading: signalsLoading } = useSignals(20);
   const { filter } = useMarketSegment();
   const [stats, setStats] = useState({ active_trades: 0, win_rate: 0, today_signals: 0 });
   const [mwaSignals, setMwaSignals] = useState<Signal[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+
+  const handleRunMwaScan = useCallback(async () => {
+    setScanning(true);
+    setScanError(null);
+    try {
+      const result = await mwaApi.runScan();
+      // Refresh MWA data and signal cards after scan
+      refreshMwa();
+      if (result.mwa_signal_cards) {
+        // Reload signal cards from DB
+        const cards = await mwaApi.getSignalCards();
+        if (Array.isArray(cards)) setMwaSignals(cards);
+      }
+    } catch (err) {
+      setScanError(err instanceof Error ? err.message : 'MWA scan failed');
+    } finally {
+      setScanning(false);
+    }
+  }, [refreshMwa]);
 
   useEffect(() => {
     overviewApi.getOverview(filter).then((data) => {
@@ -296,6 +318,28 @@ export default function OverviewPage() {
                 <StatusBadge status={mwa.direction} />
               </div>
 
+              {/* Run MWA Scan Button */}
+              <button
+                onClick={handleRunMwaScan}
+                disabled={scanning}
+                className={cn(
+                  'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all',
+                  scanning
+                    ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                    : 'bg-trading-ai/20 text-trading-ai-light hover:bg-trading-ai/30 border border-trading-ai/30'
+                )}
+              >
+                {scanning ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={14} />
+                )}
+                {scanning ? 'Running MWA Scan...' : 'Run MWA Scan'}
+              </button>
+              {scanError && (
+                <p className="text-xs text-trading-bear mt-1">{scanError}</p>
+              )}
+
               <ScoreBar bullPct={mwa.bull_pct} bearPct={mwa.bear_pct} />
 
               <div className="grid grid-cols-2 gap-3">
@@ -382,7 +426,27 @@ export default function OverviewPage() {
       ) : (
         <GlassCard className="text-center py-12">
           <Compass size={32} className="mx-auto mb-2 text-slate-600" />
-          <p className="text-slate-500 text-sm">No MWA data available yet. Run the MWA scanner to see market breadth.</p>
+          <p className="text-slate-500 text-sm mb-4">No MWA data available yet. Run the MWA scanner to see market breadth.</p>
+          <button
+            onClick={handleRunMwaScan}
+            disabled={scanning}
+            className={cn(
+              'inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all',
+              scanning
+                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                : 'bg-trading-ai/20 text-trading-ai-light hover:bg-trading-ai/30 border border-trading-ai/30'
+            )}
+          >
+            {scanning ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <RefreshCw size={14} />
+            )}
+            {scanning ? 'Running MWA Scan...' : 'Run MWA Scan'}
+          </button>
+          {scanError && (
+            <p className="text-xs text-trading-bear mt-2">{scanError}</p>
+          )}
         </GlassCard>
       )}
 
