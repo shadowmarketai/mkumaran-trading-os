@@ -943,51 +943,85 @@ class MWAScanner:
         email = os.environ.get("CHARTINK_EMAIL", "")
         password = os.environ.get("CHARTINK_PASSWORD", "")
         if not email:
-            logger.warning("Set CHARTINK_EMAIL + CHARTINK_PASSWORD in .env")
+            logger.warning("[CHARTINK] CHARTINK_EMAIL env var not set — skipping Chartink scanners")
             return False
-        page = self.session.get(f"{self.BASE}/login")
-        csrf = re.search(r'meta name="csrf-token" content="([^"]+)"', page.text)
-        if not csrf:
+        logger.info("[CHARTINK] Attempting login with %s...", email[:5] + "***")
+        try:
+            page = self.session.get(f"{self.BASE}/login", timeout=15)
+            csrf = re.search(r'meta name="csrf-token" content="([^"]+)"', page.text)
+            if not csrf:
+                logger.error("[CHARTINK] No CSRF token on login page (status=%d, len=%d)", page.status_code, len(page.text))
+                return False
+            r = self.session.post(
+                f"{self.BASE}/login",
+                headers={"X-CSRF-Token": csrf.group(1), "Referer": f"{self.BASE}/login"},
+                data={"_token": csrf.group(1), "email": email, "password": password},
+                allow_redirects=True,
+                timeout=15,
+            )
+            self.logged_in = "logout" in r.text.lower()
+            if self.logged_in:
+                logger.info("[CHARTINK] Login successful")
+            else:
+                logger.error("[CHARTINK] Login failed (status=%d, 'logout' not in response, len=%d)", r.status_code, len(r.text))
+            return self.logged_in
+        except Exception as e:
+            logger.error("[CHARTINK] Login error: %s", e)
             return False
-        r = self.session.post(
-            f"{self.BASE}/login",
-            headers={"X-CSRF-Token": csrf.group(1), "Referer": f"{self.BASE}/login"},
-            data={"_token": csrf.group(1), "email": email, "password": password},
-            allow_redirects=True,
-        )
-        self.logged_in = "logout" in r.text.lower()
-        if self.logged_in:
-            logger.info("Chartink login successful")
-        else:
-            logger.error("Chartink login failed")
-        return self.logged_in
+
+    def _extract_scan_clause(self, html: str, slug: str) -> str:
+        """Try multiple patterns to extract scan_clause from Chartink page."""
+        # Pattern 1: JSON key in JavaScript (Vue/React data)
+        m = re.search(r'"scan_clause"\s*:\s*"((?:[^"\\]|\\.)*)"', html)
+        if m:
+            return m.group(1).replace("\\n", "\n").replace('\\"', '"')
+
+        # Pattern 2: JavaScript variable assignment
+        m = re.search(r'var\s+scan_clause\s*=\s*["\'](.+?)["\']', html, re.DOTALL)
+        if m:
+            return m.group(1).replace("\\n", "\n")
+
+        # Pattern 3: Textarea (logged-in user view)
+        m = re.search(r'<textarea[^>]*id=["\']scan_clause["\'][^>]*>(.*?)</textarea>', html, re.DOTALL)
+        if m:
+            return m.group(1).strip()
+
+        # Pattern 4: Hidden input
+        m = re.search(r'name=["\']scan_clause["\'][^>]*value=["\']([^"\']*)["\']', html)
+        if m:
+            return m.group(1).strip()
+
+        # Pattern 5: data-scan-clause attribute
+        m = re.search(r'data-scan-clause=["\']([^"\']+)["\']', html)
+        if m:
+            return m.group(1).strip()
+
+        # Pattern 6: scan_clause in inline script block (broader)
+        m = re.search(r'scan_clause["\s:=]+["\'](.+?)["\']', html)
+        if m:
+            return m.group(1).replace("\\n", "\n")
+
+        return ""
 
     def fetch_chartink(self, slug: str) -> list[str]:
         """Fetch stock list from a Chartink screener by slug."""
         try:
             page = self.session.get(f"{self.BASE}/screener/{slug}", timeout=15)
-            csrf = re.search(r'meta name="csrf-token" content="([^"]+)"', page.text)
-            if not csrf:
-                logger.warning("Chartink: no CSRF token for %s", slug)
+            if page.status_code != 200:
+                logger.warning("[CHARTINK] %s returned status %d", slug, page.status_code)
                 return []
 
-            # Extract scan_clause from the screener page JS
-            scan_clause = ""
-            sc_match = re.search(r'"scan_clause"\s*:\s*"(.*?)"', page.text)
-            if sc_match:
-                scan_clause = sc_match.group(1).replace("\\n", "\n").replace('\\"', '"')
-            else:
-                # Alternative: look for scan_clause in textarea or hidden input
-                sc_match2 = re.search(
-                    r'id="scan_clause"[^>]*>([^<]+)<|'
-                    r'name="scan_clause"[^>]*value="([^"]*)"',
-                    page.text,
-                )
-                if sc_match2:
-                    scan_clause = (sc_match2.group(1) or sc_match2.group(2) or "").strip()
+            csrf = re.search(r'meta name="csrf-token" content="([^"]+)"', page.text)
+            if not csrf:
+                logger.warning("[CHARTINK] No CSRF token for %s (len=%d)", slug, len(page.text))
+                return []
+
+            scan_clause = self._extract_scan_clause(page.text, slug)
 
             if not scan_clause:
-                logger.warning("Chartink: no scan_clause found for %s", slug)
+                # Log snippet for debugging
+                snippet = page.text[:500].replace("\n", " ")[:200]
+                logger.warning("[CHARTINK] No scan_clause for %s (page=%d chars, snippet=%s...)", slug, len(page.text), snippet[:100])
                 return []
 
             r = self.session.post(
@@ -1007,7 +1041,7 @@ class MWAScanner:
             ]
             return [s for s in stocks if s]
         except Exception as e:
-            logger.error("Chartink fetch failed for %s: %s", slug, e)
+            logger.error("[CHARTINK] Fetch failed for %s: %s", slug, e)
             return []
 
     def run_python_scanners(self, stock_data: dict | None = None) -> dict[str, list[str]]:
@@ -1292,9 +1326,10 @@ class MWAScanner:
         skip_types = {"FILTER", "UNKNOWN"}
         layers = ["Trend", "Volume", "Breakout", "RSI", "Gap", "MA"]
 
-        logger.info("MWA Scan started at %s", datetime.now().strftime("%d %b %Y %H:%M"))
+        logger.info("MWA Scan started at %s (chartink_logged_in=%s)",
+                     datetime.now().strftime("%d %b %Y %H:%M"), self.logged_in)
 
-        # Chartink scanners by layer
+        # Chartink scanners by layer (even without login — some pages work without auth)
         for layer in layers:
             items = {
                 k: v for k, v in SCANNERS.items()
@@ -1306,18 +1341,24 @@ class MWAScanner:
             }
             if not items:
                 continue
-            logger.info("Scanning layer: %s (%d scanners)", layer, len(items))
+            logger.info("[CHARTINK] Scanning layer: %s (%d scanners)", layer, len(items))
             for key, cfg in items.items():
                 try:
                     stocks = self.fetch_chartink(cfg["slug"])
                     results[key] = stocks
                     logger.info(
-                        "[%s] %s: %d stocks", cfg["type"], key, len(stocks)
+                        "[CHARTINK] %s: %d stocks (%s)", key, len(stocks), cfg["type"]
                     )
                     time.sleep(self.delay)
                 except Exception as e:
                     results[key] = []
-                    logger.error("Scanner %s failed: %s", key, e)
+                    logger.error("[CHARTINK] Scanner %s failed: %s", key, e)
+
+        # Chartink summary
+        chartink_active = sum(1 for k, v in results.items() if v)
+        chartink_total = len(results)
+        logger.info("[CHARTINK] Done: %d/%d scanners found stocks (logged_in=%s)",
+                     chartink_active, chartink_total, self.logged_in)
 
         # Python scanners
         logger.info("Running Python scanners...")

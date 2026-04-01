@@ -183,7 +183,7 @@ class RLEngine:
                 logger.error("RL detector %s failed: %s", detector.__name__, e)
 
         if patterns:
-            logger.info("RL detected %d patterns: %s", len(patterns), [p.name for p in patterns])
+            logger.debug("RL detected %d patterns: %s", len(patterns), [p.name for p in patterns])
 
         return patterns
 
