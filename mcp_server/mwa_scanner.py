@@ -33,6 +33,7 @@ SCANNERS = {
         "desc": "Personal swing low. Stock at swing low = at LTRP zone. Core RRMS long entry trigger.",
         "pairs_with": ["upswing", "volume_avg", "rsi_above_30", "llbb_bounce"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest low <= min( 20 , latest low ) and latest close > latest open and latest volume > 10000 ) )",
     },
     "upswing": {
         "no": 2, "slug": "copy-upswing-daily-82",
@@ -40,6 +41,7 @@ SCANNERS = {
         "desc": "Personal upswing. Higher highs + higher lows. Rule 3 enforcer for longs.",
         "pairs_with": ["swing_low", "bandwalk_highs", "breakout_200dma"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest high > 1 day ago high and latest low > 1 day ago low and 1 day ago high > 2 days ago high and 1 day ago low > 2 days ago low ) )",
     },
     "swing_high": {
         "no": 3, "slug": "copy-swing-high-daily-192",
@@ -47,6 +49,7 @@ SCANNERS = {
         "desc": "Personal swing high. Near Pivot High / short zone.",
         "pairs_with": ["downswing", "failure_swing_bearish", "macd_sell_weekly"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest high >= max( 20 , latest high ) and latest close < latest open and latest volume > 10000 ) )",
     },
     "downswing": {
         "no": 4, "slug": "copy-downswing-daily-177",
@@ -54,6 +57,7 @@ SCANNERS = {
         "desc": "Personal downswing. Lower highs + lower lows. Rule 3 for shorts.",
         "pairs_with": ["swing_high", "bearish_divergence", "macd_sell_weekly"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest high < 1 day ago high and latest low < 1 day ago low and 1 day ago high < 2 days ago high and 1 day ago low < 2 days ago low ) )",
     },
     "bandwalk_highs": {
         "no": 5, "slug": "copy-bandwalk-with-highs-green-candle-daily-150",
@@ -61,6 +65,7 @@ SCANNERS = {
         "desc": "Bandwalk: hugging upper BB making new highs with green candle.",
         "pairs_with": ["upswing", "breakout_200dma", "volume_spike"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest high >= max( 5 , latest high ) and latest close > latest open and latest high >= latest upper bollinger band( 20 , 2 ) ) )",
     },
     "llbb_bounce": {
         "no": 6, "slug": "copy-todays-low-bounced-off-llbb-and-green-candle-close-184",
@@ -68,6 +73,7 @@ SCANNERS = {
         "desc": "Low touched Lower BB + green candle close. RRMS LTRP bounce confirmation.",
         "pairs_with": ["swing_low", "rsi_above_30", "failure_swing_bullish", "near_200ma_v2"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest low <= latest lower bollinger band( 20 , 2 ) and latest close > latest open ) )",
     },
     "macd_sell_weekly": {
         "no": 7, "slug": "copy-macd-sell-call-weekly-chart-170",
@@ -75,6 +81,7 @@ SCANNERS = {
         "desc": "MACD sell on weekly chart. Higher timeframe bearish conviction.",
         "pairs_with": ["swing_high", "downswing", "failure_swing_bearish", "bearish_divergence"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest macd line( 26 , 12 , 9 ) < latest macd signal( 26 , 12 , 9 ) and 1 day ago macd line( 26 , 12 , 9 ) > 1 day ago macd signal( 26 , 12 , 9 ) ) )",
     },
     "supertrend_buy": {
         "no": 8, "slug": "python:scan_supertrend",
@@ -92,6 +99,7 @@ SCANNERS = {
         "desc": "Volume above 50-day average. Mandatory cross-reference for every breakout.",
         "pairs_with": ["swing_low", "breakout_50day", "breakout_200dma"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest volume > latest sma( volume , 50 ) ) )",
     },
     "volume_spike": {
         "no": 10, "slug": "copy-volume-previous-50-days-average-volume-10-173",
@@ -99,6 +107,7 @@ SCANNERS = {
         "desc": "Volume spike 2x+ 50-day average. STRONG institutional move.",
         "pairs_with": ["breakout_200dma", "breakout_50day", "richie_rich_breakout"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest volume > latest sma( volume , 50 ) * 2 ) )",
     },
     "daily_pct_change": {
         "no": 11, "slug": "python:daily_pct_change",
@@ -113,6 +122,7 @@ SCANNERS = {
         "desc": "MACD buy on hourly chart. Intraday momentum confirmation.",
         "pairs_with": ["buy_morning_9_30", "gap_up", "ema_crossover_bn"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest macd line( 26 , 12 , 9 ) > latest macd signal( 26 , 12 , 9 ) and latest macd line( 26 , 12 , 9 ) > 0 ) )",
     },
     "macd_buy_daily": {
         "no": 13, "slug": "mk-macd-buy-call-daily",
@@ -120,6 +130,7 @@ SCANNERS = {
         "desc": "MACD buy on daily chart. Swing trade momentum entry.",
         "pairs_with": ["swing_low", "upswing", "breakout_200dma"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest macd line( 26 , 12 , 9 ) crossed above latest macd signal( 26 , 12 , 9 ) ) )",
     },
     "buy_morning_9_30": {
         "no": 14, "slug": "copy-buy-100-accuracy-morning-scanner-scan-at-9-30-20985",
@@ -127,6 +138,7 @@ SCANNERS = {
         "desc": "High-accuracy morning buy scanner. Multi-condition entry for 9:30 AM.",
         "pairs_with": ["gap_up", "volume_spike", "macd_buy_hourly", "ema_crossover_bn"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest close > latest open and latest close > latest ema( close , 9 ) and latest close > latest ema( close , 21 ) and latest volume > latest sma( volume , 20 ) and latest rsi( 14 ) > 50 ) )",
     },
 
     # ── LAYER 3 — BREAKOUT & BREAKDOWN (6 scanners) ─────────
@@ -137,6 +149,7 @@ SCANNERS = {
         "desc": "Breaks above 50-day high. Bullish continuation pattern trigger.",
         "pairs_with": ["volume_spike", "volume_avg", "breakout_200dma"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest close > max( 50 , 1 day ago high ) ) )",
     },
     "breakout_200dma": {
         "no": 16, "slug": "copy-surpassing-the-high-with-regime-filter-of-200-dma-and-green-candle-only-181",
@@ -144,6 +157,7 @@ SCANNERS = {
         "desc": "Breakout + 200 DMA regime filter + green candle. Highest quality breakout scanner.",
         "pairs_with": ["volume_spike", "volume_avg", "upswing", "bandwalk_highs"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest close > max( 20 , 1 day ago high ) and latest close > latest sma( close , 200 ) and latest close > latest open ) )",
     },
     "breakdown_20day": {
         "no": 17, "slug": "copy-todays-low-surpassing-the-20-day-low-range-181",
@@ -151,6 +165,7 @@ SCANNERS = {
         "desc": "Breaks below 20-day low. Bearish continuation pattern trigger.",
         "pairs_with": ["downswing", "bearish_divergence", "macd_sell_weekly"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest low < min( 20 , 1 day ago low ) ) )",
     },
     "52week_high": {
         "no": 18, "slug": "mk-52-week-high-breakout",
@@ -158,6 +173,7 @@ SCANNERS = {
         "desc": "52-week high breakout. Strongest momentum — no overhead resistance.",
         "pairs_with": ["volume_spike", "richie_rich_breakout", "breakout_200dma"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest high >= max( 250 , latest high ) ) )",
     },
     "richie_rich_breakout": {
         "no": 19, "slug": "copy-ffa-richie-rich-breakout-system-2204",
@@ -165,6 +181,7 @@ SCANNERS = {
         "desc": "FFA Richie Rich Breakout System. Multi-condition: price + volume + momentum + trend.",
         "pairs_with": ["volume_spike", "breakout_200dma", "bandwalk_highs", "richie_rich_tracker"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest close > max( 20 , 1 day ago high ) and latest volume > latest sma( volume , 20 ) * 2 and latest close > latest ema( close , 20 ) and latest rsi( 14 ) > 60 ) )",
     },
     "richie_rich_tracker": {
         "no": 20, "slug": "rich-rich-breakout-tracker-3",
@@ -172,6 +189,7 @@ SCANNERS = {
         "desc": "Richie Rich Tracker. Follows stocks that broke out and are continuing.",
         "pairs_with": ["richie_rich_breakout", "upswing", "bandwalk_highs"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest close > 5 days ago close and latest close > latest ema( close , 20 ) and latest volume > latest sma( volume , 20 ) ) )",
     },
 
     # ── LAYER 4 — RSI DIVERGENCE LADDER (6 scanners) ────────
@@ -182,6 +200,7 @@ SCANNERS = {
         "desc": "STAGE 1 BULL: Bullish RSI divergence — price lower low + RSI higher low.",
         "pairs_with": ["failure_swing_bullish", "swing_low", "llbb_bounce"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest low < min( 14 , 1 day ago low ) and latest rsi( 14 ) > min( 14 , 1 day ago rsi( 14 ) ) and latest rsi( 14 ) < 40 ) )",
     },
     "bearish_divergence": {
         "no": 22, "slug": "copy-bearish-divergence-occurring-today-189",
@@ -189,6 +208,7 @@ SCANNERS = {
         "desc": "STAGE 1 BEAR: Bearish RSI divergence — price higher high + RSI lower high.",
         "pairs_with": ["failure_swing_bearish", "swing_high", "macd_sell_weekly"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest high > max( 14 , 1 day ago high ) and latest rsi( 14 ) < max( 14 , 1 day ago rsi( 14 ) ) and latest rsi( 14 ) > 60 ) )",
     },
     "failure_swing_bullish": {
         "no": 23, "slug": "copy-failure-swing-bullish-divergence-occurring-today-185",
@@ -196,6 +216,7 @@ SCANNERS = {
         "desc": "STAGE 2 BULL: RSI failure swing confirmation.",
         "pairs_with": ["bullish_divergence", "swing_low", "upswing", "llbb_bounce"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest rsi( 14 ) > 30 and 1 day ago rsi( 14 ) < 30 and latest close > latest open ) )",
     },
     "failure_swing_bearish": {
         "no": 24, "slug": "copy-failure-swing-bearish-divergence-occurring-today-177",
@@ -203,6 +224,7 @@ SCANNERS = {
         "desc": "STAGE 2 BEAR: RSI failure swing confirmation.",
         "pairs_with": ["bearish_divergence", "swing_high", "downswing", "macd_sell_weekly"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest rsi( 14 ) < 70 and 1 day ago rsi( 14 ) > 70 and latest close < latest open ) )",
     },
     "rsi_above_30": {
         "no": 25, "slug": "copy-rsi-crossed-above-30-zones-188",
@@ -210,6 +232,7 @@ SCANNERS = {
         "desc": "STAGE 3 BULL: RSI crosses above 30. Momentum confirmed after divergence.",
         "pairs_with": ["swing_low", "llbb_bounce", "failure_swing_bullish"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest rsi( 14 ) > 30 and 1 day ago rsi( 14 ) <= 30 ) )",
     },
     "rsi_below_70": {
         "no": 26, "slug": "copy-rsi-crossed-below-70-zones-180",
@@ -217,6 +240,7 @@ SCANNERS = {
         "desc": "STAGE 3 BEAR: RSI crosses below 70. Momentum confirmed after divergence.",
         "pairs_with": ["swing_high", "failure_swing_bearish", "bearish_divergence"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest rsi( 14 ) < 70 and 1 day ago rsi( 14 ) >= 70 ) )",
     },
 
     # ── LAYER 5 — GAP & INTRADAY EMA (4 scanners) ───────────
@@ -227,6 +251,7 @@ SCANNERS = {
         "desc": "Personal gap up. Opens above yesterday's high.",
         "pairs_with": ["upswing", "macd_buy_hourly", "buy_morning_9_30"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest open > 1 day ago high ) )",
     },
     "gap_down": {
         "no": 28, "slug": "copy-gap-down-daily-171",
@@ -234,6 +259,7 @@ SCANNERS = {
         "desc": "Personal gap down. Opens below yesterday's low.",
         "pairs_with": ["downswing", "bearish_divergence"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest open < 1 day ago low ) )",
     },
     "ema_crossover_bn": {
         "no": 29, "slug": "copy-5-and-10-crossover-hourly-196",
@@ -241,6 +267,7 @@ SCANNERS = {
         "desc": "BankNifty 5/10 EMA crossover hourly. F&O intraday trigger.",
         "pairs_with": ["macd_buy_hourly", "buy_morning_9_30", "gap_up"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest ema( close , 5 ) > latest ema( close , 10 ) and 1 day ago ema( close , 5 ) <= 1 day ago ema( close , 10 ) ) )",
     },
     "ema_crossover_nifty": {
         "no": 30, "slug": "mk-nifty-5-10-ema-crossover-hourly",
@@ -248,6 +275,7 @@ SCANNERS = {
         "desc": "Nifty 50 5/10 EMA crossover hourly. F&O trigger for Nifty.",
         "pairs_with": ["ema_crossover_bn", "macd_buy_hourly", "buy_morning_9_30"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest ema( close , 5 ) > latest ema( close , 10 ) and 1 day ago ema( close , 5 ) <= 1 day ago ema( close , 10 ) ) )",
     },
 
     # ── LAYER 6 — MA SUPPORT ZONES (5 scanners) ─────────────
@@ -258,6 +286,7 @@ SCANNERS = {
         "desc": "Near 100-day MA. Medium-term support zone.",
         "pairs_with": ["swing_low", "rsi_above_30", "llbb_bounce"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest close > latest sma( close , 100 ) * 0.97 and latest close < latest sma( close , 100 ) * 1.03 ) )",
     },
     "near_200ma": {
         "no": 32, "slug": "copy-moving-average-200-goldmine-futures-172",
@@ -265,6 +294,7 @@ SCANNERS = {
         "desc": "Near 200-day MA v1. Long-term support zone.",
         "pairs_with": ["swing_low", "near_200ma_v2", "llbb_bounce"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest close > latest sma( close , 200 ) * 0.97 and latest close < latest sma( close , 200 ) * 1.03 ) )",
     },
     "near_200ma_v2": {
         "no": 33, "slug": "copy-moving-average-200-goldmine-futures-304",
@@ -272,6 +302,7 @@ SCANNERS = {
         "desc": "Near 200-day MA v2 (newer). Double institutional support confirm.",
         "pairs_with": ["near_200ma", "swing_low", "llbb_bounce"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest close > latest sma( close , 200 ) * 0.95 and latest close < latest sma( close , 200 ) * 1.05 and latest volume > latest sma( volume , 20 ) ) )",
     },
     "muthukumaran_a": {
         "no": 34, "slug": "muthukumaran-3",
@@ -279,6 +310,7 @@ SCANNERS = {
         "desc": "RSI recovery + upswing: Close>prev, HH, HL, RSI(14) crossed above 30.",
         "pairs_with": ["swing_low", "rsi_above_30", "failure_swing_bullish"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest close > 1 day ago close and latest high > 1 day ago high and latest low > 1 day ago low and latest rsi( 14 ) > 30 and 1 day ago rsi( 14 ) <= 30 ) )",
     },
     "muthukumaran_b": {
         "no": 35, "slug": "muthukumaran-2",
@@ -286,6 +318,7 @@ SCANNERS = {
         "desc": "Parabolic SAR buy: Close > SAR(0.02, 0.02, 0.2). Trend-following confirmation.",
         "pairs_with": ["supertrend_buy", "upswing", "breakout_200dma"],
         "status": "ACTIVE",
+        "scan_clause": "( {57960} ( latest close > latest sar( 0.02 , 0.02 , 0.2 ) and latest close > latest open ) )",
     },
 
     # ── LAYER 7 — PYTHON PRE-FILTERS (5 items — NOT scored) ─
@@ -1098,26 +1131,29 @@ class MWAScanner:
 
         return ""
 
-    def fetch_chartink(self, slug: str) -> list[str]:
-        """Fetch stock list from a Chartink screener by slug.
+    def fetch_chartink(self, slug: str, hardcoded_clause: str = "") -> list[str]:
+        """Fetch stock list from a Chartink screener.
 
-        Flow (based on working reference implementations):
-        1. GET screener page → extract scan_clause from HTML
-        2. POST scan_clause to /screener/process with CSRF header
+        Flow:
+        1. Use hardcoded scan_clause if available (preferred — no page fetch needed)
+        2. Otherwise GET screener page → try to extract scan_clause from HTML
+        3. POST scan_clause to /screener/process with CSRF header
         """
         try:
             csrf = self._ensure_csrf()
             if not csrf:
                 return []
 
-            # ── Get the screener page ──
-            page = self.session.get(f"{self.BASE}/screener/{slug}", timeout=15)
-            if page.status_code != 200:
-                logger.warning("[CHARTINK] %s returned status %d", slug, page.status_code)
-                return []
+            # ── Priority 1: hardcoded scan_clause ──
+            scan_clause = hardcoded_clause
 
-            # ── Extract scan_clause ──
-            scan_clause = self._extract_scan_clause(page.text)
+            # ── Priority 2: extract from page HTML ──
+            if not scan_clause:
+                page = self.session.get(f"{self.BASE}/screener/{slug}", timeout=15)
+                if page.status_code != 200:
+                    logger.warning("[CHARTINK] %s returned status %d", slug, page.status_code)
+                    return []
+                scan_clause = self._extract_scan_clause(page.text)
 
             # Fallback: try X-Inertia JSON request
             if not scan_clause:
@@ -1514,7 +1550,7 @@ class MWAScanner:
             logger.info("[CHARTINK] Scanning layer: %s (%d scanners)", layer, len(items))
             for key, cfg in items.items():
                 try:
-                    stocks = self.fetch_chartink(cfg["slug"])
+                    stocks = self.fetch_chartink(cfg["slug"], cfg.get("scan_clause", ""))
                     results[key] = stocks
                     logger.info(
                         "[CHARTINK] %s: %d stocks (%s)", key, len(stocks), cfg["type"]
