@@ -968,7 +968,28 @@ class MWAScanner:
             page = self.session.get(f"{self.BASE}/screener/{slug}", timeout=15)
             csrf = re.search(r'meta name="csrf-token" content="([^"]+)"', page.text)
             if not csrf:
+                logger.warning("Chartink: no CSRF token for %s", slug)
                 return []
+
+            # Extract scan_clause from the screener page JS
+            scan_clause = ""
+            sc_match = re.search(r'"scan_clause"\s*:\s*"(.*?)"', page.text)
+            if sc_match:
+                scan_clause = sc_match.group(1).replace("\\n", "\n").replace('\\"', '"')
+            else:
+                # Alternative: look for scan_clause in textarea or hidden input
+                sc_match2 = re.search(
+                    r'id="scan_clause"[^>]*>([^<]+)<|'
+                    r'name="scan_clause"[^>]*value="([^"]*)"',
+                    page.text,
+                )
+                if sc_match2:
+                    scan_clause = (sc_match2.group(1) or sc_match2.group(2) or "").strip()
+
+            if not scan_clause:
+                logger.warning("Chartink: no scan_clause found for %s", slug)
+                return []
+
             r = self.session.post(
                 self.PROCESS_URL,
                 timeout=15,
@@ -978,7 +999,7 @@ class MWAScanner:
                     "Referer": f"{self.BASE}/screener/{slug}",
                     "Content-Type": "application/x-www-form-urlencoded",
                 },
-                data={"scan_clause": ""},
+                data={"scan_clause": scan_clause},
             )
             stocks = [
                 i.get("nsecode", i.get("symbol", ""))
@@ -1372,6 +1393,7 @@ def fetch_chartink(url: str, timeout: int = 30) -> list[str]:
     """Legacy: Fetch stock list from a Chartink screener URL."""
     try:
         session = requests.Session()
+        session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
         page = session.get(url, timeout=timeout)
         page.raise_for_status()
 
@@ -1382,12 +1404,19 @@ def fetch_chartink(url: str, timeout: int = 30) -> list[str]:
             logger.warning("Could not extract CSRF from %s", url)
             return []
 
+        # Extract scan_clause from page
+        scan_clause = ""
+        sc_match = re.search(r'"scan_clause"\s*:\s*"(.*?)"', page.text)
+        if sc_match:
+            scan_clause = sc_match.group(1).replace("\\n", "\n").replace('\\"', '"')
+
         result = session.post(
             "https://chartink.com/screener/process",
-            data={"scan_clause": ""},
+            data={"scan_clause": scan_clause},
             headers={
                 "X-CSRF-Token": csrf_match.group(1),
                 "X-Requested-With": "XMLHttpRequest",
+                "Referer": url,
             },
             timeout=timeout,
         )
