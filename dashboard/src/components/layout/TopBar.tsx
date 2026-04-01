@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, Wifi, WifiOff, LogOut, Menu } from 'lucide-re
 import { cn } from '../../lib/utils';
 import type { MarketDirection } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { useOverview } from '../../hooks/useOverview';
 import SegmentTabs from './SegmentTabs';
 
 const pageNames: Record<string, string> = {
@@ -99,6 +100,11 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
   const location = useLocation();
   const currentPage = pageNames[location.pathname] || 'Dashboard';
   const { logout, email } = useAuth();
+  const { market } = useOverview(60000);
+
+  const validDirs: MarketDirection[] = ['BULL', 'BEAR', 'SIDEWAYS', 'MILD_BULL', 'MILD_BEAR'];
+  const rawDir = market.mwa_direction || 'SIDEWAYS';
+  const mwaDir: MarketDirection = validDirs.includes(rawDir as MarketDirection) ? (rawDir as MarketDirection) : 'SIDEWAYS';
 
   return (
     <div className="sticky top-0 z-30">
@@ -118,17 +124,17 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
 
         {/* Center: Index Prices (hidden on mobile) */}
         <div className="hidden md:flex items-center gap-6">
-          <IndexPrice name="NIFTY" price={24850.3} change={127.5} changePct={0.52} />
+          <IndexPrice name="NIFTY" price={market.nifty_price} change={market.nifty_change} changePct={market.nifty_change_pct} />
           <div className="w-px h-5 bg-trading-border" />
-          <IndexPrice name="BANKNIFTY" price={53420.8} change={-85.2} changePct={-0.16} />
+          <IndexPrice name="BANKNIFTY" price={market.banknifty_price} change={market.banknifty_change} changePct={market.banknifty_change_pct} />
         </div>
 
         {/* Right: MWA + Market Status + Sign Out */}
         <div className="flex items-center gap-2 sm:gap-4">
           <div className="hidden sm:block">
-            <DirectionBadge direction="MILD_BULL" />
+            <DirectionBadge direction={mwaDir} />
           </div>
-          <MarketStatusLabel status="CLOSED" />
+          <MarketStatusLabel status={market.market_status} />
           <button
             onClick={logout}
             title={email ? `Sign out (${email})` : 'Sign out'}

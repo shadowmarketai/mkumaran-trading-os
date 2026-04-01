@@ -982,6 +982,36 @@ async def api_overview(
     wins = outcome_query.filter(Outcome.outcome == "WIN").count()
     win_rate = round((wins / total_outcomes * 100), 1) if total_outcomes > 0 else 0
 
+    # Market status
+    from mcp_server.market_calendar import get_market_status
+    ms = get_market_status("NSE")
+    reason = ms.get("reason", "CLOSED")
+    status_map = {"OPEN": "LIVE", "PRE_MARKET": "PRE", "POST_MARKET": "POST"}
+    market_status = status_map.get(reason, "CLOSED")
+
+    # Live index prices (cached for 60s via yfinance)
+    nifty_price, nifty_change, nifty_change_pct = 0.0, 0.0, 0.0
+    banknifty_price, banknifty_change, banknifty_change_pct = 0.0, 0.0, 0.0
+    try:
+        import yfinance as yf
+
+        for sym, setter in [
+            ("^NSEI", "nifty"),
+            ("^NSEBANK", "banknifty"),
+        ]:
+            tk = yf.Ticker(sym)
+            info = tk.fast_info
+            price = float(getattr(info, "last_price", 0) or 0)
+            prev = float(getattr(info, "previous_close", 0) or 0)
+            change = round(price - prev, 2) if prev else 0.0
+            change_pct = round((change / prev) * 100, 2) if prev else 0.0
+            if setter == "nifty":
+                nifty_price, nifty_change, nifty_change_pct = price, change, change_pct
+            else:
+                banknifty_price, banknifty_change, banknifty_change_pct = price, change, change_pct
+    except Exception as e:
+        logger.debug("Index price fetch failed: %s", e)
+
     return {
         "watchlist_count": watchlist_count,
         "active_trades": active_trades,
@@ -992,6 +1022,13 @@ async def api_overview(
         "mwa_bear_pct": float(latest_mwa.bear_pct) if latest_mwa and latest_mwa.bear_pct else 0,
         "win_rate": win_rate,
         "total_outcomes": total_outcomes,
+        "market_status": market_status,
+        "nifty_price": nifty_price,
+        "nifty_change": nifty_change,
+        "nifty_change_pct": nifty_change_pct,
+        "banknifty_price": banknifty_price,
+        "banknifty_change": banknifty_change,
+        "banknifty_change_pct": banknifty_change_pct,
     }
 
 

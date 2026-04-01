@@ -204,7 +204,21 @@ export interface OverviewData {
   active_trades_count: number;
   market_status: 'PRE' | 'LIVE' | 'POST' | 'CLOSED';
   nifty_price: number;
+  nifty_change: number;
+  nifty_change_pct: number;
   banknifty_price: number;
+  banknifty_change: number;
+  banknifty_change_pct: number;
+  mwa_direction: string;
+  // from backend overview endpoint
+  watchlist_count: number;
+  active_trades: number;
+  total_signals: number;
+  today_signals: number;
+  mwa_bull_pct: number;
+  mwa_bear_pct: number;
+  win_rate: number;
+  total_outcomes: number;
 }
 
 export interface NewsItem {

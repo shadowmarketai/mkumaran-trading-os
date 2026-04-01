@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { useOverview } from '../../hooks/useOverview';
 
 interface NavItem {
   to: string;
@@ -73,6 +74,8 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
+  const { market } = useOverview(60000);
+
   return (
     <>
       {/* Mobile overlay */}
@@ -138,7 +141,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
         {/* Market Status */}
         <div className="border-t border-trading-border">
-          <MarketStatusIndicator status="CLOSED" />
+          <MarketStatusIndicator status={market.market_status} />
         </div>
       </aside>
     </>
