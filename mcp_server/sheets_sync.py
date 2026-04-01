@@ -36,6 +36,18 @@ def _get_sheets_client():
         return None, None
 
 
+def _get_or_create_worksheet(sheet, tab_name: str, cols: int = 10, header: list = None):
+    """Get a worksheet by name, creating it if it doesn't exist."""
+    try:
+        return sheet.worksheet(tab_name)
+    except Exception:
+        ws = sheet.add_worksheet(title=tab_name, rows=1000, cols=cols)
+        if header:
+            ws.append_row(header)
+        logger.info("Created '%s' worksheet in Google Sheets", tab_name)
+        return ws
+
+
 def sync_watchlist(watchlist_items: list[dict]) -> bool:
     """
     Sync watchlist data to the WATCHLIST tab.
@@ -214,7 +226,10 @@ def log_mwa(mwa_data: dict) -> bool:
         return False
 
     try:
-        ws = sheet.worksheet("MWA LOG")
+        ws = _get_or_create_worksheet(
+            sheet, "MWA LOG", cols=6,
+            header=["Date", "Direction", "Bull Score", "Bear Score", "Bull %", "Bear %"],
+        )
 
         row = [
             mwa_data.get("score_date", str(date.today())),
