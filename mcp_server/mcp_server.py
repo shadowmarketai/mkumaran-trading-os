@@ -2083,6 +2083,82 @@ async def tool_check_signals():
     }
 
 
+@app.post("/tools/clear_sheets")
+async def tool_clear_sheets():
+    """Clear all Google Sheets data rows (keep headers) for a fresh start."""
+    from mcp_server.sheets_sync import _get_sheets_client
+
+    _, sheet = _get_sheets_client()
+    if not sheet:
+        return {"error": "Google Sheets not configured"}
+
+    cleared = []
+    errors = []
+
+    # All known tabs with their headers
+    tabs_headers = {
+        "Signals": [
+            "Signal ID", "Date", "Ticker", "Exchange", "Asset Class",
+            "Direction", "Entry Price", "Stop Loss", "Target", "RRR",
+            "Pattern", "Confidence", "Status", "Exit Price", "Exit Date",
+            "P&L %", "P&L Rs", "Result", "Notes",
+        ],
+        "SIGNALS": [
+            "Date", "Time", "Ticker", "Exchange", "Asset Class",
+            "Direction", "Pattern", "Entry", "SL", "Target",
+            "RRR", "Qty", "Risk Amt", "AI Confidence",
+            "TV Confirmed", "MWA Score", "Scanner Count", "Status",
+        ],
+        "SIGNALS_EQUITY": None,  # same as Signals
+        "SIGNALS_COMMODITY": None,
+        "SIGNALS_FNO": None,
+        "SIGNALS_FOREX": None,
+        "WATCHLIST": [
+            "Ticker", "Name", "Exchange", "Asset Class", "Timeframe",
+            "Tier", "LTRP", "Pivot High", "Active", "Source",
+            "Added By", "Notes",
+        ],
+        "ACCURACY": [
+            "Signal ID", "Ticker", "Exchange", "Asset Class",
+            "Direction", "Entry", "Exit", "Outcome", "P&L",
+            "Days Held", "Exit Reason",
+        ],
+        "MWA LOG": [
+            "Date", "Direction", "Bull Score", "Bear Score", "Bull %", "Bear %",
+        ],
+        "ACTIVE TRADES": [
+            "Ticker", "Exchange", "Asset Class", "Direction",
+            "Entry", "Target", "SL", "PRRR", "Current",
+            "CRRR", "P&L %", "Last Updated",
+        ],
+    }
+
+    # Default segment headers (same as Signals master)
+    segment_headers = [
+        "Signal ID", "Date", "Ticker", "Exchange", "Asset Class",
+        "Direction", "Entry Price", "Stop Loss", "Target", "RRR",
+        "Pattern", "Confidence", "Status", "Exit Price", "Exit Date",
+        "P&L %", "P&L Rs", "Result", "Notes",
+    ]
+
+    for tab_name, headers in tabs_headers.items():
+        try:
+            ws = sheet.worksheet(tab_name)
+            ws.clear()
+            h = headers if headers else segment_headers
+            ws.append_row(h)
+            cleared.append(tab_name)
+        except Exception as e:
+            errors.append(f"{tab_name}: {e}")
+
+    return {
+        "status": "ok",
+        "cleared_tabs": cleared,
+        "errors": errors,
+        "message": f"Cleared {len(cleared)} tabs, {len(errors)} errors",
+    }
+
+
 @app.post("/api/telegram_webhook")
 async def api_telegram_webhook(payload: dict):
     """
