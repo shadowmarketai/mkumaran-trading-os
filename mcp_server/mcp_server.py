@@ -2165,7 +2165,7 @@ async def api_tv_webhook(request: Request, payload: TVWebhookPayload):
                 f"AI Confidence: {confidence}% ({recommendation})\n"
                 f"Signal ID: {record_result.get('signal_id', 'N/A')}"
             )
-            await send_telegram_message(msg, exchange=exchange_str)
+            await send_telegram_message(msg, exchange=exchange_str, force=True)
         except Exception as e:
             logger.debug("Telegram notification skipped: %s", e)
     else:
