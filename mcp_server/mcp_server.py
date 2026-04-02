@@ -1,13 +1,13 @@
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import asdict
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Depends, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, case, text
@@ -28,12 +28,22 @@ from mcp_server.asset_registry import (
 
 logger = logging.getLogger(__name__)
 
+# ── Health tracking globals ──────────────────────────────────
+_server_start_time: datetime | None = None
+_last_mwa_scan_time: datetime | None = None
+_bot_app = None  # Telegram bot Application instance
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _server_start_time, _bot_app
+
     # Startup — configure structured logging
     from mcp_server.logging_config import setup_logging
     setup_logging()
+
+    _server_start_time = datetime.now()
+
     try:
         logger.info("Initializing database...")
         init_db()
@@ -51,8 +61,30 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Signal monitor startup skipped: %s", e)
 
+    # Start Telegram bot polling (so /health, /kitelogin commands work)
+    try:
+        from mcp_server.telegram_bot import create_bot_application
+        _bot_app = create_bot_application()
+        if _bot_app:
+            await _bot_app.initialize()
+            await _bot_app.start()
+            await _bot_app.updater.start_polling(drop_pending_updates=True)
+            logger.info("Telegram bot polling started")
+    except Exception as e:
+        logger.warning("Telegram bot polling startup skipped: %s", e)
+
     logger.info("MCP Server starting on %s:%s", settings.MCP_SERVER_HOST, settings.MCP_SERVER_PORT)
     yield
+    # Shutdown — stop Telegram bot
+    if _bot_app:
+        try:
+            await _bot_app.updater.stop()
+            await _bot_app.stop()
+            await _bot_app.shutdown()
+            logger.info("Telegram bot stopped")
+        except Exception as e:
+            logger.warning("Telegram bot shutdown error: %s", e)
+
     # Shutdown — cancel monitor task
     if monitor_task and not monitor_task.done():
         monitor_task.cancel()
@@ -89,6 +121,7 @@ AUTH_PUBLIC_PATHS = {
     "/auth/login", "/api/auth/login", "/api/info", "/health", "/docs",
     "/openapi.json", "/redoc",
     "/api/tv_webhook", "/api/telegram_webhook",
+    "/api/kite_callback", "/api/kite_login_url",
     # n8n workflow endpoints (read-only scan/data tools)
     "/tools/run_mwa_scan", "/tools/get_stock_data",
     "/tools/order_status", "/tools/get_fo_signal",
@@ -817,6 +850,9 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
 
     except Exception as e:
         logger.error("MWA signal generation failed: %s", e)
+
+    global _last_mwa_scan_time
+    _last_mwa_scan_time = datetime.now()
 
     return {
         "status": "ok",
@@ -1988,6 +2024,179 @@ async def tool_refresh_kite_token():
             "success": False,
             "message": f"Token refresh failed: {e}",
         }
+
+
+# ============================================================
+# Kite Manual Login (browser-based OAuth flow)
+# ============================================================
+
+
+@app.get("/api/kite_callback")
+async def api_kite_callback(request_token: str = Query(...)):
+    """Browser redirect callback from Kite Connect login.
+
+    User logs in at Kite → Kite redirects here with ?request_token=XXX
+    → we generate a session, cache the token, and show a success page.
+    """
+    try:
+        from mcp_server.kite_auth import handle_kite_callback
+        access_token = handle_kite_callback(request_token)
+
+        # Connect order manager to the fresh Kite instance
+        try:
+            from kiteconnect import KiteConnect
+            kite = KiteConnect(api_key=settings.KITE_API_KEY)
+            kite.set_access_token(access_token)
+            manager = _get_order_manager()
+            manager.kite = kite
+            logger.info("Order manager connected to Kite via manual login")
+        except Exception as e:
+            logger.warning("Order manager Kite connect skipped: %s", e)
+
+        # Reset Kite-failed-today flag so data provider retries Kite
+        try:
+            from mcp_server import data_provider
+            data_provider._kite_failed_today = False
+        except Exception:
+            pass
+
+        # Send Telegram confirmation
+        try:
+            from mcp_server.telegram_bot import send_telegram_message
+            import asyncio
+            asyncio.ensure_future(send_telegram_message(
+                "\u2705 Kite Login Successful\n"
+                f"Token cached at {datetime.now().strftime('%H:%M IST')}",
+                force=True,
+            ))
+        except Exception:
+            pass
+
+        return HTMLResponse(
+            "<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
+            "<h1>\u2705 Kite Login Successful</h1>"
+            "<p>Access token has been cached. You can close this window.</p>"
+            "<p style='color:#888;font-size:14px'>Token will be valid until end of day.</p>"
+            "</body></html>"
+        )
+    except Exception as e:
+        logger.error("Kite callback failed: %s", e)
+        return HTMLResponse(
+            "<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
+            f"<h1>\u274c Kite Login Failed</h1><p>{e}</p>"
+            "</body></html>",
+            status_code=500,
+        )
+
+
+@app.get("/api/kite_login_url")
+async def api_kite_login_url():
+    """Return the Kite Connect login URL for manual browser login."""
+    try:
+        from mcp_server.kite_auth import get_kite_login_url
+        url = get_kite_login_url()
+        return {
+            "login_url": url,
+            "instructions": "Open this URL in your browser, complete Zerodha 2FA, "
+                            "and the system will automatically capture the token.",
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ============================================================
+# System Health (for Telegram /health command)
+# ============================================================
+
+
+def get_system_health() -> dict:
+    """Collect comprehensive system health data for the /health command."""
+    health: dict = {}
+
+    # Uptime
+    if _server_start_time:
+        delta = datetime.now() - _server_start_time
+        hours, remainder = divmod(int(delta.total_seconds()), 3600)
+        minutes = remainder // 60
+        health["uptime"] = f"{hours}h {minutes}m"
+        health["server_ok"] = True
+    else:
+        health["uptime"] = "unknown"
+        health["server_ok"] = False
+
+    # Database
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        health["db_ok"] = True
+    except Exception:
+        health["db_ok"] = False
+
+    # Kite
+    health["kite_connected"] = bool(_order_manager and _order_manager.kite)
+
+    # Kite failed today flag
+    try:
+        from mcp_server import data_provider
+        health["kite_failed_today"] = getattr(data_provider, "_kite_failed_today", False)
+    except Exception:
+        health["kite_failed_today"] = False
+
+    # Market status
+    try:
+        from mcp_server.market_calendar import get_market_status
+        for exchange in ("NSE", "MCX", "CDS"):
+            ms = get_market_status(exchange)
+            health[f"market_{exchange.lower()}"] = ms.get("reason", "CLOSED")
+    except Exception:
+        health["market_nse"] = "UNKNOWN"
+
+    # Signal / trade counts
+    try:
+        db = SessionLocal()
+        health["open_signals"] = db.query(Signal).filter(Signal.status == "OPEN").count()
+        health["active_trades"] = db.query(ActiveTrade).count()
+        health["today_signals"] = db.query(Signal).filter(Signal.signal_date == date.today()).count()
+        db.close()
+    except Exception:
+        health["open_signals"] = 0
+        health["active_trades"] = 0
+        health["today_signals"] = 0
+
+    # Order manager status
+    try:
+        manager = _get_order_manager()
+        status = manager.get_status()
+        health["kill_switch"] = status.get("kill_switch_active", False)
+        health["daily_pnl"] = status.get("daily_pnl", 0)
+        health["paper_mode"] = status.get("paper_mode", False)
+    except Exception:
+        health["kill_switch"] = False
+        health["daily_pnl"] = 0
+        health["paper_mode"] = True
+
+    # MWA latest
+    try:
+        db = SessionLocal()
+        latest_mwa = db.query(MWAScore).order_by(desc(MWAScore.score_date)).first()
+        if latest_mwa:
+            health["mwa_direction"] = latest_mwa.direction
+            health["mwa_bull_pct"] = float(latest_mwa.bull_pct or 0)
+            health["mwa_bear_pct"] = float(latest_mwa.bear_pct or 0)
+        else:
+            health["mwa_direction"] = "N/A"
+        db.close()
+    except Exception:
+        health["mwa_direction"] = "N/A"
+
+    # Last MWA scan time
+    if _last_mwa_scan_time:
+        health["last_mwa_scan"] = _last_mwa_scan_time.strftime("%I:%M %p IST")
+    else:
+        health["last_mwa_scan"] = "Not run yet"
+
+    return health
 
 
 # ============================================================

@@ -193,6 +193,31 @@ def refresh_kite_token() -> str:
     return access_token
 
 
+def get_kite_login_url() -> str:
+    """Return the Kite Connect login URL for manual browser-based login."""
+    from kiteconnect import KiteConnect
+    kite = KiteConnect(api_key=settings.KITE_API_KEY)
+    return kite.login_url()
+
+
+def handle_kite_callback(request_token: str) -> str:
+    """Exchange a request_token from Kite redirect into an access_token.
+
+    This is the backend half of the manual login flow:
+    user logs in via browser → Kite redirects with request_token → this fn
+    generates a session and caches the access_token via _save_token().
+    """
+    from kiteconnect import KiteConnect
+    kite = KiteConnect(api_key=settings.KITE_API_KEY)
+    session_data = kite.generate_session(
+        request_token, api_secret=settings.KITE_API_SECRET,
+    )
+    access_token = session_data["access_token"]
+    _save_token(access_token, request_token)
+    logger.info("Kite manual login successful — token cached")
+    return access_token
+
+
 def get_authenticated_kite():
     """Get an authenticated KiteConnect instance."""
     from kiteconnect import KiteConnect

@@ -487,24 +487,33 @@ export default function OverviewPage() {
       {/* News Ticker */}
       <NewsWidget />
 
-      {/* Today's Signals */}
-      <div>
-        <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
-          Today's Signals
-        </h3>
-        {signals.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {signals.map((signal) => (
-              <SignalCard key={signal.id} signal={signal} />
-            ))}
+      {/* Today's Signals (exclude ones already shown in MWA Signal Cards) */}
+      {(() => {
+        const mwaIds = new Set(mwaSignals.map((s) => s.id));
+        const otherSignals = signals.filter((s) => !mwaIds.has(s.id));
+        return otherSignals.length > 0 ? (
+          <div>
+            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
+              Today's Signals
+            </h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {otherSignals.map((signal) => (
+                <SignalCard key={signal.id} signal={signal} />
+              ))}
+            </div>
           </div>
-        ) : (
-          <GlassCard className="text-center py-12">
-            <Zap size={32} className="mx-auto mb-2 text-slate-600" />
-            <p className="text-slate-500 text-sm">No signals generated yet today</p>
-          </GlassCard>
-        )}
-      </div>
+        ) : mwaSignals.length === 0 ? (
+          <div>
+            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
+              Today's Signals
+            </h3>
+            <GlassCard className="text-center py-12">
+              <Zap size={32} className="mx-auto mb-2 text-slate-600" />
+              <p className="text-slate-500 text-sm">No signals generated yet today</p>
+            </GlassCard>
+          </div>
+        ) : null;
+      })()}
     </motion.div>
   );
 }

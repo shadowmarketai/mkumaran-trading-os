@@ -46,6 +46,7 @@ class Settings:
     KITE_USER_ID: str = os.getenv("KITE_USER_ID", "")
     KITE_PASSWORD: str = os.getenv("KITE_PASSWORD", "")
     KITE_TOTP_KEY: str = os.getenv("KITE_TOTP_KEY", "")
+    KITE_REDIRECT_URL: str = os.getenv("KITE_REDIRECT_URL", "https://money.shadowmarket.ai/api/kite_callback")
 
     # Claude AI
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")

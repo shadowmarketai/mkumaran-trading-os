@@ -19,13 +19,15 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "\U0001f916 MKUMARAN Trading OS Bot\n\n"
         "Commands:\n"
+        "/health \u2014 Full system health report\n"
+        "/kitelogin \u2014 Get Kite login URL\n"
         "/add NSE:TICKER [timeframe] [ltrp=X pivot=Y] \u2014 Add to watchlist\n"
         "/remove NSE:TICKER \u2014 Remove from watchlist\n"
         "/pause NSE:TICKER \u2014 Pause alerts\n"
         "/resume NSE:TICKER \u2014 Resume alerts\n"
         "/watchlist [tier] \u2014 Show watchlist\n"
         "/close NSE:TICKER \u2014 Log trade exit\n"
-        "/status \u2014 System status"
+        "/status \u2014 Alias for /health"
     )
 
 
@@ -217,25 +219,91 @@ async def cmd_watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         db.close()
 
 
-async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /status command."""
-    db = SessionLocal()
+async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /health and /status commands — full system diagnostics."""
     try:
-        watchlist_count = db.query(Watchlist).filter(Watchlist.active == True).count()  # noqa: E712
+        from mcp_server.mcp_server import get_system_health
+        h = get_system_health()
 
-        status = f"""\U0001f916 MKUMARAN Trading OS
-\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-Status    : \U0001f7e2 Online
-Watchlist : {watchlist_count} active stocks
-MCP Server: http://localhost:8001
-Dashboard : http://localhost:3000"""
+        # Status indicators
+        server_icon = "\U0001f7e2" if h.get("server_ok") else "\U0001f534"
+        db_icon = "\U0001f7e2" if h.get("db_ok") else "\U0001f534"
+        kite_icon = "\U0001f7e2" if h.get("kite_connected") else "\U0001f534"
 
-        await update.message.reply_text(status)
+        # Market status line
+        market_parts = []
+        for ex in ("nse", "mcx", "cds"):
+            ms = h.get(f"market_{ex}", "UNKNOWN")
+            market_parts.append(f"{ex.upper()} {ms}")
+        market_line = " | ".join(market_parts)
+
+        # Kill switch
+        ks_text = "ON \u26a0\ufe0f" if h.get("kill_switch") else "OFF"
+        mode_text = "PAPER" if h.get("paper_mode") else "LIVE"
+
+        # MWA info
+        mwa_dir = h.get("mwa_direction", "N/A")
+        mwa_bull = h.get("mwa_bull_pct", 0)
+        mwa_bear = h.get("mwa_bear_pct", 0)
+
+        # Issues
+        issues = []
+        if not h.get("kite_connected"):
+            issues.append("\u2022 Kite not connected \u2014 use /kitelogin")
+        if h.get("kite_failed_today"):
+            issues.append("\u2022 Kite data failed today (using yfinance fallback)")
+        if h.get("kill_switch"):
+            issues.append("\u2022 Kill switch is ACTIVE \u2014 orders blocked")
+        if not h.get("db_ok"):
+            issues.append("\u2022 Database connection failed")
+
+        issues_block = ""
+        if issues:
+            issues_block = "\n\n\u26a0\ufe0f Issues Detected\n" + "\n".join(issues)
+
+        msg = (
+            f"\U0001f916 MKUMARAN Trading OS \u2014 Health Report\n"
+            f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+            f"{server_icon} Server     : Online (uptime: {h.get('uptime', '?')})\n"
+            f"{db_icon} Database   : {'Connected' if h.get('db_ok') else 'ERROR'}\n"
+            f"{kite_icon} Kite       : {'Connected' if h.get('kite_connected') else 'Not connected'}\n"
+            f"\U0001f7e2 Market     : {market_line}\n"
+            f"\n\U0001f4ca Trading Status\n"
+            f"  Mode          : {mode_text}\n"
+            f"  Open Signals  : {h.get('open_signals', 0)}\n"
+            f"  Active Trades : {h.get('active_trades', 0)}\n"
+            f"  Today Signals : {h.get('today_signals', 0)}\n"
+            f"  Kill Switch   : {ks_text}\n"
+            f"  Daily P&L     : {h.get('daily_pnl', 0)}\n"
+            f"\n\U0001f4c8 Last MWA Scan\n"
+            f"  Time      : {h.get('last_mwa_scan', 'N/A')}\n"
+            f"  Direction : {mwa_dir}\n"
+            f"  Bull/Bear : {mwa_bull}% / {mwa_bear}%"
+            f"{issues_block}"
+        )
+        await update.message.reply_text(msg)
 
     except Exception as e:
-        await update.message.reply_text(f"Status: \U0001f7e1 Degraded\nError: {e}")
-    finally:
-        db.close()
+        logger.error("Health command failed: %s", e)
+        await update.message.reply_text(f"\U0001f534 Health check failed: {e}")
+
+
+async def cmd_kitelogin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /kitelogin — send Kite login URL to user."""
+    try:
+        from mcp_server.kite_auth import get_kite_login_url
+        url = get_kite_login_url()
+        await update.message.reply_text(
+            "\U0001f510 Kite Manual Login\n"
+            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+            "1. Open this URL in your browser:\n\n"
+            f"{url}\n\n"
+            "2. Complete Zerodha login + 2FA\n"
+            "3. You'll see a success page when done\n"
+            "4. Run /health to verify Kite is connected"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"\u274c Kite login URL failed: {e}")
 
 
 async def cmd_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -301,13 +369,15 @@ def create_bot_application() -> Application:
     app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("health", cmd_health))
+    app.add_handler(CommandHandler("status", cmd_health))  # alias
+    app.add_handler(CommandHandler("kitelogin", cmd_kitelogin))
     app.add_handler(CommandHandler("add", cmd_add))
     app.add_handler(CommandHandler("remove", cmd_remove))
     app.add_handler(CommandHandler("pause", cmd_pause))
     app.add_handler(CommandHandler("resume", cmd_resume))
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
     app.add_handler(CommandHandler("close", cmd_close))
-    app.add_handler(CommandHandler("status", cmd_status))
 
-    logger.info("Telegram bot configured with 8 command handlers")
+    logger.info("Telegram bot configured with 10 command handlers")
     return app
