@@ -101,7 +101,7 @@ export interface ActiveTrade {
   crrr: number;
   last_updated: string;
   alert_sent: boolean;
-  direction: 'LONG' | 'SHORT';
+  direction: 'LONG' | 'SHORT' | 'BUY' | 'SELL';
   pnl_pct: number;
 }
 
