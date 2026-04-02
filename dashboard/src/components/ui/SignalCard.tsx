@@ -47,7 +47,7 @@ export default function SignalCard({ signal }: SignalCardProps) {
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  const isLong = signal.direction === 'LONG';
+  const isLong = signal.direction === 'LONG' || signal.direction === 'BUY';
   const directionColor = isLong ? 'text-trading-bull' : 'text-trading-bear';
   const directionBg = isLong ? 'bg-trading-bull/10' : 'bg-trading-bear/10';
   const directionBorder = isLong ? 'border-trading-bull/20' : 'border-trading-bear/20';

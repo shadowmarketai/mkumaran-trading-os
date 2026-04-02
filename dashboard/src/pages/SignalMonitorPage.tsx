@@ -75,8 +75,8 @@ export default function SignalMonitorPage() {
   }
 
   const totalOpen = openSignals.length;
-  const longCount = openSignals.filter((s) => s.direction === 'LONG').length;
-  const shortCount = openSignals.filter((s) => s.direction === 'SHORT').length;
+  const longCount = openSignals.filter((s) => s.direction === 'LONG' || s.direction === 'BUY').length;
+  const shortCount = openSignals.filter((s) => s.direction === 'SHORT' || s.direction === 'SELL').length;
 
   return (
     <motion.div
@@ -210,7 +210,7 @@ export default function SignalMonitorPage() {
               </thead>
               <tbody className="divide-y divide-trading-border/50">
                 {openSignals.map((sig, idx) => {
-                  const isLong = sig.direction === 'LONG';
+                  const isLong = sig.direction === 'LONG' || sig.direction === 'BUY';
                   const confidencePct = Math.round(sig.ai_confidence * 100);
                   return (
                     <motion.tr

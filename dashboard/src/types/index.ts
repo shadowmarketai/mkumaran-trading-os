@@ -34,7 +34,7 @@ export interface Signal {
   exchange: string;
   asset_class: string;
   timeframe: string;
-  direction: 'LONG' | 'SHORT';
+  direction: 'LONG' | 'SHORT' | 'BUY' | 'SELL';
   pattern: string;
   entry_price: number;
   stop_loss: number;

@@ -19,7 +19,7 @@ import { useTrades } from '../hooks/useTrades';
 import type { ActiveTrade } from '../types';
 
 function getProgressValues(trade: ActiveTrade): { current: number; min: number; max: number } {
-  if (trade.direction === 'LONG') {
+  if (trade.direction === 'LONG' || trade.direction === 'BUY') {
     return { current: trade.current_price, min: trade.stop_loss, max: trade.target };
   }
   return { current: trade.current_price, min: trade.target, max: trade.stop_loss };
@@ -160,10 +160,10 @@ export default function ActiveTradesPage() {
                     <td className="py-3 px-2 text-center">
                       <div className={cn(
                         'inline-flex items-center gap-0.5 text-xs font-bold',
-                        trade.direction === 'LONG' ? 'text-trading-bull' : 'text-trading-bear'
+                        (trade.direction === 'LONG' || trade.direction === 'BUY') ? 'text-trading-bull' : 'text-trading-bear'
                       )}>
-                        {trade.direction === 'LONG' ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                        {trade.direction === 'LONG' ? 'L' : 'S'}
+                        {(trade.direction === 'LONG' || trade.direction === 'BUY') ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                        {(trade.direction === 'LONG' || trade.direction === 'BUY') ? 'L' : 'S'}
                       </div>
                     </td>
                     <td className="py-3 px-2 text-right font-mono text-slate-300">
