@@ -673,7 +673,15 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
             scanner_results=raw_results,
         )
 
+        # Market hours gate: skip signal cards for exchanges that are closed
+        from mcp_server.market_calendar import is_market_open as _is_mkt_open
+
         for sig in mwa_signals:
+            sig_exchange = sig.get("exchange", "NSE")
+            if not _is_mkt_open(sig_exchange):
+                logger.info("MWA signal %s skipped: %s market closed", sig["ticker"], sig_exchange)
+                continue
+
             # Build pre_confidence from scanner count + MWA alignment
             pre_confidence = 50 + min(sig["scanner_count"] * 3, 15)
             if (score["direction"] in ("BULL", "MILD_BULL") and sig["direction"] == "LONG") or \
@@ -708,7 +716,7 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
             # Record signal to DB + Sheets
             signal_data = {
                 "ticker": sig["ticker"],
-                "direction": "BUY" if sig["direction"] == "LONG" else "SELL",
+                "direction": sig["direction"],
                 "entry_price": sig["entry"], "stop_loss": sig["sl"], "target": sig["target"],
                 "rrr": sig["rrr"], "qty": sig["qty"],
                 "pattern": "MWA Scan", "confidence": confidence,
@@ -732,7 +740,7 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
                     ticker=sig["ticker"],
                     exchange=sig["exchange"],
                     asset_class=sig["asset_class"],
-                    direction="BUY" if sig["direction"] == "LONG" else "SELL",
+                    direction=sig["direction"],
                     pattern="MWA Scan",
                     entry_price=sig["entry"],
                     stop_loss=sig["sl"],
@@ -2083,6 +2091,13 @@ async def tool_check_signals():
     }
 
 
+@app.post("/tools/pretrade_check")
+async def tool_pretrade_check(signal_id: int = Query(...), db: Session = Depends(get_db)):
+    """Run 10 automated pre-trade checks for a signal."""
+    from mcp_server.pretrade_check import run_pretrade_checks
+    return run_pretrade_checks(signal_id, db)
+
+
 @app.post("/tools/clear_sheets")
 async def tool_clear_sheets():
     """Clear all Google Sheets data rows (keep headers) for a fresh start."""
@@ -2351,7 +2366,7 @@ async def api_tv_webhook(request: Request, payload: TVWebhookPayload):
     asset_class_str = get_asset_class(ticker).value
     signal_data = {
         "ticker": ticker,
-        "direction": "BUY" if direction == "LONG" else "SELL",
+        "direction": direction,
         "entry_price": payload.entry,
         "stop_loss": payload.sl,
         "target": payload.target,
@@ -2374,7 +2389,7 @@ async def api_tv_webhook(request: Request, payload: TVWebhookPayload):
         _tv_memory_store.add_record(TradeRecord(
             signal_id=record_result.get("signal_id", f"tv_{ticker}_{date.today().isoformat()}"),
             ticker=ticker,
-            direction="BUY" if direction == "LONG" else "SELL",
+            direction=direction,
             pattern="RRMS (TradingView)",
             entry_price=payload.entry,
             stop_loss=payload.sl,

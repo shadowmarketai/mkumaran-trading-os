@@ -1,7 +1,12 @@
-import { motion } from 'framer-motion';
-import { ArrowUpRight, ArrowDownRight, Brain, CheckCircle2, XCircle } from 'lucide-react';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ArrowUpRight, ArrowDownRight, Brain, CheckCircle2, XCircle,
+  ShieldCheck, Loader2, AlertTriangle, ChevronDown, ChevronUp,
+} from 'lucide-react';
 import { cn } from '../../lib/utils';
-import type { Signal } from '../../types';
+import type { Signal, PreTradeResult } from '../../types';
+import { signalApi } from '../../services/api';
 import StatusBadge from './StatusBadge';
 
 const EXCHANGE_COLORS: Record<string, string> = {
@@ -10,6 +15,18 @@ const EXCHANGE_COLORS: Record<string, string> = {
   MCX: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
   NFO: 'bg-purple-500/15 text-purple-400 border-purple-500/20',
   CDS: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
+};
+
+const VERDICT_STYLES: Record<string, string> = {
+  GO: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  CAUTION: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  BLOCK: 'bg-red-500/20 text-red-400 border-red-500/30',
+};
+
+const STATUS_ICON: Record<string, { icon: typeof CheckCircle2; color: string }> = {
+  PASS: { icon: CheckCircle2, color: 'text-emerald-400' },
+  WARN: { icon: AlertTriangle, color: 'text-amber-400' },
+  FAIL: { icon: XCircle, color: 'text-red-400' },
 };
 
 function ExchangeBadge({ exchange }: { exchange: string }) {
@@ -26,11 +43,39 @@ interface SignalCardProps {
 }
 
 export default function SignalCard({ signal }: SignalCardProps) {
+  const [pretradeResult, setPretradeResult] = useState<PreTradeResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
   const isLong = signal.direction === 'LONG';
   const directionColor = isLong ? 'text-trading-bull' : 'text-trading-bear';
   const directionBg = isLong ? 'bg-trading-bull/10' : 'bg-trading-bear/10';
   const directionBorder = isLong ? 'border-trading-bull/20' : 'border-trading-bear/20';
   const confidencePct = Math.round(signal.ai_confidence * 100);
+  const isOpen = signal.status === 'OPEN';
+
+  const runPretradeCheck = async () => {
+    setLoading(true);
+    try {
+      const result = await signalApi.pretradeCheck(signal.id);
+      setPretradeResult(result);
+      setExpanded(true);
+    } catch {
+      setPretradeResult({
+        signal_id: signal.id,
+        ticker: signal.ticker,
+        direction: signal.direction,
+        verdict: 'BLOCK',
+        checks: [{ name: 'Error', status: 'FAIL', detail: 'Failed to run pre-trade checks' }],
+        pass_count: 0,
+        warn_count: 0,
+        fail_count: 1,
+      });
+      setExpanded(true);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <motion.div
@@ -115,6 +160,92 @@ export default function SignalCard({ signal }: SignalCardProps) {
           <span className="text-[10px] font-mono text-trading-ai-light">{confidencePct}%</span>
         </div>
       </div>
+
+      {/* Pre-Trade Check Button — only for OPEN signals */}
+      {isOpen && (
+        <div className="pt-1 border-t border-slate-700/50">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={runPretradeCheck}
+              disabled={loading}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all',
+                'bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 hover:text-white border border-slate-600/50',
+                loading && 'opacity-60 cursor-not-allowed'
+              )}
+            >
+              {loading ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <ShieldCheck size={13} />
+              )}
+              {loading ? 'Checking...' : 'Pre-Trade Check'}
+            </button>
+
+            {/* Verdict badge (shown after check) */}
+            {pretradeResult && (
+              <>
+                <span
+                  className={cn(
+                    'px-2 py-0.5 rounded text-xs font-bold border',
+                    VERDICT_STYLES[pretradeResult.verdict] || VERDICT_STYLES.BLOCK
+                  )}
+                >
+                  {pretradeResult.verdict}
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  {pretradeResult.pass_count}P / {pretradeResult.warn_count}W / {pretradeResult.fail_count}F
+                </span>
+                <button
+                  onClick={() => setExpanded(!expanded)}
+                  className="ml-auto text-slate-400 hover:text-white transition-colors"
+                >
+                  {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Expandable results panel */}
+          <AnimatePresence>
+            {expanded && pretradeResult && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-2 space-y-1">
+                  {pretradeResult.checks.map((check) => {
+                    const { icon: Icon, color } = STATUS_ICON[check.status] || STATUS_ICON.FAIL;
+                    return (
+                      <div
+                        key={check.name}
+                        className="flex items-start gap-2 px-2 py-1.5 rounded bg-slate-800/40"
+                      >
+                        <Icon size={13} className={cn('mt-0.5 flex-shrink-0', color)} />
+                        <div className="min-w-0">
+                          <span className="text-xs font-medium text-slate-300">{check.name}</span>
+                          <p className="text-[10px] text-slate-500 truncate">{check.detail}</p>
+                        </div>
+                        <span
+                          className={cn(
+                            'ml-auto text-[10px] font-bold flex-shrink-0',
+                            color
+                          )}
+                        >
+                          {check.status}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
     </motion.div>
   );
 }

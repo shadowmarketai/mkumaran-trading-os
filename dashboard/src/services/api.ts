@@ -21,6 +21,7 @@ import type {
   OrderStatus,
   MWASignalCard,
   CheckSignalsResult,
+  PreTradeResult,
 } from '../types';
 
 const api = axios.create({
@@ -68,6 +69,11 @@ export const overviewApi = {
 export const signalApi = {
   getSignals: (limit = 50, filter?: SegmentFilter) =>
     api.get<Signal[]>('/signals', { params: { limit, ...filter } }).then((r) => r.data),
+  pretradeCheck: (signalId: number) =>
+    toolsApi.post<PreTradeResult>('/tools/pretrade_check', null, {
+      params: { signal_id: signalId },
+      timeout: 30000,
+    }).then((r) => r.data),
 };
 
 export const tradeApi = {

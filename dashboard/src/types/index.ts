@@ -326,6 +326,25 @@ export interface OrderStatus {
   positions: PaperPosition[];
 }
 
+// ── Pre-Trade Checklist ──────────────────────────────────────
+export interface PreTradeCheck {
+  name: string;
+  status: 'PASS' | 'WARN' | 'FAIL';
+  detail: string;
+}
+
+export interface PreTradeResult {
+  signal_id: number;
+  ticker: string;
+  direction: string;
+  verdict: 'GO' | 'CAUTION' | 'BLOCK';
+  checks: PreTradeCheck[];
+  pass_count: number;
+  warn_count: number;
+  fail_count: number;
+  error?: string;
+}
+
 export type MarketDirection = 'BULL' | 'BEAR' | 'SIDEWAYS' | 'MILD_BULL' | 'MILD_BEAR';
 export type TradeStatus = 'OPEN' | 'WIN' | 'LOSS' | 'EXPIRED';
 export type SectorStrength = 'STRONG' | 'NEUTRAL' | 'WEAK';
