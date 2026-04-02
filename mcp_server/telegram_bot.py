@@ -21,6 +21,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Commands:\n"
         "/health \u2014 Full system health report\n"
         "/kitelogin \u2014 Get Kite login URL\n"
+        "/gwclogin \u2014 Get GWC (Goodwill) login URL\n"
         "/add NSE:TICKER [timeframe] [ltrp=X pivot=Y] \u2014 Add to watchlist\n"
         "/remove NSE:TICKER \u2014 Remove from watchlist\n"
         "/pause NSE:TICKER \u2014 Pause alerts\n"
@@ -229,6 +230,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         server_icon = "\U0001f7e2" if h.get("server_ok") else "\U0001f534"
         db_icon = "\U0001f7e2" if h.get("db_ok") else "\U0001f534"
         kite_icon = "\U0001f7e2" if h.get("kite_connected") else "\U0001f534"
+        gwc_icon = "\U0001f7e2" if h.get("gwc_connected") else "\U0001f534"
 
         # Market status line
         market_parts = []
@@ -250,6 +252,8 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         issues = []
         if not h.get("kite_connected"):
             issues.append("\u2022 Kite not connected \u2014 use /kitelogin")
+        if not h.get("gwc_connected"):
+            issues.append("\u2022 GWC not connected \u2014 use /gwclogin")
         if h.get("kite_failed_today"):
             issues.append("\u2022 Kite data failed today (using yfinance fallback)")
         if h.get("kill_switch"):
@@ -267,6 +271,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             f"{server_icon} Server     : Online (uptime: {h.get('uptime', '?')})\n"
             f"{db_icon} Database   : {'Connected' if h.get('db_ok') else 'ERROR'}\n"
             f"{kite_icon} Kite       : {'Connected' if h.get('kite_connected') else 'Not connected'}\n"
+            f"{gwc_icon} GWC        : {'Connected' if h.get('gwc_connected') else 'Not connected'}\n"
             f"\U0001f7e2 Market     : {market_line}\n"
             f"\n\U0001f4ca Trading Status\n"
             f"  Mode          : {mode_text}\n"
@@ -304,6 +309,30 @@ async def cmd_kitelogin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
     except Exception as e:
         await update.message.reply_text(f"\u274c Kite login URL failed: {e}")
+
+
+async def cmd_gwclogin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /gwclogin — send GWC OAuth login URL to user."""
+    try:
+        if not settings.GWC_API_KEY:
+            await update.message.reply_text(
+                "\u26a0\ufe0f GWC_API_KEY not configured.\n"
+                "Set GWC_API_KEY, GWC_API_SECRET, GWC_CLIENT_ID in Coolify env vars first."
+            )
+            return
+
+        login_url = f"https://api.gwcindia.in/v1/login?api_key={settings.GWC_API_KEY}"
+        await update.message.reply_text(
+            "\U0001f510 GWC (Goodwill) Manual Login\n"
+            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+            "1. Open this URL in your browser:\n\n"
+            f"{login_url}\n\n"
+            "2. Complete Goodwill login + 2FA\n"
+            "3. You'll be redirected to a success page\n"
+            "4. Run /health to verify GWC is connected"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"\u274c GWC login URL failed: {e}")
 
 
 async def cmd_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -372,6 +401,7 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("status", cmd_health))  # alias
     app.add_handler(CommandHandler("kitelogin", cmd_kitelogin))
+    app.add_handler(CommandHandler("gwclogin", cmd_gwclogin))
     app.add_handler(CommandHandler("add", cmd_add))
     app.add_handler(CommandHandler("remove", cmd_remove))
     app.add_handler(CommandHandler("pause", cmd_pause))
@@ -379,5 +409,5 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
     app.add_handler(CommandHandler("close", cmd_close))
 
-    logger.info("Telegram bot configured with 10 command handlers")
+    logger.info("Telegram bot configured with 11 command handlers")
     return app

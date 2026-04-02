@@ -80,7 +80,9 @@ def monitor_open_signals() -> list[dict]:
             return results
 
         # Fetch live prices for each signal
-        from mcp_server.data_provider import get_stock_data
+        from mcp_server.data_provider import get_provider, get_stock_data
+
+        provider = get_provider()
 
         for sig in open_signals:
             try:
@@ -93,12 +95,16 @@ def monitor_open_signals() -> list[dict]:
                 else:
                     fetch_ticker = f"{exchange}:{ticker_raw}"
 
-                df = get_stock_data(fetch_ticker, period="1d", interval="1d", force_refresh=True)
-                if df is None or df.empty:
-                    logger.debug("Monitor: no data for %s", fetch_ticker)
-                    continue
-
-                current_price = float(df["close"].iloc[-1])
+                # Try live LTP first (Goodwill → NSE → Angel), fall back to OHLCV
+                ltp = provider.get_ltp(fetch_ticker)
+                if ltp and ltp > 0:
+                    current_price = ltp
+                else:
+                    df = get_stock_data(fetch_ticker, period="1d", interval="1d", force_refresh=True)
+                    if df is None or df.empty:
+                        logger.debug("Monitor: no data for %s", fetch_ticker)
+                        continue
+                    current_price = float(df["close"].iloc[-1])
                 entry_price = float(sig.entry_price or 0)
                 stop_loss = float(sig.stop_loss or 0)
                 target = float(sig.target or 0)

@@ -34,6 +34,7 @@ import pandas as pd
 import pyotp
 import yfinance as yf
 from datetime import datetime, timedelta, date
+from pathlib import Path
 from typing import Optional, Dict
 from functools import wraps
 
@@ -300,22 +301,27 @@ class NSESource:
 class GoodwillSource:
 
     BASE = "https://api.gwcindia.in/v1"
+    GIGA_BASE = "https://giga.gwcindia.in"
 
     def __init__(self):
-        self.api_key = os.environ.get("GOODWILL_API_KEY", "")
+        self.api_key = settings.GWC_API_KEY or os.environ.get("GOODWILL_API_KEY", "")
+        self.api_secret = settings.GWC_API_SECRET
+        self.client_id = settings.GWC_CLIENT_ID or os.environ.get("GOODWILL_CLIENT_ID", "")
         self.access_token = None
         self.session = requests.Session()
         self.logged_in = False
+        self._token_map: dict[str, str] = {}  # SYMBOL -> numeric token
+        self._token_map_date: str | None = None
 
     def login(self) -> bool:
         if not self.api_key:
-            logger.warning("GOODWILL_API_KEY not set — skipping Goodwill login")
+            logger.warning("GWC_API_KEY not set — skipping Goodwill login")
             return False
         try:
             totp = pyotp.TOTP(os.environ["GOODWILL_TOTP_KEY"]).now()
             resp = requests.post(f"{self.BASE}/login", json={
-                "client_id": os.environ["GOODWILL_CLIENT_ID"],
-                "password": os.environ["GOODWILL_PASSWORD"],
+                "client_id": self.client_id,
+                "password": os.environ.get("GOODWILL_PASSWORD", ""),
                 "totp": totp,
             }, headers={"x-api-key": self.api_key}, timeout=10)
             data = resp.json()
@@ -329,18 +335,108 @@ class GoodwillSource:
             logger.warning("Goodwill login error: %s", e)
         return False
 
+    def set_access_token(self, token: str) -> None:
+        """Inject access token from OAuth callback (no TOTP needed)."""
+        self.access_token = token
+        self.logged_in = True
+        logger.info("Goodwill access token set via OAuth callback")
+
     def _headers(self) -> dict:
         return {
             "x-api-key": self.api_key,
             "Authorization": f"Bearer {self.access_token}",
         }
 
+    # ── Instrument Token Map ────────────────────────────────────
+
+    def _load_token_map(self) -> None:
+        """Download NSE symbol→token map from GWC (daily reload)."""
+        today = str(date.today())
+        if self._token_map_date == today and self._token_map:
+            return
+
+        cache_path = Path("data/gwc_instruments.json")
+
+        # Try loading from local cache first
+        if cache_path.exists():
+            try:
+                cached = json.loads(cache_path.read_text())
+                if cached.get("date") == today:
+                    self._token_map = cached.get("map", {})
+                    self._token_map_date = today
+                    logger.info("GWC token map loaded from cache: %d symbols", len(self._token_map))
+                    return
+            except Exception:
+                pass
+
+        # Download fresh from GWC
+        try:
+            import zipfile
+            from io import BytesIO
+            resp = requests.get(f"{self.GIGA_BASE}/NSE_symbols.txt.zip", timeout=15)
+            resp.raise_for_status()
+            with zipfile.ZipFile(BytesIO(resp.content)) as zf:
+                for name in zf.namelist():
+                    if name.endswith(".txt"):
+                        lines = zf.read(name).decode("utf-8").strip().split("\n")
+                        break
+                else:
+                    lines = []
+
+            token_map = {}
+            for line in lines[1:]:  # skip header
+                parts = line.strip().split(",")
+                if len(parts) >= 2:
+                    # Format: token,symbol,...
+                    token_map[parts[1].strip().upper()] = parts[0].strip()
+
+            if token_map:
+                self._token_map = token_map
+                self._token_map_date = today
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_text(json.dumps({"date": today, "map": token_map}))
+                logger.info("GWC token map downloaded: %d symbols", len(token_map))
+        except Exception as e:
+            logger.warning("GWC token map download failed: %s", e)
+
+    def _resolve_gwc_token(self, symbol: str) -> str | None:
+        """Resolve symbol to GWC numeric token."""
+        self._load_token_map()
+        token = self._token_map.get(symbol.upper())
+        if token:
+            return token
+
+        # Fallback: fetch individual symbol
+        if not self.logged_in:
+            return None
+        try:
+            resp = self.session.post(
+                f"{self.BASE}/fetchsymbol",
+                headers=self._headers(),
+                json={"s": symbol.upper()},
+                timeout=10,
+            )
+            data = resp.json()
+            if data.get("status") == "success" and data.get("data"):
+                tok = str(data["data"][0].get("token", ""))
+                if tok:
+                    self._token_map[symbol.upper()] = tok
+                    return tok
+        except Exception as e:
+            logger.debug("GWC fetchsymbol failed for %s: %s", symbol, e)
+        return None
+
+    # ── Quote ───────────────────────────────────────────────────
+
     @retry(max_attempts=2, delay=1.0)
     def get_quote(self, exchange: str, symbol: str) -> dict:
-        resp = self.session.get(
-            f"{self.BASE}/getQuote",
+        token = self._resolve_gwc_token(symbol)
+        if not token:
+            return {}
+        resp = self.session.post(
+            f"{self.BASE}/getquote",
             headers=self._headers(),
-            params={"exchange": exchange, "symbol": symbol},
+            json={"exchange": exchange, "token": token},
             timeout=10,
         )
         data = resp.json()
@@ -350,13 +446,13 @@ class GoodwillSource:
                 "symbol": symbol,
                 "exchange": exchange,
                 "source": "GOODWILL",
-                "ltp": float(d.get("lp", 0)),
-                "open": float(d.get("o", 0)),
-                "high": float(d.get("h", 0)),
-                "low": float(d.get("l", 0)),
-                "prev_close": float(d.get("c", 0)),
-                "volume": int(d.get("v", 0)),
-                "pct_change": float(d.get("pChange", 0)),
+                "ltp": float(d.get("ltp", d.get("lp", 0))),
+                "open": float(d.get("open", d.get("o", 0))),
+                "high": float(d.get("high", d.get("h", 0))),
+                "low": float(d.get("low", d.get("l", 0))),
+                "prev_close": float(d.get("close", d.get("c", 0))),
+                "volume": int(d.get("volume", d.get("v", 0))),
+                "pct_change": float(d.get("pct_change", d.get("pChange", 0))),
             }
         return {}
 
@@ -499,12 +595,13 @@ class AngelSource:
     @retry(max_attempts=3, delay=1.0)
     def get_historical(self, symbol: str,
                        interval: str = "day",
-                       days: int = 60) -> pd.DataFrame:
+                       days: int = 60,
+                       exchange: str = "NSE") -> pd.DataFrame:
         """Historical OHLCV — best free source."""
         if not self.logged_in:
             return pd.DataFrame()
 
-        token = self._get_token(symbol)
+        token = self._get_token(symbol, exchange)
         if not token:
             logger.warning("Angel: no token found for %s", symbol)
             return pd.DataFrame()
@@ -513,7 +610,7 @@ class AngelSource:
         to_dt = datetime.now().strftime("%Y-%m-%d %H:%M")
 
         data = self.client.getCandleData({
-            "exchange": "NSE",
+            "exchange": exchange,
             "symboltoken": token,
             "interval": self.INTERVAL_MAP.get(interval, "ONE_DAY"),
             "fromdate": from_dt,
@@ -530,11 +627,11 @@ class AngelSource:
         return df
 
     @retry(max_attempts=2, delay=1.0)
-    def get_quote(self, symbol: str) -> dict:
+    def get_quote(self, symbol: str, exchange: str = "NSE") -> dict:
         if not self.logged_in:
             return {}
         try:
-            data = self.client.ltpData("NSE", symbol, self._get_token(symbol))
+            data = self.client.ltpData(exchange, symbol, self._get_token(symbol, exchange))
             ltp = data["data"]["ltp"] if data else 0
             return {"symbol": symbol, "source": "ANGEL", "ltp": ltp}
         except Exception:
@@ -742,12 +839,13 @@ class MarketDataProvider:
 
     def get_ohlcv(self, symbol: str,
                   interval: str = "day",
-                  days: int = 60) -> pd.DataFrame:
+                  days: int = 60,
+                  exchange: str = "NSE") -> pd.DataFrame:
         """
         Get OHLCV candle data from best available source.
         Priority: Angel → NSE India → Upstox → Dhan
         """
-        cache_key = f"{symbol}_{interval}_{days}"
+        cache_key = f"{symbol}_{interval}_{days}_{exchange}"
         if cache_key in self._hist_cache:
             df, ts = self._hist_cache[cache_key]
             if (time.time() - ts) < self._hist_ttl and not df.empty:
@@ -755,34 +853,35 @@ class MarketDataProvider:
 
         symbol_clean = symbol.replace("NSE:", "").replace("BSE:", "")
 
-        # 1. Angel SmartAPI
+        # 1. Angel SmartAPI (supports all segments: NSE/BSE/NFO/MCX/CDS/BFO)
         if self._sources["angel"]:
-            df = self.angel.get_historical(symbol_clean, interval, days)
+            df = self.angel.get_historical(symbol_clean, interval, days, exchange=exchange)
             if not df.empty:
                 self._hist_cache[cache_key] = (df, time.time())
                 return df
             logger.warning("Angel OHLCV failed for %s, trying NSE...", symbol_clean)
 
-        # 2. NSE India free
-        try:
-            from_dt = (datetime.now() - timedelta(days=days)).strftime("%d-%m-%Y")
-            to_dt = datetime.now().strftime("%d-%m-%Y")
-            df = self.nse.get_historical(symbol_clean, from_dt, to_dt)
-            if not df.empty:
-                self._hist_cache[cache_key] = (df, time.time())
-                return df
-        except Exception as e:
-            logger.warning("NSE historical failed for %s: %s", symbol_clean, e)
+        # 2. NSE India free (equity only)
+        if exchange in ("NSE", "BSE"):
+            try:
+                from_dt = (datetime.now() - timedelta(days=days)).strftime("%d-%m-%Y")
+                to_dt = datetime.now().strftime("%d-%m-%Y")
+                df = self.nse.get_historical(symbol_clean, from_dt, to_dt)
+                if not df.empty:
+                    self._hist_cache[cache_key] = (df, time.time())
+                    return df
+            except Exception as e:
+                logger.warning("NSE historical failed for %s: %s", symbol_clean, e)
 
-        # 3. Upstox
-        if self._sources["upstox"]:
+        # 3. Upstox (equity only)
+        if self._sources["upstox"] and exchange in ("NSE", "BSE"):
             df = self.upstox.get_historical(symbol_clean, interval, days)
             if not df.empty:
                 self._hist_cache[cache_key] = (df, time.time())
                 return df
 
-        # 4. Dhan
-        if self._sources["dhan"] and interval == "day":
+        # 4. Dhan (equity only)
+        if self._sources["dhan"] and interval == "day" and exchange in ("NSE", "BSE"):
             df = self.dhan.get_historical(symbol_clean, interval, days)
             if not df.empty:
                 self._hist_cache[cache_key] = (df, time.time())
@@ -794,10 +893,10 @@ class MarketDataProvider:
     # ── Live Quote ───────────────────────────────────────────────
 
     def get_quote(self, symbol: str, exchange: str = "NSE") -> dict:
-        """Live quote. Priority: Goodwill → NSE India → Angel."""
+        """Live quote. Priority: Angel → Goodwill → NSE India."""
         symbol_clean = symbol.replace("NSE:", "").replace("BSE:", "")
 
-        cache_key = f"quote_{symbol_clean}"
+        cache_key = f"quote_{symbol_clean}_{exchange}"
         if cache_key in self._quote_cache:
             q, ts = self._quote_cache[cache_key]
             if (time.time() - ts) < self._cache_ttl:
@@ -805,21 +904,24 @@ class MarketDataProvider:
 
         quote = {}
 
-        if self._sources["gwc"]:
+        # 1. Angel SmartAPI (supports all segments)
+        if self._sources["angel"]:
+            try:
+                quote = self.angel.get_quote(symbol_clean, exchange=exchange)
+            except Exception:
+                pass
+
+        # 2. Goodwill
+        if not quote.get("ltp") and self._sources["gwc"]:
             try:
                 quote = self.gwc.get_quote(exchange, symbol_clean)
             except Exception:
                 pass
 
-        if not quote.get("ltp"):
+        # 3. NSE India (equity only)
+        if not quote.get("ltp") and exchange in ("NSE", "BSE"):
             try:
                 quote = self.nse.get_quote(symbol_clean)
-            except Exception:
-                pass
-
-        if not quote.get("ltp") and self._sources["angel"]:
-            try:
-                quote = self.angel.get_quote(symbol_clean)
             except Exception:
                 pass
 
@@ -828,7 +930,11 @@ class MarketDataProvider:
         return quote
 
     def get_ltp(self, symbol: str) -> float:
-        return self.get_quote(symbol).get("ltp", 0.0)
+        exchange = "NSE"
+        symbol_clean = symbol
+        if ":" in symbol:
+            exchange, symbol_clean = symbol.split(":", 1)
+        return self.get_quote(symbol_clean, exchange=exchange).get("ltp", 0.0)
 
     # ── India-Specific Data (NSE only) ───────────────────────────
 
@@ -1200,11 +1306,13 @@ def get_stock_data(
     }
     provider_interval = _interval_to_provider.get(interval, "day")
 
-    # Only use multi-source for NSE/BSE equity (Angel/NSE India sources are equity-only)
-    if not exchange_part or exchange_part in ("NSE", "BSE"):
+    # Use multi-source provider for all Angel-supported exchanges
+    angel_exchanges = ("NSE", "BSE", "NFO", "MCX", "CDS", "BFO")
+    if not exchange_part or exchange_part in angel_exchanges:
         try:
             provider = get_provider()
-            df = provider.get_ohlcv(symbol_clean, interval=provider_interval, days=days)
+            df = provider.get_ohlcv(symbol_clean, interval=provider_interval,
+                                    days=days, exchange=exchange_part or "NSE")
             if not df.empty:
                 # Normalize: ensure index-based format matching old behavior
                 if "date" in df.columns:

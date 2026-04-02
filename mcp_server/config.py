@@ -88,6 +88,12 @@ class Settings:
     NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
     NEWS_POLL_INTERVAL_MINUTES: int = int(os.getenv("NEWS_POLL_INTERVAL_MINUTES", "30"))
 
+    # Goodwill Connect (GWC) — OAuth broker API
+    GWC_API_KEY: str = os.getenv("GWC_API_KEY", "")
+    GWC_API_SECRET: str = os.getenv("GWC_API_SECRET", "")
+    GWC_CLIENT_ID: str = os.getenv("GWC_CLIENT_ID", "")
+    GWC_REDIRECT_URL: str = os.getenv("GWC_REDIRECT_URL", "https://money.shadowmarket.ai/api/gwc_callback")
+
     # Data Provider
     DATA_PROVIDER_PRIMARY: str = os.getenv("DATA_PROVIDER_PRIMARY", "kite")  # "kite" or "yfinance"
 

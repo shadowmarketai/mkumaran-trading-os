@@ -1,4 +1,5 @@
 import logging
+import requests
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import date, datetime
@@ -122,6 +123,7 @@ AUTH_PUBLIC_PATHS = {
     "/openapi.json", "/redoc",
     "/api/tv_webhook", "/api/telegram_webhook",
     "/api/kite_callback", "/api/kite_login_url",
+    "/api/gwc_callback", "/api/gwc_login_url",
     # n8n workflow endpoints (read-only scan/data tools)
     "/tools/run_mwa_scan", "/tools/get_stock_data",
     "/tools/order_status", "/tools/get_fo_signal",
@@ -1918,20 +1920,34 @@ async def tool_update_trailing_sl(ticker: str = Query(...), current_price: float
     return manager.update_trailing_sl(ticker, current_price)
 
 
+def _get_live_ltp(ticker: str) -> float | None:
+    """Get LTP: try Kite first (fastest), then multi-source provider."""
+    manager = _get_order_manager()
+    if manager.kite:
+        try:
+            exchange, symbol = ticker.split(":", 1) if ":" in ticker else ("NSE", ticker)
+            ltp_data = manager.kite.ltp(f"{exchange}:{symbol}")
+            ltp = list(ltp_data.values())[0]["last_price"] if ltp_data else None
+            if ltp and ltp > 0:
+                return float(ltp)
+        except Exception:
+            pass
+    # Fallback: Goodwill → NSE India → Angel
+    from mcp_server.data_provider import get_provider
+    ltp = get_provider().get_ltp(ticker)
+    return ltp if ltp and ltp > 0 else None
+
+
 @app.post("/tools/update_all_trailing_sl")
 async def tool_update_all_trailing_sl():
-    """Update trailing SL for ALL open positions using live Kite prices."""
+    """Update trailing SL for ALL open positions using live prices."""
     manager = _get_order_manager()
-    if not manager.kite:
-        return {"updated": 0, "message": "Kite not connected"}
 
     results = []
     for pos in manager.open_positions:
         ticker = pos.get("ticker", "")
         try:
-            exchange, symbol = ticker.split(":", 1) if ":" in ticker else ("NSE", ticker)
-            ltp_data = manager.kite.ltp(f"{exchange}:{symbol}")
-            ltp = list(ltp_data.values())[0]["last_price"] if ltp_data else None
+            ltp = _get_live_ltp(ticker)
             if ltp:
                 result = manager.update_trailing_sl(ticker, ltp)
                 result["ticker"] = ticker
@@ -1955,16 +1971,12 @@ async def tool_portfolio_exposure():
 async def tool_check_exit_strategies():
     """Evaluate exit strategy for ALL open positions using live prices."""
     manager = _get_order_manager()
-    if not manager.kite:
-        return {"checked": 0, "message": "Kite not connected"}
 
     results = []
     for pos in manager.open_positions:
         ticker = pos.get("ticker", "")
         try:
-            exchange, symbol = ticker.split(":", 1) if ":" in ticker else ("NSE", ticker)
-            ltp_data = manager.kite.ltp(f"{exchange}:{symbol}")
-            ltp = list(ltp_data.values())[0]["last_price"] if ltp_data else None
+            ltp = _get_live_ltp(ticker)
             if ltp:
                 result = manager.evaluate_exit_strategy(ticker, ltp)
                 result["ticker"] = ticker
@@ -2105,6 +2117,94 @@ async def api_kite_login_url():
 
 
 # ============================================================
+# GWC (Goodwill) OAuth Login
+# ============================================================
+
+
+@app.get("/api/gwc_callback")
+async def api_gwc_callback(request_token: str = Query(...)):
+    """Browser redirect callback from GWC OAuth login.
+
+    User logs in at GWC → GWC redirects here with ?request_token=XXX
+    → we exchange it for an access token and activate the GWC source.
+    """
+    try:
+        import hashlib
+        api_key = settings.GWC_API_KEY
+        api_secret = settings.GWC_API_SECRET
+        if not api_key or not api_secret:
+            raise ValueError("GWC_API_KEY or GWC_API_SECRET not configured")
+
+        # Generate signature: SHA-256(api_key + request_token + api_secret)
+        raw = api_key + request_token + api_secret
+        signature = hashlib.sha256(raw.encode()).hexdigest()
+
+        # Exchange request_token for access_token
+        resp = requests.post(
+            "https://api.gwcindia.in/v1/login-response",
+            json={
+                "api_key": api_key,
+                "request_token": request_token,
+                "signature": signature,
+            },
+            headers={"x-api-key": api_key},
+            timeout=15,
+        )
+        data = resp.json()
+        if data.get("status") != "success":
+            raise ValueError(f"GWC login-response failed: {data.get('error_msg', data)}")
+
+        access_token = data["data"]["access_token"]
+
+        # Inject token into data provider's GoodwillSource
+        from mcp_server.data_provider import get_provider
+        provider = get_provider()
+        provider.gwc.set_access_token(access_token)
+        provider._sources["gwc"] = True
+
+        # Send Telegram confirmation
+        try:
+            from mcp_server.telegram_bot import send_telegram_message
+            import asyncio
+            asyncio.ensure_future(send_telegram_message(
+                "\u2705 GWC Login Successful\n"
+                f"Token set at {datetime.now().strftime('%H:%M IST')}\n"
+                "Goodwill is now the primary LTP source.",
+                force=True,
+            ))
+        except Exception:
+            pass
+
+        return HTMLResponse(
+            "<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
+            "<h1>\u2705 GWC Login Successful</h1>"
+            "<p>Goodwill access token has been set. You can close this window.</p>"
+            "<p style='color:#888;font-size:14px'>GWC is now the primary live price source.</p>"
+            "</body></html>"
+        )
+    except Exception as e:
+        logger.error("GWC callback failed: %s", e)
+        return HTMLResponse(
+            "<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
+            f"<h1>\u274c GWC Login Failed</h1><p>{e}</p>"
+            "</body></html>",
+            status_code=500,
+        )
+
+
+@app.get("/api/gwc_login_url")
+async def api_gwc_login_url():
+    """Return the GWC OAuth login URL for manual browser login."""
+    if not settings.GWC_API_KEY:
+        return {"error": "GWC_API_KEY not configured"}
+    return {
+        "login_url": f"https://api.gwcindia.in/v1/login?api_key={settings.GWC_API_KEY}",
+        "instructions": "Open this URL in your browser, complete Goodwill 2FA, "
+                        "and the system will automatically capture the token.",
+    }
+
+
+# ============================================================
 # System Health (for Telegram /health command)
 # ============================================================
 
@@ -2135,6 +2235,13 @@ def get_system_health() -> dict:
 
     # Kite
     health["kite_connected"] = bool(_order_manager and _order_manager.kite)
+
+    # GWC (Goodwill)
+    try:
+        from mcp_server.data_provider import get_provider
+        health["gwc_connected"] = get_provider()._sources.get("gwc", False)
+    except Exception:
+        health["gwc_connected"] = False
 
     # Kite failed today flag
     try:
