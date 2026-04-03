@@ -587,7 +587,7 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
     if is_weekend(today):
         return {"status": "skipped", "tool": "run_mwa_scan",
                 "reason": f"Weekend ({today.strftime('%A')}). Scan not needed."}
-    if is_market_holiday(today):
+    if is_market_holiday("NSE", today):
         return {"status": "skipped", "tool": "run_mwa_scan",
                 "reason": f"Market holiday ({today}). Scan not needed."}
 
