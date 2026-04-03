@@ -20,15 +20,25 @@
     },
     {
       "parameters": {
+        "functionCode": "// Check if today is a market holiday (NSE holidays 2026)\nconst now = new Date();\nconst istOffset = 5.5 * 60 * 60 * 1000;\nconst ist = new Date(now.getTime() + istOffset);\nconst dateStr = ist.toISOString().slice(0, 10); // YYYY-MM-DD\n\nconst holidays = [\n  '2026-01-15', '2026-01-26', '2026-03-03', '2026-03-26',\n  '2026-03-31', '2026-04-03', '2026-04-14', '2026-05-01',\n  '2026-05-28', '2026-06-26', '2026-09-14', '2026-10-02',\n  '2026-10-20', '2026-11-10', '2026-11-24', '2026-12-25'\n];\n\nif (holidays.includes(dateStr)) {\n  return [];  // Skip — market holiday\n}\nreturn [{ json: { trading_day: true, date: dateStr } }];"
+      },
+      "id": "c1000000-0002-4000-8000-000000000016",
+      "name": "Holiday Check",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [500, 350]
+    },
+    {
+      "parameters": {
         "method": "GET",
         "url": "https://money.shadowmarket.ai/tools/order_status",
-        "options": { "allowUnauthorizedCerts": true }
+        "options": { "timeout": 60000, "allowUnauthorizedCerts": true }
       },
       "id": "c1000000-0002-4000-8000-000000000002",
       "name": "Get Order Status",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [500, 350]
+      "position": [750, 350]
     },
     {
       "parameters": {
@@ -45,19 +55,19 @@
       "name": "Kill Switch Active?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [750, 350]
+      "position": [1000, 350]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://money.shadowmarket.ai/tools/close_all",
-        "options": { "timeout": 30000, "allowUnauthorizedCerts": true }
+        "options": { "timeout": 60000, "allowUnauthorizedCerts": true }
       },
       "id": "c1000000-0002-4000-8000-000000000004",
       "name": "Emergency Close All",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1000, 150]
+      "position": [1250, 150]
     },
     {
       "parameters": {
@@ -79,31 +89,31 @@
       "name": "Alert Kill Switch",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1250, 150]
+      "position": [1500, 150]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://money.shadowmarket.ai/tools/update_all_trailing_sl",
-        "options": { "timeout": 30000, "allowUnauthorizedCerts": true }
+        "options": { "timeout": 60000, "allowUnauthorizedCerts": true }
       },
       "id": "c1000000-0002-4000-8000-000000000014",
       "name": "Update Trailing SL",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1000, 300]
+      "position": [1250, 300]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://money.shadowmarket.ai/tools/check_exit_strategies",
-        "options": { "timeout": 30000, "allowUnauthorizedCerts": true }
+        "options": { "timeout": 60000, "allowUnauthorizedCerts": true }
       },
       "id": "c1000000-0002-4000-8000-000000000015",
       "name": "Check Exit Strategies",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1250, 300]
+      "position": [1500, 300]
     },
     {
       "parameters": {
@@ -113,7 +123,7 @@
       "name": "Check SL/Target",
       "type": "n8n-nodes-base.function",
       "typeVersion": 2,
-      "position": [1500, 300]
+      "position": [1750, 300]
     },
     {
       "parameters": {
@@ -132,7 +142,7 @@
       "name": "Send Trade Alert",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1750, 300]
+      "position": [2000, 300]
     },
     {
       "parameters": {
@@ -142,19 +152,19 @@
       "name": "F&O Timer Gate",
       "type": "n8n-nodes-base.function",
       "typeVersion": 2,
-      "position": [1000, 650]
+      "position": [1250, 650]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://money.shadowmarket.ai/tools/get_fo_signal",
-        "options": { "timeout": 30000 }
+        "options": { "timeout": 60000, "allowUnauthorizedCerts": true }
       },
       "id": "c1000000-0002-4000-8000-000000000010",
       "name": "Get F&O Signal",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1250, 650]
+      "position": [1500, 650]
     },
     {
       "parameters": {
@@ -178,7 +188,7 @@
       "name": "F&O Has Signal?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1500, 650]
+      "position": [1750, 650]
     },
     {
       "parameters": {
@@ -200,7 +210,7 @@
       "name": "Send F&O Alert",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1750, 550]
+      "position": [2000, 550]
     },
     {
       "parameters": {},
@@ -208,11 +218,16 @@
       "name": "F&O No Signal",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1750, 750]
+      "position": [2000, 750]
     }
   ],
   "connections": {
     "Schedule Trigger": {
+      "main": [[
+        {"node": "Holiday Check", "type": "main", "index": 0}
+      ]]
+    },
+    "Holiday Check": {
       "main": [[
         {"node": "Get Order Status", "type": "main", "index": 0},
         {"node": "F&O Timer Gate", "type": "main", "index": 0}

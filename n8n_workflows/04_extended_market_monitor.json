@@ -20,13 +20,23 @@
     },
     {
       "parameters": {
+        "functionCode": "// Check if today is a market holiday (NSE holidays 2026)\nconst now = new Date();\nconst istOffset = 5.5 * 60 * 60 * 1000;\nconst ist = new Date(now.getTime() + istOffset);\nconst dateStr = ist.toISOString().slice(0, 10); // YYYY-MM-DD\n\nconst holidays = [\n  '2026-01-15', '2026-01-26', '2026-03-03', '2026-03-26',\n  '2026-03-31', '2026-04-03', '2026-04-14', '2026-05-01',\n  '2026-05-28', '2026-06-26', '2026-09-14', '2026-10-02',\n  '2026-10-20', '2026-11-10', '2026-11-24', '2026-12-25'\n];\n\nif (holidays.includes(dateStr)) {\n  return [];  // Skip — market holiday\n}\nreturn [{ json: { trading_day: true, date: dateStr } }];"
+      },
+      "id": "e1000000-0004-4000-8000-000000000011",
+      "name": "Holiday Check",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [500, 350]
+    },
+    {
+      "parameters": {
         "functionCode": "// Check if MCX is open (9:00 - 23:30 IST, Mon-Fri)\nconst now = new Date();\nconst istHour = (now.getUTCHours() + 5) % 24 + (now.getUTCMinutes() + 30 >= 60 ? 1 : 0);\nconst istMin = (now.getUTCMinutes() + 30) % 60;\nconst mcxOpen = (istHour >= 9 && (istHour < 23 || (istHour === 23 && istMin <= 30)));\nreturn [{ json: { mcx_open: mcxOpen, ist_hour: istHour, ist_min: istMin } }];"
       },
       "id": "e1000000-0004-4000-8000-000000000002",
       "name": "Check MCX Hours",
       "type": "n8n-nodes-base.function",
       "typeVersion": 2,
-      "position": [500, 250]
+      "position": [750, 250]
     },
     {
       "parameters": {
@@ -43,29 +53,29 @@
       "name": "MCX Open?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [750, 250]
+      "position": [1000, 250]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://money.shadowmarket.ai/tools/run_mwa_scan",
+        "url": "https://money.shadowmarket.ai/tools/run_mwa_scan?mode=sync",
         "options": { "timeout": 300000, "allowUnauthorizedCerts": true }
       },
       "id": "e1000000-0004-4000-8000-000000000004",
       "name": "Run MWA Scan (Extended)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1000, 150]
+      "position": [1250, 150]
     },
     {
       "parameters": {
-        "functionCode": "const data = $input.first().json;\nconst alerts = [];\nconst diag = data.data_fetched || {};\n\n// All fired scanners\nconst firedBull = data.fired_bull || [];\nconst firedBear = data.fired_bear || [];\n\nconst forexBull = firedBull.filter(s => s.startsWith('cds_'));\nconst forexBear = firedBear.filter(s => s.startsWith('cds_'));\nconst mcxBull = firedBull.filter(s => s.startsWith('mcx_'));\nconst mcxBear = firedBear.filter(s => s.startsWith('mcx_'));\nconst otherBull = firedBull.filter(s => !s.startsWith('cds_') && !s.startsWith('mcx_'));\nconst otherBear = firedBear.filter(s => !s.startsWith('cds_') && !s.startsWith('mcx_'));\n\nif (forexBull.length > 0) {\n  alerts.push(`\\u{1F4B1} CDS BULL (${forexBull.length}): ${forexBull.join(', ')}`);\n}\nif (forexBear.length > 0) {\n  alerts.push(`\\u{1F4B1} CDS BEAR (${forexBear.length}): ${forexBear.join(', ')}`);\n}\nif (mcxBull.length > 0) {\n  alerts.push(`\\u{26CF} MCX BULL (${mcxBull.length}): ${mcxBull.join(', ')}`);\n}\nif (mcxBear.length > 0) {\n  alerts.push(`\\u{26CF} MCX BEAR (${mcxBear.length}): ${mcxBear.join(', ')}`);\n}\nif (otherBull.length > 0) {\n  alerts.push(`\\u{1F7E2} Equity BULL (${otherBull.length}): ${otherBull.slice(0,10).join(', ')}`);\n}\nif (otherBear.length > 0) {\n  alerts.push(`\\u{1F534} Equity BEAR (${otherBear.length}): ${otherBear.slice(0,10).join(', ')}`);\n}\n\n// Active chains\nconst chains = data.active_chains || [];\nfor (const c of chains) {\n  alerts.push(`\\u{1F517} Chain: ${c.name} (${c.complete ? 'COMPLETE' : 'partial'}) +${c.boost}%`);\n}\n\n// Promoted stocks\nconst promoted = data.promoted_stocks || [];\nif (promoted.length > 0) {\n  alerts.push(`\\u{2B50} Promoted: ${promoted.slice(0,10).join(', ')}`);\n}\n\n// Build summary\nconst dir = data.direction || 'UNKNOWN';\nconst bullPct = (data.bull_pct || 0).toFixed(1);\nconst bearPct = (data.bear_pct || 0).toFixed(1);\nconst nse = diag.nse || 0;\nconst cds = diag.cds || 0;\nconst mcx = diag.mcx || 0;\nconst now = new Date();\nconst istTime = new Date(now.getTime() + 5.5*60*60*1000).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});\n\nlet msg = `\\u{1F4CA} MWA Extended Scan | ${istTime} IST\\n`;\nmsg += `\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\n`;\nmsg += `Direction: ${dir} | Bull ${bullPct}% | Bear ${bearPct}%\\n`;\nmsg += `Data: NSE=${nse} CDS=${cds} MCX=${mcx}\\n`;\nif (alerts.length > 0) {\n  msg += `\\n${alerts.join('\\n')}`;\n} else {\n  msg += `\\nNo signals fired this scan.`;\n}\n\nreturn [{ json: { text: msg } }];"
+        "functionCode": "const data = $input.first().json;\n\n// Handle holiday skip response\nif (data.status === 'skipped') {\n  return [{ json: { text: `\u26a0\ufe0f MWA Scan skipped: ${data.reason}` } }];\n}\n\nconst alerts = [];\nconst diag = data.data_fetched || {};\n\n// All fired scanners\nconst firedBull = data.fired_bull || [];\nconst firedBear = data.fired_bear || [];\n\nconst forexBull = firedBull.filter(s => s.startsWith('cds_'));\nconst forexBear = firedBear.filter(s => s.startsWith('cds_'));\nconst mcxBull = firedBull.filter(s => s.startsWith('mcx_'));\nconst mcxBear = firedBear.filter(s => s.startsWith('mcx_'));\nconst otherBull = firedBull.filter(s => !s.startsWith('cds_') && !s.startsWith('mcx_'));\nconst otherBear = firedBear.filter(s => !s.startsWith('cds_') && !s.startsWith('mcx_'));\n\nif (forexBull.length > 0) {\n  alerts.push(`\\u{1F4B1} CDS BULL (${forexBull.length}): ${forexBull.join(', ')}`);\n}\nif (forexBear.length > 0) {\n  alerts.push(`\\u{1F4B1} CDS BEAR (${forexBear.length}): ${forexBear.join(', ')}`);\n}\nif (mcxBull.length > 0) {\n  alerts.push(`\\u{26CF} MCX BULL (${mcxBull.length}): ${mcxBull.join(', ')}`);\n}\nif (mcxBear.length > 0) {\n  alerts.push(`\\u{26CF} MCX BEAR (${mcxBear.length}): ${mcxBear.join(', ')}`);\n}\nif (otherBull.length > 0) {\n  alerts.push(`\\u{1F7E2} Equity BULL (${otherBull.length}): ${otherBull.slice(0,10).join(', ')}`);\n}\nif (otherBear.length > 0) {\n  alerts.push(`\\u{1F534} Equity BEAR (${otherBear.length}): ${otherBear.slice(0,10).join(', ')}`);\n}\n\n// Active chains\nconst chains = data.active_chains || [];\nfor (const c of chains) {\n  alerts.push(`\\u{1F517} Chain: ${c.name} (${c.complete ? 'COMPLETE' : 'partial'}) +${c.boost}%`);\n}\n\n// Promoted stocks\nconst promoted = data.promoted_stocks || [];\nif (promoted.length > 0) {\n  alerts.push(`\\u{2B50} Promoted: ${promoted.slice(0,10).join(', ')}`);\n}\n\n// Build summary\nconst dir = data.direction || 'UNKNOWN';\nconst bullPct = (data.bull_pct || 0).toFixed(1);\nconst bearPct = (data.bear_pct || 0).toFixed(1);\nconst nse = diag.nse || 0;\nconst cds = diag.cds || 0;\nconst mcx = diag.mcx || 0;\nconst now = new Date();\nconst istTime = new Date(now.getTime() + 5.5*60*60*1000).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});\n\nlet msg = `\\u{1F4CA} MWA Extended Scan | ${istTime} IST\\n`;\nmsg += `\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\u{2501}\\n`;\nmsg += `Direction: ${dir} | Bull ${bullPct}% | Bear ${bearPct}%\\n`;\nmsg += `Data: NSE=${nse} CDS=${cds} MCX=${mcx}\\n`;\nif (alerts.length > 0) {\n  msg += `\\n${alerts.join('\\n')}`;\n} else {\n  msg += `\\nNo signals fired this scan.`;\n}\n\nreturn [{ json: { text: msg } }];"
       },
       "id": "e1000000-0004-4000-8000-000000000005",
       "name": "Filter Extended Signals",
       "type": "n8n-nodes-base.function",
       "typeVersion": 2,
-      "position": [1250, 150]
+      "position": [1500, 150]
     },
     {
       "parameters": {
@@ -84,7 +94,7 @@
       "name": "Send Extended Alert",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1500, 150]
+      "position": [1750, 150]
     },
     {
       "parameters": {
@@ -94,7 +104,7 @@
       "name": "Check CDS Hours",
       "type": "n8n-nodes-base.function",
       "typeVersion": 2,
-      "position": [500, 500]
+      "position": [750, 500]
     },
     {
       "parameters": {},
@@ -102,7 +112,7 @@
       "name": "MCX Closed",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1000, 350]
+      "position": [1250, 350]
     },
     {
       "parameters": {},
@@ -110,7 +120,7 @@
       "name": "CDS Closed",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1000, 600]
+      "position": [1250, 600]
     },
     {
       "parameters": {
@@ -127,11 +137,16 @@
       "name": "CDS Open?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [750, 500]
+      "position": [1000, 500]
     }
   ],
   "connections": {
     "Schedule Trigger": {
+      "main": [[
+        {"node": "Holiday Check", "type": "main", "index": 0}
+      ]]
+    },
+    "Holiday Check": {
       "main": [[
         {"node": "Check MCX Hours", "type": "main", "index": 0},
         {"node": "Check CDS Hours", "type": "main", "index": 0}

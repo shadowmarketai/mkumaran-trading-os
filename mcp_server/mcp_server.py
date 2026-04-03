@@ -129,7 +129,7 @@ AUTH_PUBLIC_PATHS = {
     "/tools/order_status", "/tools/get_fo_signal",
     "/tools/update_all_trailing_sl", "/tools/check_exit_strategies",
 }
-AUTH_PUBLIC_PREFIXES = ("/assets/", "/docs/", "/redoc/")
+AUTH_PUBLIC_PREFIXES = ("/assets/", "/docs/", "/redoc/", "/tools/mwa_scan_status/")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -542,10 +542,79 @@ async def tool_get_mwa_score(db: Session = Depends(get_db)):
     return {"status": "ok", "tool": "get_mwa_score", "message": "No MWA scores available yet"}
 
 
+# ── Background MWA scan jobs ─────────────────────────────────
+_mwa_jobs: dict[str, dict] = {}  # job_id -> {status, result, started, finished}
+
+
+def _run_mwa_scan_background(job_id: str) -> None:
+    """Run the full MWA scan in a background thread, store result in _mwa_jobs."""
+    import traceback
+    from mcp_server.db import SessionLocal
+    try:
+        _mwa_jobs[job_id]["status"] = "running"
+        result = _execute_mwa_scan(SessionLocal())
+        _mwa_jobs[job_id]["result"] = result
+        _mwa_jobs[job_id]["status"] = "completed"
+    except Exception as e:
+        _mwa_jobs[job_id]["status"] = "failed"
+        _mwa_jobs[job_id]["result"] = {"error": str(e), "traceback": traceback.format_exc()}
+    _mwa_jobs[job_id]["finished"] = datetime.now().isoformat()
+
+
+@app.get("/tools/mwa_scan_status/{job_id}")
+async def tool_mwa_scan_status(job_id: str):
+    """Poll for MWA scan job status."""
+    job = _mwa_jobs.get(job_id)
+    if not job:
+        return {"error": "Job not found", "job_id": job_id}
+    resp = {"job_id": job_id, "status": job["status"], "started": job["started"]}
+    if job["status"] in ("completed", "failed"):
+        resp["finished"] = job.get("finished")
+        resp["result"] = job.get("result")
+    return resp
+
+
 @app.post("/tools/run_mwa_scan")
 @limiter.limit("30/minute")
 async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
     """Run the full 98-scanner MWA scan and persist score to DB."""
+    import threading
+
+    # ── Holiday / weekend gate ────────────────────────────────
+    from mcp_server.market_calendar import is_market_holiday, is_weekend
+
+    today = date.today()
+    if is_weekend(today):
+        return {"status": "skipped", "tool": "run_mwa_scan",
+                "reason": f"Weekend ({today.strftime('%A')}). Scan not needed."}
+    if is_market_holiday(today):
+        return {"status": "skipped", "tool": "run_mwa_scan",
+                "reason": f"Market holiday ({today}). Scan not needed."}
+
+    # ── Async mode: return job_id immediately, run in background ──
+    mode = request.query_params.get("mode", "async")
+    if mode == "async":
+        import uuid
+        job_id = uuid.uuid4().hex[:12]
+        _mwa_jobs[job_id] = {
+            "status": "queued", "result": None,
+            "started": datetime.now().isoformat(), "finished": None,
+        }
+        t = threading.Thread(target=_run_mwa_scan_background, args=(job_id,), daemon=True)
+        t.start()
+        return {
+            "status": "accepted", "tool": "run_mwa_scan",
+            "job_id": job_id,
+            "poll_url": f"/tools/mwa_scan_status/{job_id}",
+            "message": "Scan started in background. Poll the status URL for results.",
+        }
+
+    # ── Sync mode (mode=sync): run inline and return result ──
+    return _execute_mwa_scan(db)
+
+
+def _execute_mwa_scan(db: Session) -> dict:
+    """Core MWA scan logic — used by both sync and async modes."""
     from mcp_server.mwa_scanner import MWAScanner
     from mcp_server.mwa_scoring import calculate_mwa_score, get_promoted_stocks, format_morning_brief
     from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, resolve_yf_symbol
