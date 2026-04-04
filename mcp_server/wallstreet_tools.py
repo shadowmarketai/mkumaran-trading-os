@@ -41,6 +41,44 @@ def _call_claude(prompt: str, max_tokens: int = 500) -> str:
         return f'{{"error": "{e}"}}'
 
 
+def _call_gpt(prompt: str, max_tokens: int = 500, model: str = "gpt-4o-mini") -> str:
+    """Call OpenAI GPT API. Returns raw text response. Empty string on failure."""
+    from .config import settings as _settings
+
+    if not _settings.OPENAI_API_KEY:
+        return ""
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=_settings.OPENAI_API_KEY)
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=0.3,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        logger.warning("GPT call failed: %s", e)
+        return ""
+
+
+async def generate_ai_report(report_type: str, data: dict) -> str:
+    """Generate an AI narrative report for morning brief or EOD."""
+    from .prompts import MORNING_BRIEF_PROMPT, EOD_REPORT_PROMPT
+
+    prompt_map = {
+        "morning": MORNING_BRIEF_PROMPT,
+        "eod": EOD_REPORT_PROMPT,
+    }
+    template = prompt_map.get(report_type)
+    if not template:
+        return f"Unknown report type: {report_type}"
+
+    prompt = template.format(data=json.dumps(data, indent=2, default=str))
+    return _call_claude(prompt, max_tokens=1000)
+
+
 def _parse_json(text: str) -> dict:
     """Extract JSON from Claude response."""
     try:

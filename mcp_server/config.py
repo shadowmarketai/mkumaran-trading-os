@@ -51,6 +51,9 @@ class Settings:
     # Claude AI
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 
+    # OpenAI (GPT second opinion for borderline signals)
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")

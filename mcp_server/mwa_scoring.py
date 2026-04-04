@@ -24,7 +24,7 @@ MAX_BEAR_WEIGHT = sum(
 )
 
 
-def calculate_mwa_score(scanner_results: dict) -> dict:
+def calculate_mwa_score(scanner_results: dict, symbol: str = "") -> dict:
     """
     Calculate weighted MWA score from scanner results.
 
@@ -95,6 +95,22 @@ def calculate_mwa_score(scanner_results: dict) -> dict:
     )
     chain_boost = min(chain_boost, 35)  # Cap at 35
 
+    # News sentiment modifier (optional layer — only for specific symbol)
+    news_sentiment = None
+    if symbol:
+        try:
+            from .news_monitor import calculate_news_sentiment
+
+            sentiment = calculate_news_sentiment(symbol)
+            news_score = sentiment.get("score", 0)
+            if abs(news_score) > 30:  # Only apply for strong sentiment
+                modifier = news_score / 100 * 5  # Max +/-5% adjustment
+                bull_pct = min(100, max(0, bull_pct + modifier))
+                bear_pct = min(100, max(0, bear_pct - modifier))
+            news_sentiment = sentiment
+        except Exception:
+            pass  # News sentiment is optional, never block MWA
+
     logger.info(
         "MWA Score: %s | Bull: %.1f (%.1f%%) | Bear: %.1f (%.1f%%) | Chains: %d",
         direction, bull_score, bull_pct, bear_score, bear_pct, len(active_chains),
@@ -113,6 +129,7 @@ def calculate_mwa_score(scanner_results: dict) -> dict:
         "allow_shorts": direction in ("BEAR", "MILD_BEAR"),
         "active_chains": active_chains,
         "chain_boost": chain_boost,
+        "news_sentiment": news_sentiment,
         "scanner_results": scanner_results,
     }
 

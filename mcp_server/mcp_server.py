@@ -128,6 +128,8 @@ AUTH_PUBLIC_PATHS = {
     "/tools/run_mwa_scan", "/tools/get_stock_data",
     "/tools/order_status", "/tools/get_fo_signal",
     "/tools/update_all_trailing_sl", "/tools/check_exit_strategies",
+    # AI report + news sentiment (n8n calls without auth)
+    "/tools/ai_report", "/tools/news_sentiment",
 }
 AUTH_PUBLIC_PREFIXES = ("/assets/", "/docs/", "/redoc/", "/tools/mwa_scan_status/")
 
@@ -2886,6 +2888,37 @@ async def tool_check_news_alerts():
 
     result = await check_and_alert()
     return {"status": "ok", "tool": "check_news_alerts", **result}
+
+
+@app.post("/tools/ai_report")
+async def tool_ai_report(request: Request):
+    """Generate an AI narrative report (morning brief or EOD).
+
+    Body: {"report_type": "morning"|"eod", "data": {...}}
+    """
+    body = await request.json()
+    report_type = body.get("report_type", "eod")
+    data = body.get("data", {})
+    from mcp_server.wallstreet_tools import generate_ai_report
+
+    report = await generate_ai_report(report_type, data)
+    return {"status": "ok", "tool": "ai_report", "report_type": report_type, "report": report}
+
+
+@app.post("/tools/news_sentiment")
+async def tool_news_sentiment(request: Request):
+    """Get AI-scored news sentiment for a symbol.
+
+    Body: {"symbol": "RELIANCE"}
+    """
+    body = await request.json()
+    symbol = body.get("symbol", "")
+    if not symbol:
+        return {"status": "error", "message": "symbol is required"}
+    from mcp_server.news_monitor import calculate_news_sentiment
+
+    result = calculate_news_sentiment(symbol)
+    return {"status": "ok", "tool": "news_sentiment", "symbol": symbol, **result}
 
 
 # ============================================================

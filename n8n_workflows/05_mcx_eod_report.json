@@ -20,6 +20,16 @@
     },
     {
       "parameters": {
+        "functionCode": "// Check if today is a market holiday (NSE holidays 2026)\nconst now = new Date();\nconst istOffset = 5.5 * 60 * 60 * 1000;\nconst ist = new Date(now.getTime() + istOffset);\nconst dateStr = ist.toISOString().slice(0, 10);\n\nconst holidays = [\n  '2026-01-15', '2026-01-26', '2026-03-03', '2026-03-26',\n  '2026-03-31', '2026-04-03', '2026-04-14', '2026-05-01',\n  '2026-05-28', '2026-06-26', '2026-09-14', '2026-10-02',\n  '2026-10-20', '2026-11-10', '2026-11-24', '2026-12-25'\n];\n\nif (holidays.includes(dateStr)) {\n  return [];  // Skip — market holiday\n}\nreturn [{ json: { trading_day: true, date: dateStr } }];"
+      },
+      "id": "f1000000-0005-4000-8000-000000000016",
+      "name": "Holiday Check",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [375, 350]
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "https://money.shadowmarket.ai/tools/get_stock_data",
         "sendQuery": true,
@@ -80,6 +90,9 @@
   ],
   "connections": {
     "Schedule Trigger": {
+      "main": [[{"node": "Holiday Check", "type": "main", "index": 0}]]
+    },
+    "Holiday Check": {
       "main": [[{"node": "Fetch MCX EOD Data", "type": "main", "index": 0}]]
     },
     "Fetch MCX EOD Data": {

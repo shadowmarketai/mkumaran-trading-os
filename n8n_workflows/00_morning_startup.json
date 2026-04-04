@@ -20,6 +20,16 @@
     },
     {
       "parameters": {
+        "functionCode": "// Check if today is a market holiday (NSE holidays 2026)\nconst now = new Date();\nconst istOffset = 5.5 * 60 * 60 * 1000;\nconst ist = new Date(now.getTime() + istOffset);\nconst dateStr = ist.toISOString().slice(0, 10);\n\nconst holidays = [\n  '2026-01-15', '2026-01-26', '2026-03-03', '2026-03-26',\n  '2026-03-31', '2026-04-03', '2026-04-14', '2026-05-01',\n  '2026-05-28', '2026-06-26', '2026-09-14', '2026-10-02',\n  '2026-10-20', '2026-11-10', '2026-11-24', '2026-12-25'\n];\n\nif (holidays.includes(dateStr)) {\n  return [];  // Skip — market holiday\n}\nreturn [{ json: { trading_day: true, date: dateStr } }];"
+      },
+      "id": "a1000000-0000-4000-8000-000000000016",
+      "name": "Holiday Check",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [350, 300]
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "https://money.shadowmarket.ai/tools/refresh_kite_token",
         "options": {
@@ -127,13 +137,28 @@
     },
     {
       "parameters": {
-        "functionCode": "const mwa = $input.first().json;\nconst accuracy = $input.last().json;\n\nconst promoted = (mwa.promoted_stocks || []).join(', ') || 'None';\nconst winRate = accuracy.win_rate || 0;\nconst totalPnl = accuracy.total_pnl_rs || 0;\n\nconst msg = `\ud83c\udf05 MKUMARAN Morning Brief\\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\\nMWA: ${mwa.direction || 'N/A'} (Bull: ${mwa.bull_pct || 0}% | Bear: ${mwa.bear_pct || 0}%)\\nActive Chains: ${(mwa.active_chains || []).length}\\nChain Boost: ${mwa.chain_boost || 0}\\nPromoted: ${promoted}\\nScanners Fired: ${mwa.scanner_count || 0}\\n\\n\ud83d\udcca Accuracy: ${winRate}% Win Rate | P&L: Rs.${totalPnl}\\nOpen Signals: ${accuracy.open || 0}`;\n\nreturn [{ json: { text: msg, promoted: mwa.promoted_stocks || [] } }];"
+        "functionCode": "const mwa = $input.first().json;\nconst accuracy = $input.last().json;\n\nreturn [{ json: {\n  report_type: 'morning',\n  data: {\n    mwa: { direction: mwa.direction, bull_pct: mwa.bull_pct, bear_pct: mwa.bear_pct, active_chains: (mwa.active_chains || []).length, chain_boost: mwa.chain_boost, promoted_stocks: mwa.promoted_stocks || [], scanner_count: mwa.scanner_count },\n    accuracy: { win_rate: accuracy.win_rate, total_pnl_rs: accuracy.total_pnl_rs, open: accuracy.open }\n  },\n  promoted: mwa.promoted_stocks || []\n} }];"
       },
       "id": "a1000000-0000-4000-8000-000000000008",
-      "name": "Format Brief",
+      "name": "Collect Morning Data",
       "type": "n8n-nodes-base.function",
       "typeVersion": 2,
       "position": [1750, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://money.shadowmarket.ai/tools/ai_report",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ report_type: $json.report_type, data: $json.data }) }}",
+        "options": { "timeout": 60000, "allowUnauthorizedCerts": true }
+      },
+      "id": "a1000000-0000-4000-8000-000000000017",
+      "name": "Generate AI Brief",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1875, 200]
     },
     {
       "parameters": {
@@ -143,8 +168,7 @@
         "bodyParameters": {
           "parameters": [
             { "name": "chat_id", "value": "=699992965" },
-            { "name": "text", "value": "={{ $json.text }}" },
-            { "name": "parse_mode", "value": "HTML" }
+            { "name": "text", "value": "={{ $json.report }}" }
           ]
         },
         "options": { "allowUnauthorizedCerts": true }
@@ -199,6 +223,9 @@
   ],
   "connections": {
     "Schedule 7:35 AM": {
+      "main": [[{"node": "Holiday Check", "type": "main", "index": 0}]]
+    },
+    "Holiday Check": {
       "main": [[{"node": "Refresh Token", "type": "main", "index": 0}]]
     },
     "Refresh Token": {
@@ -220,9 +247,12 @@
       "main": [[{"node": "Get Accuracy", "type": "main", "index": 0}]]
     },
     "Get Accuracy": {
-      "main": [[{"node": "Format Brief", "type": "main", "index": 0}]]
+      "main": [[{"node": "Collect Morning Data", "type": "main", "index": 0}]]
     },
-    "Format Brief": {
+    "Collect Morning Data": {
+      "main": [[{"node": "Generate AI Brief", "type": "main", "index": 0}]]
+    },
+    "Generate AI Brief": {
       "main": [[{"node": "Send Morning Brief", "type": "main", "index": 0}]]
     },
     "Send Morning Brief": {

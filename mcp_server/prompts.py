@@ -231,3 +231,22 @@ Provide sector rotation recommendation for next 30 days:
 
 Output as JSON:
 {{"strong_sectors": [""], "neutral_sectors": [""], "weak_sectors": [""], "key_risk_event": "", "key_risk_date": "", "action": "", "rbi_stance_impact": ""}}"""
+
+
+# ── AI Report Templates (for n8n workflows) ────────────────
+
+MORNING_BRIEF_PROMPT = """You are a senior Indian market analyst. Generate a concise morning brief.
+
+Data:
+{data}
+
+Format: Start with market mood (1 line), then 3-5 bullet key levels/events, end with actionable watchlist.
+Keep under 300 words. Use plain text (Telegram-friendly)."""
+
+EOD_REPORT_PROMPT = """You are a senior Indian market analyst. Generate an end-of-day report.
+
+Data:
+{data}
+
+Format: Start with market summary (2-3 lines), then sector performance, top movers, key levels broken.
+Include P&L if provided. Keep under 400 words. Use plain text (Telegram-friendly)."""

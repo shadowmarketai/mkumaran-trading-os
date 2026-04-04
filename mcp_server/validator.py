@@ -27,6 +27,38 @@ STATUS_SKIPPED = "SKIPPED"        # No API key — signal BLOCKED
 STATUS_BLOCKED = "BLOCKED"        # Below threshold — signal rejected
 
 
+def get_gpt_second_opinion(
+    symbol: str,
+    signal_type: str,
+    claude_confidence: int,
+    context: dict,
+) -> dict:
+    """Get GPT's second opinion on a borderline signal (confidence 60-75).
+
+    Returns dict with confidence, agree (bool), and reason.
+    Falls back gracefully if GPT is unavailable.
+    """
+    from .wallstreet_tools import _call_gpt, _parse_json
+
+    prompt = (
+        "You are a stock market analyst providing a second opinion.\n\n"
+        f"Symbol: {symbol}\n"
+        f"Signal: {signal_type}\n"
+        f"Claude's confidence: {claude_confidence}/100\n"
+        f"Context: {json.dumps(context, default=str)}\n\n"
+        'Respond in JSON: {"confidence": <0-100>, "agree": <true/false>, "reason": "<1 line>"}'
+    )
+
+    raw = _call_gpt(prompt, max_tokens=200)
+    if not raw:
+        return {"confidence": claude_confidence, "agree": True, "reason": "GPT unavailable"}
+
+    parsed = _parse_json(raw)
+    if "raw_response" in parsed:
+        return {"confidence": claude_confidence, "agree": True, "reason": "Parse error"}
+    return parsed
+
+
 def validate_signal(
     ticker: str,
     direction: str,
@@ -276,8 +308,36 @@ def validate_with_debate(
                 confidence_boosts=confidence_boosts, pre_confidence=pre_confidence,
                 similar_trades=similar_trades,
             )
+            confidence = result.final_confidence
+            gpt_opinion = None
+
+            # GPT second opinion for borderline signals (60-75 band)
+            if 60 <= confidence <= 75:
+                try:
+                    gpt_opinion = get_gpt_second_opinion(
+                        symbol=ticker,
+                        signal_type=direction,
+                        claude_confidence=confidence,
+                        context={
+                            "pattern": pattern, "rrr": rrr,
+                            "mwa_direction": mwa_direction,
+                            "scanner_count": scanner_count,
+                        },
+                    )
+                    if not gpt_opinion.get("agree", True):
+                        confidence = int(
+                            (confidence + gpt_opinion.get("confidence", confidence)) / 2
+                        )
+                        logger.info(
+                            "GPT disagrees on %s: adjusted confidence %d→%d (GPT: %d, reason: %s)",
+                            ticker, result.final_confidence, confidence,
+                            gpt_opinion.get("confidence"), gpt_opinion.get("reason"),
+                        )
+                except Exception as e:
+                    logger.warning("GPT second opinion failed (non-fatal): %s", e)
+
             return {
-                "confidence": result.final_confidence,
+                "confidence": confidence,
                 "reasoning": result.reasoning,
                 "recommendation": result.recommendation,
                 "validation_status": result.validation_status,
@@ -287,6 +347,7 @@ def validate_with_debate(
                 "similar_trades": result.similar_trades,
                 "risk_assessment": result.risk_assessment,
                 "debate_transcript": result.debate_transcript,
+                "gpt_opinion": gpt_opinion,
             }
     except Exception as e:
         logger.warning("Debate routing failed, falling back to single-pass: %s", e)

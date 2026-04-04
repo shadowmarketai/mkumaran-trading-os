@@ -263,6 +263,57 @@ def get_latest_news(
     return unique
 
 
+# ── News Sentiment Scoring ────────────────────────────────
+
+_sentiment_cache: dict[str, dict] = {}
+_sentiment_cache_time: dict[str, float] = {}
+
+
+def calculate_news_sentiment(symbol: str) -> dict:
+    """Score news sentiment for a symbol using AI. Cached for 30 minutes.
+
+    Returns: {"score": -100..100, "bias": "bullish/bearish/neutral",
+              "count": int, "key_headline": str}
+    """
+    import time
+
+    now = time.time()
+    if symbol in _sentiment_cache and (now - _sentiment_cache_time.get(symbol, 0)) < 1800:
+        return _sentiment_cache[symbol]
+
+    # Try symbol-specific NewsAPI query first, fall back to general RSS filtered
+    news = fetch_newsapi(query=f"{symbol} stock India", hours=6)
+    if not news:
+        # Filter RSS headlines that mention the symbol
+        all_rss = fetch_rss_feeds()
+        news = [n for n in all_rss if symbol.upper() in n.title.upper()]
+
+    if not news:
+        return {"score": 0, "count": 0, "bias": "neutral", "key_headline": ""}
+
+    headlines = [f"- {n.title} ({n.source})" for n in news[:10]]
+    from .wallstreet_tools import _call_claude, _parse_json
+
+    prompt = (
+        f"Score these headlines for {symbol} stock sentiment.\n"
+        f"Headlines:\n"
+        + "\n".join(headlines)
+        + "\n\n"
+        'Respond JSON: {"score": <-100 to 100>, "bias": "<bullish/bearish/neutral>", '
+        '"key_headline": "<most impactful>"}'
+    )
+
+    raw = _call_claude(prompt, max_tokens=200)
+    result = _parse_json(raw)
+    if "raw_response" in result:
+        result = {"score": 0, "bias": "neutral", "key_headline": ""}
+    result["count"] = len(news)
+
+    _sentiment_cache[symbol] = result
+    _sentiment_cache_time[symbol] = now
+    return result
+
+
 # ── Alert Checker (Telegram) ──────────────────────────────
 
 
