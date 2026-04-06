@@ -36,6 +36,50 @@ _last_mwa_scan_time: datetime | None = None
 _bot_app = None  # Telegram bot Application instance
 
 
+async def _price_refresh_loop():
+    """Background task: refresh active trade prices every 60s during market hours."""
+    from mcp_server.market_calendar import is_market_open
+    from mcp_server.db import SessionLocal
+    while True:
+        try:
+            if is_market_open("NSE"):
+                db = SessionLocal()
+                try:
+                    trades = db.query(ActiveTrade).options(
+                        joinedload(ActiveTrade.signal),
+                    ).all()
+                    count = 0
+                    for t in trades:
+                        try:
+                            ltp = _get_live_ltp(t.ticker)
+                            if ltp and ltp > 0:
+                                t.current_price = ltp
+                                t.last_updated = datetime.now()
+                                direction = (
+                                    t.signal.direction if t.signal else "LONG"
+                                )
+                                is_short = direction in ("SELL", "SHORT")
+                                sl = float(t.stop_loss)
+                                tgt = float(t.target)
+                                risk = (sl - ltp) if is_short else (ltp - sl)
+                                reward = (ltp - tgt) if is_short else (tgt - ltp)
+                                t.crrr = round(reward / risk, 2) if risk > 0 else 0
+                                count += 1
+                        except Exception as e:
+                            logger.debug("Price tick error %s: %s", t.ticker, e)
+                    if count:
+                        db.commit()
+                        logger.info("Price refresh: %d/%d updated", count, len(trades))
+                finally:
+                    db.close()
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error("Price refresh loop error: %s", e)
+            await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _server_start_time, _bot_app
@@ -66,6 +110,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Signal monitor startup skipped: %s", e)
 
+    # Start live price refresh background task (every 60s during market hours)
+    price_task = asyncio.create_task(_price_refresh_loop())
+    logger.info("Live price refresh background task started")
+
     # Start Telegram bot polling (so /health, /kitelogin commands work)
     try:
         from mcp_server.telegram_bot import create_bot_application
@@ -95,6 +143,14 @@ async def lifespan(app: FastAPI):
         monitor_task.cancel()
         try:
             await monitor_task
+        except asyncio.CancelledError:
+            pass
+
+    # Shutdown — cancel price refresh task
+    if price_task and not price_task.done():
+        price_task.cancel()
+        try:
+            await price_task
         except asyncio.CancelledError:
             pass
     logger.info("MCP Server shutting down")
