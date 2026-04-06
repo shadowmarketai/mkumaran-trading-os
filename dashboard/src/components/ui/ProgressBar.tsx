@@ -6,25 +6,32 @@ interface ProgressBarProps {
   min: number;
   max: number;
   label?: string;
+  isShort?: boolean;
 }
 
-export default function ProgressBar({ current, min, max, label }: ProgressBarProps) {
+export default function ProgressBar({ current, min, max, label, isShort }: ProgressBarProps) {
   const range = max - min;
   const rawPct = range > 0 ? ((current - min) / range) * 100 : 50;
   const pct = Math.max(0, Math.min(100, rawPct));
 
-  // Determine color: near SL (min) = red, middle = amber, near target (max) = green
+  // For SHORT: high pct = near SL = bad (red); low pct = near target = good (green)
+  // For LONG:  high pct = near target = good (green); low pct = near SL = bad (red)
   const getColor = (percentage: number): string => {
-    if (percentage < 30) return 'bg-trading-bear';
-    if (percentage < 60) return 'bg-trading-alert';
+    const p = isShort ? 100 - percentage : percentage;
+    if (p < 30) return 'bg-trading-bear';
+    if (p < 60) return 'bg-trading-alert';
     return 'bg-trading-bull';
   };
 
   const getGlowColor = (percentage: number): string => {
-    if (percentage < 30) return 'shadow-[0_0_8px_rgba(244,63,94,0.3)]';
-    if (percentage < 60) return 'shadow-[0_0_8px_rgba(245,158,11,0.3)]';
+    const p = isShort ? 100 - percentage : percentage;
+    if (p < 30) return 'shadow-[0_0_8px_rgba(244,63,94,0.3)]';
+    if (p < 60) return 'shadow-[0_0_8px_rgba(245,158,11,0.3)]';
     return 'shadow-[0_0_8px_rgba(16,185,129,0.3)]';
   };
+
+  const slLabel = isShort ? max : min;
+  const tLabel = isShort ? min : max;
 
   return (
     <div className="w-full">
@@ -34,8 +41,8 @@ export default function ProgressBar({ current, min, max, label }: ProgressBarPro
       <div className="relative">
         {/* SL and Target labels */}
         <div className="flex justify-between mb-1">
-          <span className="text-[9px] font-mono text-trading-bear">SL {min.toFixed(1)}</span>
-          <span className="text-[9px] font-mono text-trading-bull">T {max.toFixed(1)}</span>
+          <span className="text-[9px] font-mono text-trading-bear">SL {slLabel.toFixed(1)}</span>
+          <span className="text-[9px] font-mono text-trading-bull">T {tLabel.toFixed(1)}</span>
         </div>
 
         {/* Track */}
