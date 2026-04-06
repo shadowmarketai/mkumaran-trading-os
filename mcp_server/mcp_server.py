@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import requests
 from contextlib import asynccontextmanager
@@ -45,6 +46,10 @@ async def lifespan(app: FastAPI):
 
     _server_start_time = datetime.now()
 
+    # Capture the main event loop for background thread access
+    global _main_event_loop
+    _main_event_loop = asyncio.get_running_loop()
+
     try:
         logger.info("Initializing database...")
         init_db()
@@ -53,7 +58,6 @@ async def lifespan(app: FastAPI):
         logger.warning("Database init skipped (not available): %s", e)
 
     # Start signal auto-monitor background task
-    import asyncio
     monitor_task = None
     try:
         from mcp_server.signal_monitor import signal_monitor_loop
@@ -549,6 +553,26 @@ async def tool_get_mwa_score(db: Session = Depends(get_db)):
 _mwa_jobs: dict[str, dict] = {}  # job_id -> {status, result, started, finished}
 
 
+_main_event_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _fire_and_forget(coro) -> None:
+    """Schedule an async coroutine from any thread (main or background).
+
+    Uses asyncio.ensure_future when called from the main async thread,
+    falls back to run_coroutine_threadsafe for background threads.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        asyncio.ensure_future(coro, loop=loop)
+    except RuntimeError:
+        # No running loop in this thread — use the cached main loop
+        if _main_event_loop is not None and _main_event_loop.is_running():
+            asyncio.run_coroutine_threadsafe(coro, _main_event_loop)
+        else:
+            logger.warning("No event loop available — skipping async task")
+
+
 def _run_mwa_scan_background(job_id: str) -> None:
     """Run the full MWA scan in a background thread, store result in _mwa_jobs."""
     import traceback
@@ -719,8 +743,7 @@ def _execute_mwa_scan(db: Session) -> dict:
     db.commit()
 
     # Auto-sync to Google Sheets
-    import asyncio
-    asyncio.ensure_future(_auto_sync_sheets(mwa_data={
+    _fire_and_forget(_auto_sync_sheets(mwa_data={
         "score_date": str(today),
         "direction": score["direction"],
         "bull_score": score["bull_score"],
@@ -764,7 +787,7 @@ def _execute_mwa_scan(db: Session) -> dict:
             f"{chain_lines}"
             f"{promo_lines}"
         )
-        asyncio.ensure_future(send_telegram_message(tg_msg, force=True))
+        _fire_and_forget(send_telegram_message(tg_msg, force=True))
     except Exception as e:
         logger.debug("MWA Telegram notification skipped: %s", e)
 
@@ -912,7 +935,7 @@ def _execute_mwa_scan(db: Session) -> dict:
                 f"AI Confidence: {confidence}% ({recommendation})\n"
                 f"Signal ID: {record_result.get('signal_id', 'N/A')}"
             )
-            asyncio.ensure_future(send_telegram_message(msg, exchange=sig["exchange"], force=True))
+            _fire_and_forget(send_telegram_message(msg, exchange=sig["exchange"], force=True))
             mwa_signal_cards.append({
                 "ticker": sig["ticker"], "direction": sig["direction"],
                 "entry": sig["entry"], "sl": sig["sl"], "target": sig["target"],
