@@ -7,7 +7,7 @@ from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, Query, Request, Response
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -1525,13 +1525,16 @@ async def api_overview(
 @app.get("/api/signals")
 async def api_signals(
     limit: int = 50,
+    status: str = "",
     exchange: str = "",
     asset_class: str = "",
     timeframe: str = "",
     db: Session = Depends(get_db),
 ):
-    """Recent signals for dashboard. Optional filter by exchange/asset_class/timeframe."""
+    """Recent signals for dashboard. Optional filter by status/exchange/asset_class/timeframe."""
     query = db.query(Signal)
+    if status:
+        query = query.filter(Signal.status == status.upper())
     if exchange:
         query = query.filter(Signal.exchange == exchange.upper())
     if asset_class:
@@ -1571,6 +1574,54 @@ async def api_signals(
         }
         for s in signals
     ]
+
+
+@app.post("/api/signals/cleanup-duplicates")
+async def api_cleanup_duplicate_signals(db: Session = Depends(get_db)):
+    """Remove duplicate OPEN signals keeping the oldest per ticker+direction."""
+    from sqlalchemy import func
+
+    # Find ticker+direction combos with more than 1 OPEN signal
+    dupes = (
+        db.query(Signal.ticker, Signal.direction, func.min(Signal.id).label("keep_id"))
+        .filter(Signal.status == "OPEN")
+        .group_by(Signal.ticker, Signal.direction)
+        .having(func.count(Signal.id) > 1)
+        .all()
+    )
+
+    removed = []
+    for ticker, direction, keep_id in dupes:
+        extras = (
+            db.query(Signal)
+            .filter(
+                Signal.ticker == ticker,
+                Signal.direction == direction,
+                Signal.status == "OPEN",
+                Signal.id != keep_id,
+            )
+            .all()
+        )
+        for sig in extras:
+            # Also remove linked ActiveTrade
+            db.query(ActiveTrade).filter(ActiveTrade.signal_id == sig.id).delete()
+            removed.append({"id": sig.id, "ticker": sig.ticker, "direction": sig.direction})
+            db.delete(sig)
+
+    db.commit()
+    return {"removed_count": len(removed), "removed": removed}
+
+
+@app.delete("/api/signals/{signal_id}")
+async def api_delete_signal(signal_id: int, db: Session = Depends(get_db)):
+    """Delete a signal and its linked ActiveTrade."""
+    sig = db.query(Signal).filter(Signal.id == signal_id).first()
+    if not sig:
+        raise HTTPException(status_code=404, detail="Signal not found")
+    db.query(ActiveTrade).filter(ActiveTrade.signal_id == signal_id).delete()
+    db.delete(sig)
+    db.commit()
+    return {"deleted": signal_id, "ticker": sig.ticker}
 
 
 @app.get("/api/trades/active")

@@ -18,16 +18,14 @@ export default function ProgressBar({ current, min, max, label, isShort }: Progr
   // For LONG:  high pct = near target = good (green); low pct = near SL = bad (red)
   const getColor = (percentage: number): string => {
     const p = isShort ? 100 - percentage : percentage;
-    if (p < 30) return 'bg-trading-bear';
-    if (p < 60) return 'bg-trading-alert';
-    return 'bg-trading-bull';
+    return p < 50 ? 'bg-trading-bear' : 'bg-trading-bull';
   };
 
   const getGlowColor = (percentage: number): string => {
     const p = isShort ? 100 - percentage : percentage;
-    if (p < 30) return 'shadow-[0_0_8px_rgba(244,63,94,0.3)]';
-    if (p < 60) return 'shadow-[0_0_8px_rgba(245,158,11,0.3)]';
-    return 'shadow-[0_0_8px_rgba(16,185,129,0.3)]';
+    return p < 50
+      ? 'shadow-[0_0_8px_rgba(244,63,94,0.3)]'
+      : 'shadow-[0_0_8px_rgba(16,185,129,0.3)]';
   };
 
   const slLabel = isShort ? max : min;

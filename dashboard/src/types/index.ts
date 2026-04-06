@@ -412,3 +412,13 @@ export interface CheckSignalsResult {
   closed_count: number;
   closed_signals: ClosedSignal[];
 }
+
+// ── Chart OHLCV ──────────────────────────────────────────────
+export interface OHLCVBar {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}

@@ -22,6 +22,7 @@ import type {
   MWASignalCard,
   CheckSignalsResult,
   PreTradeResult,
+  OHLCVBar,
 } from '../types';
 
 const api = axios.create({
@@ -172,6 +173,13 @@ export const signalMonitorApi = {
     toolsApi.post<CheckSignalsResult>('/tools/check_signals', null, { timeout: 60000 }).then((r) => r.data),
   getOpenSignals: (filter?: SegmentFilter) =>
     api.get<Signal[]>('/signals', { params: { limit: 50, status: 'OPEN', ...filter } }).then((r) => r.data),
+};
+
+export const chartApi = {
+  getOHLCV: (ticker: string, interval = '1D', days = 30) =>
+    api.get<{ status: string; ticker: string; bars: OHLCVBar[] }>(`/chart/${ticker}`, {
+      params: { interval, days },
+    }).then((r) => r.data.bars),
 };
 
 export { toolsApi };

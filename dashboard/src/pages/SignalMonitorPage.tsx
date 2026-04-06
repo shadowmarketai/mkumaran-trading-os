@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield,
   RefreshCw,
@@ -14,14 +14,30 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Brain,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import GlassCard from '../components/ui/GlassCard';
 import MetricCard from '../components/ui/MetricCard';
 import StatusBadge from '../components/ui/StatusBadge';
+import CandlestickChart from '../components/ui/CandlestickChart';
 import { signalMonitorApi } from '../services/api';
 import { useMarketSegment } from '../context/MarketSegmentContext';
 import { cn } from '../lib/utils';
 import type { Signal, ClosedSignal } from '../types';
+
+function isMarketHours(): boolean {
+  const now = new Date();
+  // Convert to IST (UTC+5:30)
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const ist = new Date(utc + 5.5 * 3600000);
+  const h = ist.getHours();
+  const m = ist.getMinutes();
+  const day = ist.getDay();
+  if (day === 0 || day === 6) return false;
+  const mins = h * 60 + m;
+  return mins >= 9 * 60 + 15 && mins <= 15 * 60 + 30;
+}
 
 export default function SignalMonitorPage() {
   const [openSignals, setOpenSignals] = useState<Signal[]>([]);
@@ -30,11 +46,36 @@ export default function SignalMonitorPage() {
   const [checking, setChecking] = useState(false);
   const [lastChecked, setLastChecked] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expandedSignalId, setExpandedSignalId] = useState<number | null>(null);
+  const [marketOpen, setMarketOpen] = useState(isMarketHours());
+  const [newSignalIds, setNewSignalIds] = useState<Set<number>>(new Set());
+  const prevSignalIdsRef = useRef<Set<number>>(new Set());
   const { filter } = useMarketSegment();
+
+  // Check market status every 30s
+  useEffect(() => {
+    const timer = setInterval(() => setMarketOpen(isMarketHours()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   const fetchOpenSignals = useCallback(async () => {
     try {
       const data = await signalMonitorApi.getOpenSignals(filter);
+
+      // Detect new signals for flash animation
+      const currentIds = new Set(data.map((s) => s.id));
+      const prevIds = prevSignalIdsRef.current;
+      const freshIds = new Set<number>();
+      currentIds.forEach((id) => {
+        if (!prevIds.has(id)) freshIds.add(id);
+      });
+      if (freshIds.size > 0) {
+        setNewSignalIds(freshIds);
+        // Clear flash after 3 seconds
+        setTimeout(() => setNewSignalIds(new Set()), 3000);
+      }
+      prevSignalIdsRef.current = currentIds;
+
       setOpenSignals(data);
       setError(null);
     } catch (err) {
@@ -44,9 +85,10 @@ export default function SignalMonitorPage() {
     }
   }, [filter]);
 
+  // Poll every 10 seconds
   useEffect(() => {
     fetchOpenSignals();
-    const interval = setInterval(fetchOpenSignals, 60000); // Refresh every 1 min
+    const interval = setInterval(fetchOpenSignals, 10000);
     return () => clearInterval(interval);
   }, [fetchOpenSignals]);
 
@@ -56,13 +98,16 @@ export default function SignalMonitorPage() {
       const result = await signalMonitorApi.checkNow();
       setRecentClosed(result.closed_signals);
       setLastChecked(new Date().toLocaleTimeString());
-      // Refresh open signals after check
       await fetchOpenSignals();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Check failed');
     } finally {
       setChecking(false);
     }
+  };
+
+  const toggleChart = (signalId: number) => {
+    setExpandedSignalId((prev) => (prev === signalId ? null : signalId));
   };
 
   if (loading) {
@@ -85,12 +130,23 @@ export default function SignalMonitorPage() {
       transition={{ duration: 0.4 }}
       className="space-y-6"
     >
-      {/* Header with Check Now */}
+      {/* Header with LIVE badge + Check Now */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Shield size={20} className="text-trading-ai" />
           <h2 className="text-lg font-bold text-white">Signal Monitor</h2>
-          <span className="text-xs text-slate-500 font-mono">Auto-checks every 5 min</span>
+          {marketOpen ? (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-500/15 border border-green-500/30">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              </span>
+              <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider">Live</span>
+            </span>
+          ) : (
+            <span className="text-xs text-slate-500 font-mono">Market closed</span>
+          )}
+          <span className="text-xs text-slate-600 font-mono">Polling every 10s</span>
         </div>
         <div className="flex items-center gap-3">
           {lastChecked && (
@@ -186,7 +242,7 @@ export default function SignalMonitorPage() {
         </GlassCard>
       )}
 
-      {/* Open Signals Table */}
+      {/* Open Signals Table with expandable chart */}
       {totalOpen > 0 ? (
         <GlassCard>
           <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
@@ -196,6 +252,7 @@ export default function SignalMonitorPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-trading-border">
+                  <th className="text-left py-3 px-2 w-6"></th>
                   <th className="text-left py-3 px-2">Ticker</th>
                   <th className="text-center py-3 px-2">Exch</th>
                   <th className="text-center py-3 px-2">Dir</th>
@@ -211,15 +268,33 @@ export default function SignalMonitorPage() {
               <tbody className="divide-y divide-trading-border/50">
                 {openSignals.map((sig, idx) => {
                   const isLong = sig.direction === 'LONG' || sig.direction === 'BUY';
-                  const confidencePct = Math.round(sig.ai_confidence * 100);
+                  const confidencePct = Math.round(sig.ai_confidence);
+                  const isExpanded = expandedSignalId === sig.id;
+                  const isNew = newSignalIds.has(sig.id);
+
                   return (
                     <motion.tr
                       key={sig.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
+                      initial={isNew ? { opacity: 0, backgroundColor: 'rgba(34,197,94,0.15)' } : { opacity: 0, x: -10 }}
+                      animate={isNew
+                        ? { opacity: 1, backgroundColor: 'rgba(34,197,94,0)', transition: { duration: 2 } }
+                        : { opacity: 1, x: 0 }
+                      }
                       transition={{ duration: 0.2, delay: idx * 0.04 }}
-                      className="hover:bg-slate-800/30 transition-colors"
+                      onClick={() => toggleChart(sig.id)}
+                      className={cn(
+                        'cursor-pointer transition-colors',
+                        isExpanded ? 'bg-slate-800/50' : 'hover:bg-slate-800/30',
+                        isNew && 'ring-1 ring-green-500/30'
+                      )}
                     >
+                      <td className="py-3 px-2">
+                        {isExpanded ? (
+                          <ChevronUp size={14} className="text-slate-400" />
+                        ) : (
+                          <ChevronDown size={14} className="text-slate-500" />
+                        )}
+                      </td>
                       <td className="py-3 px-2">
                         <span className="font-mono font-bold text-white">{sig.ticker}</span>
                       </td>
@@ -287,6 +362,39 @@ export default function SignalMonitorPage() {
                 })}
               </tbody>
             </table>
+
+            {/* Expanded chart panel (rendered outside table for proper layout) */}
+            <AnimatePresence>
+              {expandedSignalId && (() => {
+                const sig = openSignals.find((s) => s.id === expandedSignalId);
+                if (!sig) return null;
+                const chartTicker = sig.exchange && sig.exchange !== 'NSE'
+                  ? `${sig.exchange}:${sig.ticker}`
+                  : sig.ticker;
+                return (
+                  <motion.div
+                    key={`chart-${expandedSignalId}`}
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="border-t border-trading-border/50 p-4"
+                  >
+                    <CandlestickChart
+                      ticker={chartTicker}
+                      interval="1D"
+                      signal={{
+                        entry: sig.entry_price,
+                        sl: sig.stop_loss,
+                        target: sig.target,
+                        direction: sig.direction,
+                      }}
+                      height={350}
+                    />
+                  </motion.div>
+                );
+              })()}
+            </AnimatePresence>
           </div>
         </GlassCard>
       ) : (
