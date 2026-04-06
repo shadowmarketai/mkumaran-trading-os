@@ -221,6 +221,8 @@ def get_promoted_stocks(
         "mcx_ema_crossover", "mcx_rsi_oversold", "mcx_crude_momentum",
         "mcx_gold_silver_ratio", "mcx_metal_strength",
         "intraday_momentum_bull", "daily_pct_change_py",
+        "nfo_ema_crossover", "nfo_rsi_oversold", "nfo_vol_squeeze_bull",
+        "nfo_range_breakout_bull",
     ]
 
     stock_counts: dict[str, int] = {}

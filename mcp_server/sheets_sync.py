@@ -294,3 +294,64 @@ def sync_active_trades(trades: list[dict]) -> bool:
     except Exception as e:
         logger.error("Active trades sync failed: %s", e)
         return False
+
+
+def log_scanner_review(review_data: dict) -> bool:
+    """
+    Log daily scanner review to SCANNER REVIEW tab.
+    Tab 6 — EOD scanner performance analysis.
+    """
+    _, sheet = _get_sheets_client()
+    if not sheet:
+        return False
+
+    try:
+        headers = [
+            "Date", "Direction", "Bull %", "Bear %", "Hit Rate %",
+            "Top 10 Caught", "Top 10 Total", "False Positives",
+            "Promoted Total", "Promoted Hit", "Promoted Hit %",
+            "Best Scanner", "Best Hit %", "Worst Scanner", "Worst Hit %",
+        ]
+        ws = _get_or_create_worksheet(
+            sheet, "SCANNER REVIEW", cols=len(headers), header=headers,
+        )
+
+        best = review_data.get("best_scanners", [])
+        worst = review_data.get("worst_scanners", [])
+        promoted = review_data.get("promoted_performance", {})
+
+        best_name = best[0]["scanner"] if best else ""
+        best_hr = best[0]["hit_rate"] if best else ""
+        worst_name = worst[0]["scanner"] if worst else ""
+        worst_hr = worst[0]["hit_rate"] if worst else ""
+
+        # Count how many of top-10 gainers were caught by any bull scanner
+        missed = review_data.get("missed_opportunities", [])
+        top10_total = review_data.get("top10_total", 10)
+        top10_caught = top10_total - len(missed)
+
+        row = [
+            review_data.get("review_date", str(date.today())),
+            review_data.get("market_direction", ""),
+            review_data.get("bull_pct", 0),
+            review_data.get("bear_pct", 0),
+            review_data.get("overall_hit_rate", 0),
+            top10_caught,
+            top10_total,
+            len(review_data.get("false_positives", [])),
+            promoted.get("total", 0),
+            promoted.get("hit", 0),
+            promoted.get("hit_pct", 0),
+            best_name,
+            best_hr,
+            worst_name,
+            worst_hr,
+        ]
+        ws.append_row(row)
+
+        logger.info("Logged scanner review to Sheets for %s", review_data.get("review_date"))
+        return True
+
+    except Exception as e:
+        logger.error("Scanner review sheet logging failed: %s", e)
+        return False

@@ -23,7 +23,7 @@ from starlette.responses import JSONResponse
 
 from mcp_server.config import settings
 from mcp_server.db import get_db, init_db, SessionLocal
-from mcp_server.models import Watchlist, Signal, Outcome, MWAScore, ActiveTrade
+from mcp_server.models import Watchlist, Signal, Outcome, MWAScore, ActiveTrade, ScannerReview
 from mcp_server.asset_registry import (
     parse_ticker, get_asset_class, get_exchange,
     get_supported_exchanges,
@@ -164,6 +164,13 @@ async def lifespan(app: FastAPI):
     auto_scan_task = asyncio.create_task(_auto_scan_loop())
     logger.info("Auto-scan background task started (every 15 min during market hours)")
 
+    # Start scanner review background task (triggers at 15:45 IST)
+    scanner_review_task = None
+    if getattr(settings, "SCANNER_REVIEW_ENABLED", True):
+        from mcp_server.scanner_review import scanner_review_loop
+        scanner_review_task = asyncio.create_task(scanner_review_loop())
+        logger.info("Scanner review background task started (15:45 IST daily)")
+
     # Start Telegram bot polling (so /health, /kitelogin commands work)
     try:
         from mcp_server.telegram_bot import create_bot_application
@@ -229,6 +236,14 @@ async def lifespan(app: FastAPI):
             await auto_scan_task
         except asyncio.CancelledError:
             pass
+
+    # Shutdown — cancel scanner review task
+    if scanner_review_task and not scanner_review_task.done():
+        scanner_review_task.cancel()
+        try:
+            await scanner_review_task
+        except asyncio.CancelledError:
+            pass
     logger.info("MCP Server shutting down")
 
 
@@ -267,10 +282,13 @@ AUTH_PUBLIC_PATHS = {
     "/tools/update_all_trailing_sl", "/tools/check_exit_strategies",
     # AI report + news sentiment (n8n calls without auth)
     "/tools/ai_report", "/tools/news_sentiment",
+    # Scanner review (n8n compatible)
+    "/tools/run_scanner_review",
 }
 AUTH_PUBLIC_PREFIXES = (
     "/assets/", "/docs/", "/redoc/",
     "/tools/mwa_scan_status/", "/api/chart/",
+    "/api/scanner-review/",
 )
 
 
@@ -925,9 +943,9 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
     scanner = MWAScanner()
 
     nse_results = scanner.run_all(stock_data=nse_data or None, save=False, segment="NSE") if (segments is None or "NSE" in segments) else {}
-    mcx_results = scanner.run_all(stock_data=mcx_data or None, save=False, segment="MCX") if (segments is None or "MCX" in segments) and mcx_data else {}
-    cds_results = scanner.run_all(stock_data=cds_data or None, save=False, segment="CDS") if (segments is None or "CDS" in segments) and cds_data else {}
-    nfo_results = scanner.run_all(stock_data=nfo_data or None, save=False, segment="NFO") if (segments is None or "NFO" in segments) and nfo_data else {}
+    mcx_results = scanner.run_all(stock_data=mcx_data or None, save=False, segment="MCX") if (segments is None or "MCX" in segments) else {}
+    cds_results = scanner.run_all(stock_data=cds_data or None, save=False, segment="CDS") if (segments is None or "CDS" in segments) else {}
+    nfo_results = scanner.run_all(stock_data=nfo_data or None, save=False, segment="NFO") if (segments is None or "NFO" in segments) else {}
 
     # Merge results — for scanners that ran on multiple segments,
     # combine stock lists (deduplicated)
@@ -3654,25 +3672,25 @@ def _fetch_market_movers() -> dict:
 
     # ── Sort into categories ─────────────────────────────────
     by_pct = sorted(all_items, key=lambda x: x["pct_change"], reverse=True)
-    results["gainers"] = [i for i in by_pct if i["pct_change"] > 0][:30]
+    results["gainers"] = [i for i in by_pct if i["pct_change"] > 0][:50]
     results["losers"] = sorted(
         [i for i in all_items if i["pct_change"] < 0],
         key=lambda x: x["pct_change"],
-    )[:30]
+    )[:50]
     results["most_active"] = sorted(
         all_items, key=lambda x: x["volume"], reverse=True,
-    )[:30]
+    )[:50]
 
     # 52-week high/low: check if today's high >= prev close * 1.0 (approximation)
     # Full 52W check needs more data; use daily high vs open as proxy for now
     results["week52_high"] = sorted(
         [i for i in all_items if i["high"] >= i["ltp"] * 0.999],
         key=lambda x: x["pct_change"], reverse=True,
-    )[:30]
+    )[:50]
     results["week52_low"] = sorted(
         [i for i in all_items if i["low"] <= i["ltp"] * 1.001 and i["pct_change"] < 0],
         key=lambda x: x["pct_change"],
-    )[:30]
+    )[:50]
 
     results["fetched_at"] = _now_ist().isoformat()
     results["total_stocks"] = len(all_items)
@@ -3819,6 +3837,94 @@ async def api_realtime_status():
         "subscribed_symbols": len(_realtime_engine._subscribed_symbols),
         "monitored_positions": len(_realtime_engine.monitor.positions),
         "redis_available": _realtime_engine.cache._available,
+    }
+
+
+# ============================================================
+# Scanner Review — EOD Performance Analysis
+# ============================================================
+
+
+@app.get("/api/scanner-review/today")
+async def api_scanner_review_today(db: Session = Depends(get_db)):
+    """Today's review (or most recent)."""
+    row = (
+        db.query(ScannerReview)
+        .order_by(ScannerReview.review_date.desc())
+        .first()
+    )
+    if not row:
+        return {"status": "no_data", "reason": "no_reviews_yet"}
+    return row.review_payload or {
+        "review_date": str(row.review_date),
+        "market_direction": row.market_direction,
+        "overall_hit_rate": float(row.overall_hit_rate or 0),
+        "scanner_hit_rates": row.scanner_hit_rates,
+        "missed_opportunities": row.missed_opportunities,
+        "false_positives": row.false_positives,
+        "segment_performance": row.segment_performance,
+        "chain_accuracy": row.chain_accuracy,
+        "promoted_performance": row.promoted_performance,
+        "best_scanners": row.best_scanners,
+        "worst_scanners": row.worst_scanners,
+    }
+
+
+@app.get("/api/scanner-review/history")
+async def api_scanner_review_history(
+    days: int = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+):
+    """Rolling review history."""
+    from datetime import timedelta as _td
+
+    cutoff = date.today() - _td(days=days)
+    rows = (
+        db.query(ScannerReview)
+        .filter(ScannerReview.review_date >= cutoff)
+        .order_by(ScannerReview.review_date.desc())
+        .all()
+    )
+    return {
+        "days": days,
+        "count": len(rows),
+        "reviews": [
+            {
+                "review_date": str(r.review_date),
+                "market_direction": r.market_direction,
+                "overall_hit_rate": float(r.overall_hit_rate or 0),
+                "best_scanners": r.best_scanners,
+                "worst_scanners": r.worst_scanners,
+                "promoted_performance": r.promoted_performance,
+            }
+            for r in rows
+        ],
+    }
+
+
+@app.post("/tools/run_scanner_review")
+async def tool_run_scanner_review():
+    """Manual trigger for scanner review (n8n compatible)."""
+    from mcp_server.scanner_review import ScannerReviewEngine
+
+    engine = ScannerReviewEngine()
+    result = await engine.run_review()
+    return result
+
+
+@app.get("/api/scanner-review/leaderboard")
+async def api_scanner_review_leaderboard(
+    days: int = Query(default=30, ge=1, le=365),
+):
+    """Scanner ranking by rolling performance."""
+    from mcp_server.scanner_review import get_leaderboard, get_rolling_stats
+
+    board = get_leaderboard(days)
+    stats = get_rolling_stats(days)
+    return {
+        "days": days,
+        "entries": stats.get("entries", 0),
+        "leaderboard": board,
     }
 
 

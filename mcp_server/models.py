@@ -189,3 +189,28 @@ class OHLCVCache(Base):
             f"<OHLCVCache(ticker='{self.ticker}', interval='{self.interval}', "
             f"bar_date={self.bar_date}, close={self.close})>"
         )
+
+
+class ScannerReview(Base):
+    __tablename__ = "scanner_reviews"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    review_date = Column(Date, unique=True, index=True, nullable=False)
+    market_direction = Column(String(15))
+    overall_hit_rate = Column(Numeric(5, 1))
+    scanner_hit_rates = Column(JSONB().with_variant(JSON, "sqlite"))
+    missed_opportunities = Column(JSONB().with_variant(JSON, "sqlite"))
+    false_positives = Column(JSONB().with_variant(JSON, "sqlite"))
+    segment_performance = Column(JSONB().with_variant(JSON, "sqlite"))
+    chain_accuracy = Column(JSONB().with_variant(JSON, "sqlite"))
+    promoted_performance = Column(JSONB().with_variant(JSON, "sqlite"))
+    best_scanners = Column(JSONB().with_variant(JSON, "sqlite"))
+    worst_scanners = Column(JSONB().with_variant(JSON, "sqlite"))
+    review_payload = Column(JSONB().with_variant(JSON, "sqlite"))
+    created_at = Column(DateTime, server_default=func.now())
+
+    def __repr__(self) -> str:
+        return (
+            f"<ScannerReview(id={self.id}, date={self.review_date}, "
+            f"direction='{self.market_direction}', hit_rate={self.overall_hit_rate})>"
+        )

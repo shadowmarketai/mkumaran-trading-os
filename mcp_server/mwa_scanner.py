@@ -942,6 +942,65 @@ SCANNERS = {
         "pairs_with": ["mcx_gold_silver_ratio", "mcx_ema_crossover"],
         "status": "ACTIVE",
     },
+
+    # ── LAYER 15 — F&O / NFO (8 scanners) ────────────────────
+
+    "nfo_ema_crossover": {
+        "no": 121, "slug": "python:scan_nfo_ema_crossover",
+        "type": "BULL", "weight": 1.5, "layer": "FnO", "source": "Python",
+        "desc": "NFO 9/21 EMA bullish crossover on index futures.",
+        "pairs_with": ["nfo_rsi_oversold", "nfo_vol_squeeze_bull", "nfo_range_breakout_bull"],
+        "status": "ACTIVE",
+    },
+    "nfo_ema_crossover_bear": {
+        "no": 122, "slug": "python:scan_nfo_ema_crossover_bear",
+        "type": "BEAR", "weight": 1.5, "layer": "FnO", "source": "Python",
+        "desc": "NFO 9/21 EMA bearish crossover on index futures.",
+        "pairs_with": ["nfo_rsi_overbought", "nfo_vol_squeeze_bear", "nfo_range_breakdown_bear"],
+        "status": "ACTIVE",
+    },
+    "nfo_rsi_oversold": {
+        "no": 123, "slug": "python:scan_nfo_rsi_oversold",
+        "type": "BULL", "weight": 1.0, "layer": "FnO", "source": "Python",
+        "desc": "NFO index RSI(14) < 30 oversold — potential long entry for calls/bull spreads.",
+        "pairs_with": ["nfo_ema_crossover", "nfo_vol_squeeze_bull"],
+        "status": "ACTIVE",
+    },
+    "nfo_rsi_overbought": {
+        "no": 124, "slug": "python:scan_nfo_rsi_overbought",
+        "type": "BEAR", "weight": 1.0, "layer": "FnO", "source": "Python",
+        "desc": "NFO index RSI(14) > 70 overbought — potential short entry for puts/bear spreads.",
+        "pairs_with": ["nfo_ema_crossover_bear", "nfo_vol_squeeze_bear"],
+        "status": "ACTIVE",
+    },
+    "nfo_vol_squeeze_bull": {
+        "no": 125, "slug": "python:scan_nfo_vol_squeeze_bull",
+        "type": "BULL", "weight": 1.5, "layer": "FnO", "source": "Python",
+        "desc": "NFO BB squeeze with price above middle band — bullish breakout setup.",
+        "pairs_with": ["nfo_ema_crossover", "nfo_range_breakout_bull"],
+        "status": "ACTIVE",
+    },
+    "nfo_vol_squeeze_bear": {
+        "no": 126, "slug": "python:scan_nfo_vol_squeeze_bear",
+        "type": "BEAR", "weight": 1.5, "layer": "FnO", "source": "Python",
+        "desc": "NFO BB squeeze with price below middle band — bearish breakdown setup.",
+        "pairs_with": ["nfo_ema_crossover_bear", "nfo_range_breakdown_bear"],
+        "status": "ACTIVE",
+    },
+    "nfo_range_breakout_bull": {
+        "no": 127, "slug": "python:scan_nfo_range_breakout_bull",
+        "type": "BULL", "weight": 2.5, "layer": "FnO", "source": "Python",
+        "desc": "NFO index breakout above 20-day high with volume — highest conviction F&O long.",
+        "pairs_with": ["nfo_ema_crossover", "nfo_vol_squeeze_bull"],
+        "status": "ACTIVE",
+    },
+    "nfo_range_breakdown_bear": {
+        "no": 128, "slug": "python:scan_nfo_range_breakdown_bear",
+        "type": "BEAR", "weight": 2.5, "layer": "FnO", "source": "Python",
+        "desc": "NFO index breakdown below 20-day low with volume — highest conviction F&O short.",
+        "pairs_with": ["nfo_ema_crossover_bear", "nfo_vol_squeeze_bear"],
+        "status": "ACTIVE",
+    },
 }
 
 
@@ -970,6 +1029,8 @@ for _key, _cfg in SCANNERS.items():
         _cfg["segments"] = ["CDS"]
     elif _cfg["layer"] == "Commodity":
         _cfg["segments"] = ["MCX"]
+    elif _cfg["layer"] == "FnO":
+        _cfg["segments"] = ["NFO"]
     elif _key in _NSE_ONLY_FILTERS:
         _cfg["segments"] = ["NSE"]
     else:
@@ -1181,6 +1242,27 @@ SIGNAL_CHAINS = {
                      "volume_avg"],
         "desc": "9/21 EMA pullback + BOS + demand OB + volume — trend continuation",
         "boost": 20, "best_for": "EMA pullback continuation longs with SMC confluence",
+    },
+    # F&O / NFO chains
+    "nfo_breakout_long": {
+        "scanners": ["nfo_range_breakout_bull", "nfo_ema_crossover", "nfo_vol_squeeze_bull"],
+        "desc": "NFO range breakout + EMA crossover + vol squeeze — index futures long",
+        "boost": 25, "best_for": "High-conviction index call buying / bull spreads",
+    },
+    "nfo_breakdown_short": {
+        "scanners": ["nfo_range_breakdown_bear", "nfo_ema_crossover_bear", "nfo_vol_squeeze_bear"],
+        "desc": "NFO range breakdown + EMA bear cross + vol squeeze — index futures short",
+        "boost": 25, "best_for": "High-conviction index put buying / bear spreads",
+    },
+    "nfo_reversal_long": {
+        "scanners": ["nfo_rsi_oversold", "nfo_ema_crossover", "nfo_vol_squeeze_bull"],
+        "desc": "NFO RSI oversold + EMA bullish crossover + vol squeeze — reversal long",
+        "boost": 20, "best_for": "Index reversal longs after oversold conditions",
+    },
+    "nfo_reversal_short": {
+        "scanners": ["nfo_rsi_overbought", "nfo_ema_crossover_bear", "nfo_vol_squeeze_bear"],
+        "desc": "NFO RSI overbought + EMA bearish crossover + vol squeeze — reversal short",
+        "boost": 20, "best_for": "Index reversal shorts after overbought conditions",
     },
 }
 
@@ -1829,6 +1911,44 @@ class MWAScanner:
                     results[key] = []
         except ImportError:
             logger.warning("commodity_scanners not available — skipping Commodity scanners")
+
+        # F&O (NFO) scanners
+        try:
+            from mcp_server.nfo_scanners import (
+                scan_nfo_ema_crossover, scan_nfo_ema_crossover_bear,
+                scan_nfo_rsi_oversold, scan_nfo_rsi_overbought,
+                scan_nfo_vol_squeeze_bull, scan_nfo_vol_squeeze_bear,
+                scan_nfo_range_breakout_bull, scan_nfo_range_breakdown_bear,
+            )
+            if stock_data:
+                nfo_scanners = {
+                    "nfo_ema_crossover": scan_nfo_ema_crossover,
+                    "nfo_ema_crossover_bear": scan_nfo_ema_crossover_bear,
+                    "nfo_rsi_oversold": scan_nfo_rsi_oversold,
+                    "nfo_rsi_overbought": scan_nfo_rsi_overbought,
+                    "nfo_vol_squeeze_bull": scan_nfo_vol_squeeze_bull,
+                    "nfo_vol_squeeze_bear": scan_nfo_vol_squeeze_bear,
+                    "nfo_range_breakout_bull": scan_nfo_range_breakout_bull,
+                    "nfo_range_breakdown_bear": scan_nfo_range_breakdown_bear,
+                }
+                for key, scanner_fn in nfo_scanners.items():
+                    if not _should_run(key):
+                        continue
+                    try:
+                        results[key] = scanner_fn(stock_data)
+                    except Exception as e:
+                        logger.error("NFO scanner %s failed: %s", key, e)
+                        results[key] = []
+            else:
+                for key in [
+                    "nfo_ema_crossover", "nfo_ema_crossover_bear",
+                    "nfo_rsi_oversold", "nfo_rsi_overbought",
+                    "nfo_vol_squeeze_bull", "nfo_vol_squeeze_bear",
+                    "nfo_range_breakout_bull", "nfo_range_breakdown_bear",
+                ]:
+                    results[key] = []
+        except ImportError:
+            logger.warning("nfo_scanners not available — skipping F&O scanners")
 
         # RL scanners
         try:

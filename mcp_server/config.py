@@ -127,4 +127,9 @@ class Settings:
     JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))
 
 
+    # Scanner Review Engine
+    SCANNER_REVIEW_ENABLED: bool = os.getenv("SCANNER_REVIEW_ENABLED", "true").lower() == "true"
+    SCANNER_REVIEW_HOUR: int = int(os.getenv("SCANNER_REVIEW_HOUR", "15"))
+
+
 settings = Settings()
