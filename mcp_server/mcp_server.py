@@ -1665,7 +1665,7 @@ async def api_active_trades(
         query = query.filter(ActiveTrade.asset_class == asset_class.upper())
     if timeframe:
         query = query.filter(ActiveTrade.timeframe == timeframe)
-    trades = query.all()
+    trades = query.order_by(ActiveTrade.id.desc()).limit(100).all()
     result = []
     for t in trades:
         direction = t.signal.direction if t.signal else "LONG"

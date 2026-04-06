@@ -79,7 +79,7 @@ export const signalApi = {
 
 export const tradeApi = {
   getActiveTrades: (filter?: SegmentFilter) =>
-    api.get<ActiveTrade[]>('/trades/active', { params: { ...filter } }).then((r) => r.data),
+    api.get<ActiveTrade[]>('/trades/active', { params: { ...filter }, timeout: 60000 }).then((r) => r.data),
 };
 
 export const mwaApi = {
