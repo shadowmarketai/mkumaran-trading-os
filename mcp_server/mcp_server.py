@@ -1422,7 +1422,13 @@ async def api_active_trades(
             "current_price": float(t.current_price) if t.current_price else 0,
             "crrr": float(t.crrr) if t.crrr else 0,
             "pnl_pct": round(
-                (float(t.current_price) - float(t.entry_price)) / float(t.entry_price) * 100, 2
+                (
+                    (float(t.entry_price) - float(t.current_price))
+                    if (t.signal and t.signal.direction in ("SELL", "SHORT"))
+                    else (float(t.current_price) - float(t.entry_price))
+                )
+                / float(t.entry_price) * 100,
+                2,
             )
             if t.current_price and t.entry_price
             else 0,

@@ -107,36 +107,51 @@ def tier3_monitor(db: Session) -> list[dict]:
                 continue
 
             cmp = float(data['close'].iloc[-1])
+            direction = trade.signal.direction if trade.signal else "LONG"
+            is_short = direction in ("SELL", "SHORT")
 
             # Update current price
             trade.current_price = cmp
             trade.last_updated = datetime.now()
 
-            # Calculate current RRR
-            risk = cmp - float(trade.stop_loss) if cmp > float(trade.stop_loss) else 0
-            reward = float(trade.target) - cmp if cmp < float(trade.target) else 0
+            # Calculate current RRR (direction-aware)
+            if is_short:
+                risk = float(trade.stop_loss) - cmp if cmp < float(trade.stop_loss) else 0
+                reward = cmp - float(trade.target) if cmp > float(trade.target) else 0
+            else:
+                risk = cmp - float(trade.stop_loss) if cmp > float(trade.stop_loss) else 0
+                reward = float(trade.target) - cmp if cmp < float(trade.target) else 0
             crrr = reward / risk if risk > 0 else 0
             trade.crrr = round(crrr, 2)
 
-            # Check target hit
-            if cmp >= float(trade.target):
+            # P&L calc (direction-aware)
+            pnl_pct = round(
+                ((float(trade.entry_price) - cmp) if is_short else (cmp - float(trade.entry_price)))
+                / float(trade.entry_price) * 100, 2,
+            )
+
+            # Check target hit (direction-aware)
+            target_hit = cmp <= float(trade.target) if is_short else cmp >= float(trade.target)
+            sl_hit = cmp >= float(trade.stop_loss) if is_short else cmp <= float(trade.stop_loss)
+
+            if target_hit:
                 alerts.append({
                     "type": "TARGET_HIT",
                     "ticker": trade.ticker,
                     "cmp": cmp,
                     "target": float(trade.target),
-                    "pnl_pct": round((cmp - float(trade.entry_price)) / float(trade.entry_price) * 100, 2),
+                    "pnl_pct": pnl_pct,
                     "timestamp": datetime.now().isoformat(),
                 })
 
             # Check stop loss hit
-            elif cmp <= float(trade.stop_loss):
+            elif sl_hit:
                 alerts.append({
                     "type": "STOPLOSS_HIT",
                     "ticker": trade.ticker,
                     "cmp": cmp,
                     "stop_loss": float(trade.stop_loss),
-                    "pnl_pct": round((cmp - float(trade.entry_price)) / float(trade.entry_price) * 100, 2),
+                    "pnl_pct": pnl_pct,
                     "timestamp": datetime.now().isoformat(),
                 })
 
