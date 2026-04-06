@@ -12,9 +12,12 @@ Exchange hours (IST):
 """
 
 import logging
-from datetime import datetime, time, date
+from datetime import datetime, time, date, timezone, timedelta
 
 logger = logging.getLogger(__name__)
+
+# Indian Standard Time (UTC+5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 # ── Exchange Trading Hours (IST) ────────────────────────────
 
@@ -67,10 +70,15 @@ EXCHANGE_HOLIDAYS: dict[str, set[date]] = {
 }
 
 
+def _now_ist() -> datetime:
+    """Current datetime in IST regardless of server timezone."""
+    return datetime.now(IST)
+
+
 def is_market_holiday(exchange: str, check_date: date | None = None) -> bool:
     """Check if given date is a market holiday for the exchange."""
     if check_date is None:
-        check_date = date.today()
+        check_date = _now_ist().date()
 
     holidays = EXCHANGE_HOLIDAYS.get(exchange.upper(), NSE_HOLIDAYS_2026)
     return check_date in holidays
@@ -79,7 +87,7 @@ def is_market_holiday(exchange: str, check_date: date | None = None) -> bool:
 def is_weekend(check_date: date | None = None) -> bool:
     """Check if given date is Saturday (5) or Sunday (6)."""
     if check_date is None:
-        check_date = date.today()
+        check_date = _now_ist().date()
     return check_date.weekday() >= 5
 
 
@@ -90,7 +98,7 @@ def is_market_open(exchange: str, check_time: datetime | None = None) -> bool:
     Considers: trading hours, weekends, holidays.
     """
     if check_time is None:
-        check_time = datetime.now()
+        check_time = _now_ist()
 
     check_date = check_time.date()
 
@@ -121,7 +129,7 @@ def get_market_status(exchange: str, check_time: datetime | None = None) -> dict
     Returns dict with: is_open, exchange, reason, hours, next_open_hint
     """
     if check_time is None:
-        check_time = datetime.now()
+        check_time = _now_ist()
 
     check_date = check_time.date()
     current_time = check_time.time()
