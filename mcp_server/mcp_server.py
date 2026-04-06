@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import pandas as pd
 import requests
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -34,6 +35,31 @@ logger = logging.getLogger(__name__)
 _server_start_time: datetime | None = None
 _last_mwa_scan_time: datetime | None = None
 _bot_app = None  # Telegram bot Application instance
+
+
+async def _auto_scan_loop():
+    """Background task: run MWA scan every 15 minutes during market hours."""
+    from mcp_server.market_calendar import is_market_open
+
+    while True:
+        try:
+            if is_market_open("NSE"):
+                logger.info("Auto-scan: market open — running MWA scan")
+                try:
+                    db = SessionLocal()
+                    try:
+                        _execute_mwa_scan(db)
+                        logger.info("Auto-scan: MWA scan completed")
+                    finally:
+                        db.close()
+                except Exception as e:
+                    logger.error("Auto-scan: MWA scan failed: %s", e)
+            await asyncio.sleep(900)  # 15 minutes
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error("Auto-scan loop error: %s", e)
+            await asyncio.sleep(900)
 
 
 async def _price_refresh_loop():
@@ -114,6 +140,10 @@ async def lifespan(app: FastAPI):
     price_task = asyncio.create_task(_price_refresh_loop())
     logger.info("Live price refresh background task started")
 
+    # Start auto-scan background task (every 15 min during market hours)
+    auto_scan_task = asyncio.create_task(_auto_scan_loop())
+    logger.info("Auto-scan background task started (every 15 min during market hours)")
+
     # Start Telegram bot polling (so /health, /kitelogin commands work)
     try:
         from mcp_server.telegram_bot import create_bot_application
@@ -151,6 +181,14 @@ async def lifespan(app: FastAPI):
         price_task.cancel()
         try:
             await price_task
+        except asyncio.CancelledError:
+            pass
+
+    # Shutdown — cancel auto-scan task
+    if auto_scan_task and not auto_scan_task.done():
+        auto_scan_task.cancel()
+        try:
+            await auto_scan_task
         except asyncio.CancelledError:
             pass
     logger.info("MCP Server shutting down")
@@ -192,7 +230,10 @@ AUTH_PUBLIC_PATHS = {
     # AI report + news sentiment (n8n calls without auth)
     "/tools/ai_report", "/tools/news_sentiment",
 }
-AUTH_PUBLIC_PREFIXES = ("/assets/", "/docs/", "/redoc/", "/tools/mwa_scan_status/")
+AUTH_PUBLIC_PREFIXES = (
+    "/assets/", "/docs/", "/redoc/",
+    "/tools/mwa_scan_status/", "/api/chart/",
+)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -388,6 +429,58 @@ async def tool_get_stock_data(
             "volume": int(df["volume"].iloc[-1]),
         },
     }
+
+
+@app.get("/api/chart/{ticker:path}")
+async def api_chart_ohlcv(
+    ticker: str,
+    interval: str = Query("1D", regex="^(1m|5m|15m|1h|1H|1D|1d)$"),
+    days: int = Query(30, ge=1, le=365),
+):
+    """Return chart-ready OHLCV bars for lightweight-charts frontend."""
+    from mcp_server.data_provider import get_stock_data
+
+    # Map frontend intervals to data_provider intervals
+    _interval_map = {
+        "1m": "1m", "5m": "5m", "15m": "15m",
+        "1h": "1h", "1H": "1h", "1D": "1d", "1d": "1d",
+    }
+    data_interval = _interval_map.get(interval, "1d")
+
+    # Map days to period string
+    if days <= 5:
+        period = "5d"
+    elif days <= 30:
+        period = "1mo"
+    elif days <= 90:
+        period = "3mo"
+    elif days <= 180:
+        period = "6mo"
+    else:
+        period = "1y"
+
+    df = get_stock_data(ticker, period=period, interval=data_interval)
+    if df is None or df.empty:
+        return {"status": "error", "bars": [], "message": f"No data for {ticker}"}
+
+    bars = []
+    for idx, row in df.iterrows():
+        # idx may be a DatetimeIndex or a column
+        ts = idx
+        if hasattr(ts, "timestamp"):
+            time_val = int(ts.timestamp())
+        else:
+            time_val = int(pd.Timestamp(ts).timestamp()) if ts else 0
+        bars.append({
+            "time": time_val,
+            "open": round(float(row["open"]), 2),
+            "high": round(float(row["high"]), 2),
+            "low": round(float(row["low"]), 2),
+            "close": round(float(row["close"]), 2),
+            "volume": int(row["volume"]) if "volume" in row and row["volume"] == row["volume"] else 0,
+        })
+
+    return {"status": "ok", "ticker": ticker, "interval": interval, "bars": bars}
 
 
 @app.post("/tools/run_rrms")
@@ -899,6 +992,19 @@ def _execute_mwa_scan(db: Session) -> dict:
                 logger.info("MWA signal %s skipped: confidence %d <= 50", sig["ticker"], confidence)
                 continue
 
+            # Check for duplicate: skip if OPEN signal exists for same ticker+direction
+            existing = db.query(Signal).filter(
+                Signal.ticker == sig["ticker"],
+                Signal.direction == sig["direction"],
+                Signal.status == "OPEN",
+            ).first()
+            if existing:
+                logger.info(
+                    "MWA signal %s %s skipped: duplicate (existing id=%d)",
+                    sig["ticker"], sig["direction"], existing.id,
+                )
+                continue
+
             # Record signal to DB + Sheets
             signal_data = {
                 "ticker": sig["ticker"],
@@ -946,21 +1052,41 @@ def _execute_mwa_scan(db: Session) -> dict:
                 db.add(db_signal)
                 db.flush()  # Get db_signal.id
 
-                db_active = ActiveTrade(
-                    signal_id=db_signal.id,
-                    ticker=sig["ticker"],
-                    exchange=sig["exchange"],
-                    asset_class=sig["asset_class"],
-                    entry_price=sig["entry"],
-                    target=sig["target"],
-                    stop_loss=sig["sl"],
-                    prrr=sig["rrr"],
-                    current_price=sig["entry"],
-                    crrr=sig["rrr"],
-                    last_updated=_dt.now(),
-                    timeframe="1D",
-                )
-                db.add(db_active)
+                # Fetch live CMP to validate entry
+                live_price = _get_live_ltp(sig["ticker"])
+                if not live_price or live_price <= 0:
+                    live_price = sig["entry"]  # fallback
+
+                # Only create ActiveTrade if CMP is within 2% of entry
+                entry_price = sig["entry"]
+                deviation_pct = abs(live_price - entry_price) / entry_price * 100 if entry_price else 0
+
+                if deviation_pct <= 2.0:
+                    db_active = ActiveTrade(
+                        signal_id=db_signal.id,
+                        ticker=sig["ticker"],
+                        exchange=sig["exchange"],
+                        asset_class=sig["asset_class"],
+                        entry_price=sig["entry"],
+                        target=sig["target"],
+                        stop_loss=sig["sl"],
+                        prrr=sig["rrr"],
+                        current_price=live_price,
+                        crrr=sig["rrr"],
+                        last_updated=_dt.now(),
+                        timeframe="1D",
+                    )
+                    db.add(db_active)
+                    logger.info(
+                        "ActiveTrade created: %s CMP=%.2f Entry=%.2f (%.1f%% off)",
+                        sig["ticker"], live_price, entry_price, deviation_pct,
+                    )
+                else:
+                    logger.info(
+                        "ActiveTrade skipped for %s: CMP=%.2f is %.1f%% away from Entry=%.2f",
+                        sig["ticker"], live_price, deviation_pct, entry_price,
+                    )
+
                 db.commit()
                 logger.info("Saved MWA signal to DB: %s (id=%d)", sig["ticker"], db_signal.id)
             except Exception as db_err:
