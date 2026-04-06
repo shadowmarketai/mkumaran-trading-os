@@ -6,12 +6,12 @@ from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, Query, Request
+from fastapi import FastAPI, Depends, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc, case, text
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -1393,13 +1393,15 @@ async def api_signals(
 
 @app.get("/api/trades/active")
 async def api_active_trades(
+    response: Response,
     exchange: str = "",
     asset_class: str = "",
     timeframe: str = "",
     db: Session = Depends(get_db),
 ):
     """Active trades for dashboard. Optional filter by exchange/asset_class/timeframe."""
-    query = db.query(ActiveTrade)
+    response.headers["Cache-Control"] = "no-store"
+    query = db.query(ActiveTrade).options(joinedload(ActiveTrade.signal))
     if exchange:
         query = query.filter(ActiveTrade.exchange == exchange.upper())
     if asset_class:
@@ -1407,8 +1409,17 @@ async def api_active_trades(
     if timeframe:
         query = query.filter(ActiveTrade.timeframe == timeframe)
     trades = query.all()
-    return [
-        {
+    result = []
+    for t in trades:
+        direction = t.signal.direction if t.signal else "LONG"
+        is_short = direction in ("SELL", "SHORT")
+        if t.current_price and t.entry_price:
+            entry = float(t.entry_price)
+            current = float(t.current_price)
+            pnl = round(((entry - current) if is_short else (current - entry)) / entry * 100, 2)
+        else:
+            pnl = 0
+        result.append({
             "id": t.id,
             "signal_id": t.signal_id,
             "ticker": t.ticker,
@@ -1421,23 +1432,12 @@ async def api_active_trades(
             "prrr": float(t.prrr) if t.prrr else 0,
             "current_price": float(t.current_price) if t.current_price else 0,
             "crrr": float(t.crrr) if t.crrr else 0,
-            "pnl_pct": round(
-                (
-                    (float(t.entry_price) - float(t.current_price))
-                    if (t.signal and t.signal.direction in ("SELL", "SHORT"))
-                    else (float(t.current_price) - float(t.entry_price))
-                )
-                / float(t.entry_price) * 100,
-                2,
-            )
-            if t.current_price and t.entry_price
-            else 0,
+            "pnl_pct": pnl,
             "alert_sent": t.alert_sent or False,
-            "direction": t.signal.direction if t.signal else "LONG",
+            "direction": direction,
             "last_updated": str(t.last_updated) if t.last_updated else None,
-        }
-        for t in trades
-    ]
+        })
+    return result
 
 
 @app.get("/api/mwa/latest")
