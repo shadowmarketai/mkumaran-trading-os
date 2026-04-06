@@ -35,6 +35,13 @@ logger = logging.getLogger(__name__)
 _server_start_time: datetime | None = None
 _last_mwa_scan_time: datetime | None = None
 _bot_app = None  # Telegram bot Application instance
+_realtime_engine = None  # RealtimeEngine instance (WebSocket live feed)
+
+
+def _now_ist() -> datetime:
+    """Current datetime in IST regardless of server timezone."""
+    from mcp_server.market_calendar import now_ist
+    return now_ist()
 
 
 async def _auto_scan_loop():
@@ -43,18 +50,22 @@ async def _auto_scan_loop():
 
     while True:
         try:
-            any_open = is_market_open("NSE") or is_market_open("MCX") or is_market_open("CDS")
-            if any_open:
-                logger.info("Auto-scan: market open — running MWA scan")
+            open_segments: list[str] = []
+            if is_market_open("NSE"):
+                open_segments.extend(["NSE", "NFO"])
+            if is_market_open("MCX"):
+                open_segments.append("MCX")
+            if is_market_open("CDS"):
+                open_segments.append("CDS")
+
+            if open_segments:
+                logger.info("Auto-scan: open segments=%s", open_segments)
+                db = SessionLocal()
                 try:
-                    db = SessionLocal()
-                    try:
-                        _execute_mwa_scan(db)
-                        logger.info("Auto-scan: MWA scan completed")
-                    finally:
-                        db.close()
-                except Exception as e:
-                    logger.error("Auto-scan: MWA scan failed: %s", e)
+                    _execute_mwa_scan(db, segments=open_segments)
+                    logger.info("Auto-scan: MWA scan completed")
+                finally:
+                    db.close()
             await asyncio.sleep(900)  # 15 minutes
         except asyncio.CancelledError:
             break
@@ -78,10 +89,18 @@ async def _price_refresh_loop():
                     count = 0
                     for t in trades:
                         try:
-                            ltp = _get_live_ltp(t.ticker)
+                            # Try WebSocket cache first (sub-ms)
+                            ltp = None
+                            if _realtime_engine:
+                                ticker_clean = t.ticker.replace("NSE:", "") if t.ticker else ""
+                                if ticker_clean:
+                                    ltp = _realtime_engine.get_ltp(ticker_clean)
+                            # Fallback to REST API
+                            if not ltp or ltp <= 0:
+                                ltp = _get_live_ltp(t.ticker)
                             if ltp and ltp > 0:
                                 t.current_price = ltp
-                                t.last_updated = datetime.now()
+                                t.last_updated = _now_ist()
                                 direction = (
                                     t.signal.direction if t.signal else "LONG"
                                 )
@@ -115,7 +134,7 @@ async def lifespan(app: FastAPI):
     from mcp_server.logging_config import setup_logging
     setup_logging()
 
-    _server_start_time = datetime.now()
+    _server_start_time = _now_ist()
 
     # Capture the main event loop for background thread access
     global _main_event_loop
@@ -157,8 +176,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Telegram bot polling startup skipped: %s", e)
 
+    # Start RealtimeEngine (WebSocket live market data)
+    global _realtime_engine
+    try:
+        from mcp_server.realtime_engine import RealtimeEngine
+        _realtime_engine = RealtimeEngine()
+        _realtime_engine.start_async()
+        logger.info("RealtimeEngine started (WebSocket live feed)")
+    except Exception as e:
+        logger.warning("RealtimeEngine startup skipped: %s", e)
+        _realtime_engine = None
+
     logger.info("MCP Server starting on %s:%s", settings.MCP_SERVER_HOST, settings.MCP_SERVER_PORT)
     yield
+    # Shutdown — stop RealtimeEngine
+    if _realtime_engine:
+        try:
+            _realtime_engine.stop()
+        except Exception as e:
+            logger.warning("RealtimeEngine shutdown error: %s", e)
+
     # Shutdown — stop Telegram bot
     if _bot_app:
         try:
@@ -735,7 +772,7 @@ def _run_mwa_scan_background(job_id: str) -> None:
     except Exception as e:
         _mwa_jobs[job_id]["status"] = "failed"
         _mwa_jobs[job_id]["result"] = {"error": str(e), "traceback": traceback.format_exc()}
-    _mwa_jobs[job_id]["finished"] = datetime.now().isoformat()
+    _mwa_jobs[job_id]["finished"] = _now_ist().isoformat()
 
 
 @app.get("/tools/mwa_scan_status/{job_id}")
@@ -775,7 +812,7 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
         job_id = uuid.uuid4().hex[:12]
         _mwa_jobs[job_id] = {
             "status": "queued", "result": None,
-            "started": datetime.now().isoformat(), "finished": None,
+            "started": _now_ist().isoformat(), "finished": None,
         }
         t = threading.Thread(target=_run_mwa_scan_background, args=(job_id,), daemon=True)
         t.start()
@@ -790,77 +827,123 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
     return _execute_mwa_scan(db)
 
 
-def _execute_mwa_scan(db: Session) -> dict:
-    """Core MWA scan logic — used by both sync and async modes."""
+def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
+    """Core MWA scan logic — used by both sync and async modes.
+
+    Routes data by segment to the best source (Angel for NSE/NFO, Goodwill
+    for MCX, yfinance for CDS) and runs scanners per-segment so that
+    Chartink (NSE-only) doesn't run against MCX/CDS, while universal
+    scanners (SMC/Wyckoff/VSA/Harmonic/RL) now run on all segments.
+
+    Args:
+        segments: List of open segments to scan (e.g. ["MCX", "CDS"]).
+                  None = scan all segments (backward compat for manual API).
+    """
     from mcp_server.mwa_scanner import MWAScanner
     from mcp_server.mwa_scoring import calculate_mwa_score, get_promoted_stocks, format_morning_brief
-    from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, NFO_INDEX_UNIVERSE, resolve_yf_symbol
+    from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, NFO_INDEX_UNIVERSE
+    from mcp_server.data_provider import get_provider
 
-    # Build stock_data dict: NSE equities + CDS + MCX + NFO tickers
-    stock_data: dict = {}
+    provider = get_provider()
+
+    # ── Fetch OHLCV per segment using routed sources ─────────
+    nse_data: dict = {}
+    mcx_data: dict = {}
+    cds_data: dict = {}
+    nfo_data: dict = {}
     data_diag: dict = {"nse": 0, "cds": 0, "mcx": 0, "nfo": 0, "errors": []}
+
     try:
-        from mcp_server.nse_scanner import get_stock_data as _get_stock, _get_nse_universe
+        from mcp_server.nse_scanner import _get_nse_universe
 
-        # 1) Fetch NSE equity OHLCV (top stocks for Python scanners)
-        nse_stocks = _get_nse_universe()
-        for ticker in nse_stocks:
-            try:
-                df = _get_stock(ticker, period="6mo", interval="1d")
-                if df is not None and not df.empty:
-                    stock_data[ticker] = df
-                    data_diag["nse"] += 1
-            except Exception as e:
-                logger.debug("NSE fetch failed for %s: %s", ticker, e)
-
-        # 2) Fetch CDS data
-        for ticker in CDS_UNIVERSE:
-            yf_sym = resolve_yf_symbol(f"CDS:{ticker}")
-            if yf_sym:
+        # 1) NSE equity — routed via Angel → NSE India → yfinance
+        if segments is None or "NSE" in segments:
+            nse_stocks = _get_nse_universe()
+            for ticker in nse_stocks:
                 try:
-                    df = _get_stock(f"CDS:{ticker}", period="6mo", interval="1d")
+                    symbol_clean = ticker.replace("NSE:", "")
+                    df = provider.get_ohlcv_routed(symbol_clean, interval="day", days=180, exchange="NSE")
                     if df is not None and not df.empty:
-                        stock_data[ticker] = df
+                        # Normalize: ensure index-based format for scanners
+                        if "date" in df.columns:
+                            df = df.set_index("date")
+                        nse_data[ticker] = df
+                        data_diag["nse"] += 1
+                except Exception as e:
+                    logger.debug("NSE fetch failed for %s: %s", ticker, e)
+
+        # 2) CDS — routed via yfinance → Angel
+        if segments is None or "CDS" in segments:
+            for ticker in CDS_UNIVERSE:
+                try:
+                    df = provider.get_ohlcv_routed(ticker, interval="day", days=180, exchange="CDS")
+                    if df is not None and not df.empty:
+                        if "date" in df.columns:
+                            df = df.set_index("date")
+                        cds_data[ticker] = df
                         data_diag["cds"] += 1
                 except Exception as e:
                     data_diag["errors"].append(f"CDS:{ticker}: {e}")
                     logger.warning("CDS fetch failed for %s: %s", ticker, e)
 
-        # 3) Fetch MCX data (top 6 liquid instruments)
-        for ticker in MCX_UNIVERSE[:6]:
-            yf_sym = resolve_yf_symbol(f"MCX:{ticker}")
-            if yf_sym:
+        # 3) MCX — routed via Goodwill → Angel → yfinance
+        if segments is None or "MCX" in segments:
+            for ticker in MCX_UNIVERSE[:6]:
                 try:
-                    df = _get_stock(f"MCX:{ticker}", period="6mo", interval="1d")
+                    df = provider.get_ohlcv_routed(ticker, interval="day", days=180, exchange="MCX")
                     if df is not None and not df.empty:
-                        stock_data[ticker] = df
+                        if "date" in df.columns:
+                            df = df.set_index("date")
+                        mcx_data[ticker] = df
                         data_diag["mcx"] += 1
                 except Exception as e:
                     data_diag["errors"].append(f"MCX:{ticker}: {e}")
                     logger.warning("MCX fetch failed for %s: %s", ticker, e)
 
-        # 4) Fetch NFO index data (NIFTY, BANKNIFTY, etc.)
-        for ticker in NFO_INDEX_UNIVERSE:
-            try:
-                df = _get_stock(f"NFO:{ticker}", period="6mo", interval="1d")
-                if df is not None and not df.empty:
-                    stock_data[ticker] = df
-                    data_diag["nfo"] += 1
-            except Exception as e:
-                data_diag["errors"].append(f"NFO:{ticker}: {e}")
-                logger.warning("NFO fetch failed for %s: %s", ticker, e)
+        # 4) NFO — routed via Angel → Kite
+        if segments is None or "NFO" in segments:
+            for ticker in NFO_INDEX_UNIVERSE:
+                try:
+                    df = provider.get_ohlcv_routed(ticker, interval="day", days=180, exchange="NFO")
+                    if df is not None and not df.empty:
+                        if "date" in df.columns:
+                            df = df.set_index("date")
+                        nfo_data[ticker] = df
+                        data_diag["nfo"] += 1
+                except Exception as e:
+                    data_diag["errors"].append(f"NFO:{ticker}: {e}")
+                    logger.warning("NFO fetch failed for %s: %s", ticker, e)
 
-        logger.info("Data fetched: NSE=%d, CDS=%d, MCX=%d, NFO=%d, total=%d",
+        logger.info("Data fetched (routed): NSE=%d, CDS=%d, MCX=%d, NFO=%d (segments=%s)",
                      data_diag["nse"], data_diag["cds"], data_diag["mcx"],
-                     data_diag["nfo"], len(stock_data))
+                     data_diag["nfo"], segments or "ALL")
     except Exception as e:
         logger.error("Data fetch failed: %s", e)
         data_diag["errors"].append(str(e))
 
+    # ── Run scanners per segment (skip closed segments) ─────
     scanner = MWAScanner()
-    raw_results = scanner.run_all(stock_data=stock_data if stock_data else None, save=True)
 
-    score = calculate_mwa_score(raw_results)
+    nse_results = scanner.run_all(stock_data=nse_data or None, save=False, segment="NSE") if (segments is None or "NSE" in segments) else {}
+    mcx_results = scanner.run_all(stock_data=mcx_data or None, save=False, segment="MCX") if (segments is None or "MCX" in segments) and mcx_data else {}
+    cds_results = scanner.run_all(stock_data=cds_data or None, save=False, segment="CDS") if (segments is None or "CDS" in segments) and cds_data else {}
+    nfo_results = scanner.run_all(stock_data=nfo_data or None, save=False, segment="NFO") if (segments is None or "NFO" in segments) and nfo_data else {}
+
+    # Merge results — for scanners that ran on multiple segments,
+    # combine stock lists (deduplicated)
+    raw_results: dict[str, list[str]] = {}
+    for seg_results in [nse_results, mcx_results, cds_results, nfo_results]:
+        for key, stocks in seg_results.items():
+            if key in raw_results:
+                existing = set(raw_results[key])
+                raw_results[key].extend(s for s in stocks if s not in existing)
+            else:
+                raw_results[key] = list(stocks)
+
+    # Combined stock_data for downstream signal generation / SMC analysis
+    stock_data: dict = {**nse_data, **mcx_data, **cds_data, **nfo_data}
+
+    score = calculate_mwa_score(raw_results, segments_run=segments)
     promoted = get_promoted_stocks(raw_results)
     brief = format_morning_brief(score)
 
@@ -946,9 +1029,14 @@ def _execute_mwa_scan(db: Session) -> dict:
                 f"  \u2713 {c['name']} (+{c['boost']}%)" for c in complete_chains[:8]
             )
 
+        seg_label = ", ".join(segments) if segments else "ALL"
+        if segments and len(segments) == 1:
+            seg_label += " only (after-hours)"
+
         tg_msg = (
             f"{d_emoji} MWA Scan \u2014 {today}\n"
             f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+            f"Segments: {seg_label}\n"
             f"Direction: {score['direction']}\n"
             f"Bull: {score['bull_pct']}% | Bear: {score['bear_pct']}%\n"
             f"Fired: {len(score.get('fired_bull', []))} BULL / {len(score.get('fired_bear', []))} BEAR\n"
@@ -1013,8 +1101,17 @@ def _execute_mwa_scan(db: Session) -> dict:
                     fii_net=0, delivery_pct=0,
                     confidence_boosts=confidence_boosts, pre_confidence=pre_confidence,
                 )
-                confidence = result.final_confidence
+                debate_confidence = result.final_confidence
                 recommendation = result.recommendation
+                # Use the higher of debate vs pre_confidence as floor
+                # MWA-promoted stocks already passed multi-scanner validation
+                confidence = max(debate_confidence, pre_confidence)
+                if confidence != debate_confidence:
+                    logger.info(
+                        "MWA signal %s: debate=%d < pre=%d, using pre_confidence",
+                        sig["ticker"], debate_confidence, pre_confidence,
+                    )
+                    recommendation = "WATCHLIST" if confidence > 60 else "SKIP"
             except Exception as debate_err:
                 logger.warning("Debate failed for %s, using pre_confidence: %s", sig["ticker"], debate_err)
                 confidence = pre_confidence
@@ -1057,10 +1154,9 @@ def _execute_mwa_scan(db: Session) -> dict:
 
             # Save to DB Signal + ActiveTrade for auto-monitor tracking
             try:
-                from datetime import datetime as _dt
                 db_signal = Signal(
                     signal_date=date.today(),
-                    signal_time=_dt.now().time(),
+                    signal_time=_now_ist().time(),
                     ticker=sig["ticker"],
                     exchange=sig["exchange"],
                     asset_class=sig["asset_class"],
@@ -1107,7 +1203,7 @@ def _execute_mwa_scan(db: Session) -> dict:
                         prrr=sig["rrr"],
                         current_price=live_price,
                         crrr=sig["rrr"],
-                        last_updated=_dt.now(),
+                        last_updated=_now_ist(),
                         timeframe="1D",
                     )
                     db.add(db_active)
@@ -1167,7 +1263,7 @@ def _execute_mwa_scan(db: Session) -> dict:
         logger.error("MWA signal generation failed: %s", e)
 
     global _last_mwa_scan_time
-    _last_mwa_scan_time = datetime.now()
+    _last_mwa_scan_time = _now_ist()
 
     return {
         "status": "ok",
@@ -2291,7 +2387,14 @@ async def tool_update_trailing_sl(ticker: str = Query(...), current_price: float
 
 
 def _get_live_ltp(ticker: str) -> float | None:
-    """Get LTP: try Kite first (fastest), then multi-source provider."""
+    """Get LTP: try WebSocket cache first (<1ms), then Kite, then multi-source provider."""
+    # Fastest: WebSocket tick cache
+    if _realtime_engine:
+        sym = ticker.replace("NSE:", "").replace("BSE:", "")
+        ws_ltp = _realtime_engine.get_ltp(sym)
+        if ws_ltp and ws_ltp > 0:
+            return float(ws_ltp)
+    # Kite REST API
     manager = _get_order_manager()
     if manager.kite:
         try:
@@ -2597,7 +2700,7 @@ async def api_kite_callback(request_token: str = Query(...)):
             import asyncio
             asyncio.ensure_future(send_telegram_message(
                 "\u2705 Kite Login Successful\n"
-                f"Token cached at {datetime.now().strftime('%H:%M IST')}",
+                f"Token cached at {_now_ist().strftime('%H:%M IST')}",
                 force=True,
             ))
         except Exception:
@@ -2687,7 +2790,7 @@ async def api_gwc_callback(request_token: str = Query(...)):
             import asyncio
             asyncio.ensure_future(send_telegram_message(
                 "\u2705 GWC Login Successful\n"
-                f"Token set at {datetime.now().strftime('%H:%M IST')}\n"
+                f"Token set at {_now_ist().strftime('%H:%M IST')}\n"
                 "Goodwill is now the primary LTP source.",
                 force=True,
             ))
@@ -2734,7 +2837,7 @@ def get_system_health() -> dict:
 
     # Uptime
     if _server_start_time:
-        delta = datetime.now() - _server_start_time
+        delta = _now_ist() - _server_start_time
         hours, remainder = divmod(int(delta.total_seconds()), 3600)
         minutes = remainder // 60
         health["uptime"] = f"{hours}h {minutes}m"
@@ -2818,7 +2921,10 @@ def get_system_health() -> dict:
 
     # Last MWA scan time
     if _last_mwa_scan_time:
-        health["last_mwa_scan"] = _last_mwa_scan_time.strftime("%I:%M %p IST")
+        from datetime import timezone, timedelta as _td
+        _ist = timezone(_td(hours=5, minutes=30))
+        _scan_ist = _last_mwa_scan_time.replace(tzinfo=timezone.utc).astimezone(_ist)
+        health["last_mwa_scan"] = _scan_ist.strftime("%I:%M %p IST")
     else:
         health["last_mwa_scan"] = "Not run yet"
 
@@ -3455,6 +3561,168 @@ async def tool_momentum_rebalance(request: Request, top_n: int = Query(default=1
 
 
 # ============================================================
+# Market Movers — Top Gainers / Losers / 52W High / Most Active
+# ============================================================
+
+# In-memory cache for market movers (refreshed every 5 min during market hours)
+_market_movers_cache: dict = {}
+_market_movers_ts: datetime | None = None
+
+
+def _fetch_market_movers() -> dict:
+    """Fetch top gainers, losers, 52W highs, most-active across all segments."""
+    import yfinance as yf
+    from mcp_server.nse_scanner import _get_nse_universe
+    from mcp_server.asset_registry import MCX_UNIVERSE, CDS_UNIVERSE, MCX_YF_PROXY
+
+    results: dict[str, list[dict]] = {
+        "gainers": [], "losers": [], "week52_high": [],
+        "week52_low": [], "most_active": [],
+    }
+
+    # ── Helper: fetch batch quotes via yfinance ──────────────
+    def _fetch_segment(tickers: list[str], exchange: str, yf_suffix: str = ".NS"):
+        items: list[dict] = []
+        batch: list[str] = []
+        ticker_map: dict[str, str] = {}
+
+        for t in tickers:
+            if exchange == "MCX":
+                yf_sym = MCX_YF_PROXY.get(t, "")
+                if not yf_sym:
+                    continue
+            elif exchange == "CDS":
+                yf_sym = f"{t}=X" if "INR" in t else t
+            else:
+                yf_sym = f"{t}{yf_suffix}"
+            batch.append(yf_sym)
+            ticker_map[yf_sym] = t
+
+        if not batch:
+            return items
+
+        try:
+            data = yf.download(batch, period="2d", interval="1d",
+                               group_by="ticker", progress=False, threads=True)
+        except Exception as e:
+            logger.warning("yf.download failed for %s: %s", exchange, e)
+            return items
+
+        for yf_sym, clean_name in ticker_map.items():
+            try:
+                if len(batch) == 1:
+                    df = data
+                else:
+                    df = data[yf_sym] if yf_sym in data.columns.get_level_values(0) else None
+                if df is None or df.empty or len(df) < 1:
+                    continue
+
+                row = df.iloc[-1]
+                prev_close = df.iloc[-2]["Close"] if len(df) >= 2 else row["Open"]
+                close = float(row["Close"])
+                change = close - float(prev_close)
+                pct = (change / float(prev_close)) * 100 if prev_close else 0
+                volume = int(row.get("Volume", 0))
+                high = float(row.get("High", close))
+                low = float(row.get("Low", close))
+                opn = float(row.get("Open", close))
+
+                items.append({
+                    "ticker": clean_name,
+                    "exchange": exchange,
+                    "ltp": round(close, 2),
+                    "change": round(change, 2),
+                    "pct_change": round(pct, 2),
+                    "open": round(opn, 2),
+                    "high": round(high, 2),
+                    "low": round(low, 2),
+                    "prev_close": round(float(prev_close), 2),
+                    "volume": volume,
+                })
+            except Exception:
+                continue
+
+        return items
+
+    # ── Fetch all segments ───────────────────────────────────
+    nse_stocks = _get_nse_universe()
+    nse_items = _fetch_segment(nse_stocks, "NSE")
+    mcx_items = _fetch_segment(MCX_UNIVERSE[:6], "MCX")
+    cds_items = _fetch_segment(CDS_UNIVERSE, "CDS")
+
+    all_items = nse_items + mcx_items + cds_items
+
+    # ── Sort into categories ─────────────────────────────────
+    by_pct = sorted(all_items, key=lambda x: x["pct_change"], reverse=True)
+    results["gainers"] = [i for i in by_pct if i["pct_change"] > 0][:30]
+    results["losers"] = sorted(
+        [i for i in all_items if i["pct_change"] < 0],
+        key=lambda x: x["pct_change"],
+    )[:30]
+    results["most_active"] = sorted(
+        all_items, key=lambda x: x["volume"], reverse=True,
+    )[:30]
+
+    # 52-week high/low: check if today's high >= prev close * 1.0 (approximation)
+    # Full 52W check needs more data; use daily high vs open as proxy for now
+    results["week52_high"] = sorted(
+        [i for i in all_items if i["high"] >= i["ltp"] * 0.999],
+        key=lambda x: x["pct_change"], reverse=True,
+    )[:30]
+    results["week52_low"] = sorted(
+        [i for i in all_items if i["low"] <= i["ltp"] * 1.001 and i["pct_change"] < 0],
+        key=lambda x: x["pct_change"],
+    )[:30]
+
+    results["fetched_at"] = _now_ist().isoformat()
+    results["total_stocks"] = len(all_items)
+
+    return results
+
+
+@app.get("/api/market-movers")
+async def api_market_movers(
+    category: str = Query(default="gainers", regex="^(gainers|losers|week52_high|week52_low|most_active)$"),
+    exchange: str = Query(default="ALL"),
+):
+    """
+    Market movers: top gainers, losers, 52W high/low, most active.
+    Cached for 5 minutes during market hours.
+    """
+    global _market_movers_cache, _market_movers_ts
+
+    now = _now_ist()
+    stale = (
+        _market_movers_ts is None
+        or (now - _market_movers_ts).total_seconds() > 300
+    )
+
+    if stale or not _market_movers_cache:
+        try:
+            _market_movers_cache = _fetch_market_movers()
+            _market_movers_ts = now
+        except Exception as e:
+            logger.error("Market movers fetch failed: %s", e)
+            if not _market_movers_cache:
+                return {"category": category, "stocks": [], "error": str(e)}
+
+    stocks = _market_movers_cache.get(category, [])
+
+    # Exchange filter
+    if exchange != "ALL":
+        stocks = [s for s in stocks if s["exchange"] == exchange.upper()]
+
+    return {
+        "category": category,
+        "exchange": exchange,
+        "stocks": stocks,
+        "total": len(stocks),
+        "fetched_at": _market_movers_cache.get("fetched_at"),
+        "total_universe": _market_movers_cache.get("total_stocks", 0),
+    }
+
+
+# ============================================================
 # OHLCV Cache Management
 # ============================================================
 
@@ -3567,6 +3835,33 @@ else:
         }
 
     logger.info("Dashboard frontend not found at %s — API-only mode", DASHBOARD_DIR)
+
+
+# ── RealtimeEngine API endpoints ──────────────────────────────────────────────
+
+@app.get("/api/live-prices")
+async def api_live_prices(symbols: str = Query(..., description="Comma-separated symbols")):
+    """Batch LTP from WebSocket tick cache."""
+    syms = [s.strip() for s in symbols.split(",") if s.strip()]
+    if _realtime_engine:
+        return _realtime_engine.cache.get_multiple_ltps(syms)
+    return {s: None for s in syms}
+
+
+@app.get("/api/realtime/status")
+async def api_realtime_status():
+    """RealtimeEngine health / status."""
+    if not _realtime_engine:
+        return {"active": False, "reason": "engine_not_started"}
+    return {
+        "active": _realtime_engine._active,
+        "websocket_connected": (
+            _realtime_engine.gwc_ws.connected if _realtime_engine.gwc_ws else False
+        ),
+        "subscribed_symbols": len(_realtime_engine._subscribed_symbols),
+        "monitored_positions": len(_realtime_engine.monitor.positions),
+        "redis_available": _realtime_engine.cache._available,
+    }
 
 
 if __name__ == "__main__":

@@ -112,6 +112,10 @@ class Settings:
     OHLCV_CACHE_DAILY_TTL_HOURS: int = int(os.getenv("OHLCV_CACHE_DAILY_TTL_HOURS", "12"))
     OHLCV_CACHE_INTRADAY_TTL_MINUTES: int = int(os.getenv("OHLCV_CACHE_INTRADAY_TTL_MINUTES", "5"))
 
+    # Redis (optional — for RealtimeEngine tick cache)
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
+
     # Paper Trading (set PAPER_MODE=true to trade without Kite)
     PAPER_MODE: bool = os.getenv("PAPER_MODE", "false").lower() == "true"
 
