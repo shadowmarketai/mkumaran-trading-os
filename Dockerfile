@@ -67,7 +67,4 @@ ENV LOG_FORMAT=json \
 
 EXPOSE 8001
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
-    CMD curl -f http://localhost:8001/health || exit 1
-
 CMD ["uvicorn", "mcp_server.mcp_server:app", "--host", "0.0.0.0", "--port", "8001"]
