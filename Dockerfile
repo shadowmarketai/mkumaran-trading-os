@@ -41,8 +41,8 @@ WORKDIR /app
 COPY --from=deps /usr/lib/libta_lib* /usr/lib/
 COPY --from=deps /usr/include/ta-lib /usr/include/ta-lib
 
-# Install only runtime system deps (curl for healthcheck)
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# Install only runtime system deps (curl/wget for healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends curl wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed Python packages from deps stage
