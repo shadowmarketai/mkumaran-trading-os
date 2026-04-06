@@ -4,8 +4,6 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import patch, MagicMock
 
-import pytest
-
 from mcp_server.models import Signal, MWAScore, ActiveTrade
 from mcp_server.pretrade_check import (
     check_market_hours,
