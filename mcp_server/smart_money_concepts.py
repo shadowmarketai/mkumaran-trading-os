@@ -249,11 +249,16 @@ class AMDEngine:
 
             # Confidence scoring
             confidence = 50.0
-            if zone["bars"] >= 8:      confidence += 10
-            if zone["bars"] >= 12:     confidence += 10
-            if manip["sweep_pct"] >= 1.0: confidence += 10
-            if distrib.get("found"):   confidence += 20
-            if distrib.get("move_pct", 0) >= 2.0: confidence += 10
+            if zone["bars"] >= 8:
+                confidence += 10
+            if zone["bars"] >= 12:
+                confidence += 10
+            if manip["sweep_pct"] >= 1.0:
+                confidence += 10
+            if distrib.get("found"):
+                confidence += 20
+            if distrib.get("move_pct", 0) >= 2.0:
+                confidence += 10
 
             amd = AMDZone(
                 symbol           = symbol,
@@ -296,12 +301,12 @@ class CRTEngine:
         Analyse a single candle for CRT pattern.
         row: pandas Series with open, high, low, close columns.
         """
-        o, h, l, c = row['open'], row['high'], row['low'], row['close']
+        o, h, lo, c = row['open'], row['high'], row['low'], row['close']
 
         body_size  = abs(c - o)
-        full_range = h - l
+        full_range = h - lo
         upper_wick = h - max(o, c)
-        lower_wick = min(o, c) - l
+        lower_wick = min(o, c) - lo
 
         # Basic candle direction
         if c > o:
@@ -355,20 +360,24 @@ class CRTEngine:
 
         # Stop loss: beyond manipulation wick
         if manipulation_side == "LOW_SWEEP":
-            stop_loss = l * 0.998   # Just below the wick low
+            stop_loss = lo * 0.998   # Just below the wick low
         elif manipulation_side == "HIGH_SWEEP":
             stop_loss = h * 1.002   # Just above the wick high
         elif manipulation_side == "BOTH":
-            stop_loss = l * 0.998 if true_direction == "UP" else h * 1.002
+            stop_loss = lo * 0.998 if true_direction == "UP" else h * 1.002
         else:
-            stop_loss = l * 0.998 if true_direction == "UP" else h * 1.002
+            stop_loss = lo * 0.998 if true_direction == "UP" else h * 1.002
 
         # Confidence scoring
         confidence = 40.0
-        if crt_pattern in ("TYPE1_BULL", "TYPE2_BEAR"): confidence += 30
-        if crt_pattern == "TYPE3_MIXED":                confidence += 20
-        if lower_wick_pct >= 35 or upper_wick_pct >= 35: confidence += 15
-        if body_pct >= 50:                              confidence += 15
+        if crt_pattern in ("TYPE1_BULL", "TYPE2_BEAR"):
+            confidence += 30
+        if crt_pattern == "TYPE3_MIXED":
+            confidence += 20
+        if lower_wick_pct >= 35 or upper_wick_pct >= 35:
+            confidence += 15
+        if body_pct >= 50:
+            confidence += 15
 
         return CRTCandle(
             symbol           = symbol,
@@ -377,7 +386,7 @@ class CRTEngine:
             crt_pattern      = crt_pattern,
             open             = round(o, 2),
             high             = round(h, 2),
-            low              = round(l, 2),
+            low              = round(lo, 2),
             close            = round(c, 2),
             manipulation_side= manipulation_side,
             manipulation_wick= round(manipulation_wick, 2),
@@ -594,19 +603,24 @@ class C4Engine:
 
         # Confidence scoring
         confidence = 40.0
-        if compress:                                   confidence += 15
-        if catalyst:                                   confidence += 25
-        if catalyst and catalyst.confidence >= 70:    confidence += 10
-        if is_continuation:                            confidence += 10
+        if compress:
+            confidence += 15
+        if catalyst:
+            confidence += 25
+        if catalyst and catalyst.confidence >= 70:
+            confidence += 10
+        if is_continuation:
+            confidence += 10
         # AMD alignment bonus
         aligned_with_amd = False
         if amd_zones:
             for amd in amd_zones:
                 if amd.direction == direction and amd.confirmed:
-                    confidence     += 15
+                    confidence += 15
                     aligned_with_amd = True
                     break
-        if rrr >= 3.0:                                 confidence += 5
+        if rrr >= 3.0:
+            confidence += 5
 
         if direction == "SIDEWAYS":
             return None
@@ -771,19 +785,27 @@ class SMCEngine:
 
         for amd in amd_zones:
             if amd.confirmed:
-                if amd.direction == "BULL": bull_score += 2
-                else:                       bear_score += 2
+                if amd.direction == "BULL":
+                    bull_score += 2
+                else:
+                    bear_score += 2
 
         for crt in crt_candles[-3:]:  # Last 3 CRT candles
-            if crt.true_direction == "UP":   bull_score += 1
-            elif crt.true_direction == "DOWN": bear_score += 1
+            if crt.true_direction == "UP":
+                bull_score += 1
+            elif crt.true_direction == "DOWN":
+                bear_score += 1
 
         if c4_setup:
-            if c4_setup.direction == "UP":   bull_score += 2
-            elif c4_setup.direction == "DOWN": bear_score += 2
+            if c4_setup.direction == "UP":
+                bull_score += 2
+            elif c4_setup.direction == "DOWN":
+                bear_score += 2
 
-        if bull_score > bear_score:   return "BULL"
-        elif bear_score > bull_score: return "BEAR"
+        if bull_score > bear_score:
+            return "BULL"
+        elif bear_score > bull_score:
+            return "BEAR"
         return "NEUTRAL"
 
     def _calculate_confidence_boost(self, amd_zones, crt_candles,
@@ -964,9 +986,9 @@ if __name__ == "__main__":
         o = base + random.randint(-100, 100)
         c = o + random.randint(-80, 80)
         h = max(o, c) + random.randint(5, 60)
-        l = min(o, c) - random.randint(5, 60)
+        lo = min(o, c) - random.randint(5, 60)
         v = random.randint(50000, 200000)
-        data.append({"date": dt, "open": o, "high": h, "low": l, "close": c, "volume": v})
+        data.append({"date": dt, "open": o, "high": h, "low": lo, "close": c, "volume": v})
         base = c
 
     df = pd.DataFrame(data).set_index("date")
