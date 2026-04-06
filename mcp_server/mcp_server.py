@@ -2060,6 +2060,51 @@ async def tool_update_all_trailing_sl():
     return {"positions_checked": len(results), "results": results}
 
 
+@app.post("/tools/refresh_trade_prices")
+async def tool_refresh_trade_prices(db: Session = Depends(get_db)):
+    """Fetch live prices for all active trades and update DB."""
+    from datetime import datetime as _dt
+    trades = db.query(ActiveTrade).options(joinedload(ActiveTrade.signal)).all()
+    updated = []
+    for t in trades:
+        try:
+            ltp = _get_live_ltp(t.ticker)
+            if ltp and ltp > 0:
+                t.current_price = ltp
+                t.last_updated = _dt.now()
+                direction = t.signal.direction if t.signal else "LONG"
+                is_short = direction in ("SELL", "SHORT")
+                risk = (float(t.stop_loss) - ltp) if is_short else (ltp - float(t.stop_loss))
+                reward = (ltp - float(t.target)) if is_short else (float(t.target) - ltp)
+                t.crrr = round(reward / risk, 2) if risk > 0 else 0
+                updated.append({
+                    "ticker": t.ticker,
+                    "price": ltp,
+                    "crrr": float(t.crrr),
+                })
+        except Exception as e:
+            logger.error("Price refresh error for %s: %s", t.ticker, e)
+    if updated:
+        db.commit()
+    return {"updated": len(updated), "total": len(trades), "prices": updated}
+
+
+@app.post("/tools/tier3_monitor")
+async def tool_tier3_monitor(db: Session = Depends(get_db)):
+    """Run Tier 3 active trade monitoring — updates prices, checks SL/target hits."""
+    from mcp_server.tier_monitor import tier3_monitor
+    alerts = tier3_monitor(db)
+    return {"alerts": len(alerts), "details": alerts}
+
+
+@app.post("/tools/tier2_monitor")
+async def tool_tier2_monitor(db: Session = Depends(get_db)):
+    """Run Tier 2 watchlist monitoring — checks entry zones, S&R breaches."""
+    from mcp_server.tier_monitor import tier2_monitor
+    alerts = tier2_monitor(db)
+    return {"alerts": len(alerts), "details": alerts}
+
+
 @app.get("/tools/portfolio_exposure")
 async def tool_portfolio_exposure():
     """Get current portfolio sector/asset-class exposure breakdown."""
