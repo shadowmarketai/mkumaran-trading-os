@@ -2,15 +2,16 @@
 // (c) mkumaran
 
 //@version=5
-strategy("MKUMARAN RRMS Strategy v1.0", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=2)
+strategy("MKUMARAN RRMS Strategy v2.0", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=2)
 
 // === INPUTS ===
 capital = input.float(100000, "Capital (Rs)", group="RRMS Settings")
 risk_pct = input.float(2.0, "Risk %", minval=0.1, maxval=10.0, group="RRMS Settings") / 100
 min_rrr = input.float(3.0, "Min RRR", minval=1.0, group="RRMS Settings")
 entry_zone_pct = input.float(2.0, "Entry Zone %", minval=0.1, maxval=10.0, group="RRMS Settings") / 100
-sl_below_pct = input.float(0.5, "SL Below LTRP %", minval=0.1, maxval=5.0, group="RRMS Settings") / 100
+sl_buffer_pct = input.float(0.5, "SL Buffer %", minval=0.1, maxval=5.0, group="RRMS Settings") / 100
 lookback = input.int(20, "Swing Lookback", minval=5, maxval=100, group="Detection")
+enable_short = input.bool(true, "Enable SHORT Signals", group="Direction")
 
 // === WEBHOOK ===
 use_webhook = input.bool(true, "Send Webhook Alerts", group="Alerts")
@@ -22,46 +23,83 @@ swing_high = ta.highest(high, lookback)
 ltrp = swing_low
 pivot_high = swing_high
 
-// === RRMS CALCULATION ===
+// === LONG RRMS CALCULATION ===
 risk_amt = capital * risk_pct
-entry_trigger = close <= ltrp * (1 + entry_zone_pct)
-stop_loss = ltrp * (1 - sl_below_pct)
-risk_per_share = close - stop_loss
-reward_per_share = pivot_high - close
-rrr = risk_per_share > 0 ? reward_per_share / risk_per_share : 0
-qty = risk_per_share > 0 ? math.floor(risk_amt / risk_per_share) : 0
+long_entry_trigger = close <= ltrp * (1 + entry_zone_pct)
+long_sl = ltrp * (1 - sl_buffer_pct)
+long_risk = close - long_sl
+long_reward = pivot_high - close
+long_rrr = long_risk > 0 ? long_reward / long_risk : 0
+long_qty = long_risk > 0 ? math.floor(risk_amt / long_risk) : 0
+
+// === SHORT RRMS CALCULATION ===
+short_entry_trigger = close >= pivot_high * (1 - entry_zone_pct)
+short_sl = pivot_high * (1 + sl_buffer_pct)
+short_risk = short_sl - close
+short_reward = close - ltrp
+short_rrr = short_risk > 0 ? short_reward / short_risk : 0
+short_qty = short_risk > 0 ? math.floor(risk_amt / short_risk) : 0
 
 // === CONDITIONS ===
-long_condition = entry_trigger and rrr >= min_rrr and qty > 0 and close > stop_loss
-exit_target = close >= pivot_high
-exit_sl = close <= stop_loss
+long_condition = long_entry_trigger and long_rrr >= min_rrr and long_qty > 0 and close > long_sl
+short_condition = enable_short and short_entry_trigger and short_rrr >= min_rrr and short_qty > 0 and close < short_sl
 
-// === STRATEGY ===
-if long_condition
-    strategy.entry("RRMS Long", strategy.long, qty=qty)
+// Prevent duplicate entries
+long_signal = long_condition and strategy.position_size == 0
+short_signal = short_condition and strategy.position_size == 0
 
-if exit_target
+// === EXITS ===
+long_target_hit = strategy.position_size > 0 and close >= pivot_high
+long_sl_hit = strategy.position_size > 0 and close <= long_sl
+short_target_hit = strategy.position_size < 0 and close <= ltrp
+short_sl_hit = strategy.position_size < 0 and close >= short_sl
+
+// === STRATEGY EXECUTION ===
+if long_signal
+    strategy.entry("RRMS Long", strategy.long, qty=long_qty)
+
+if short_signal
+    strategy.entry("RRMS Short", strategy.short, qty=short_qty)
+
+if long_target_hit
     strategy.close("RRMS Long", comment="TARGET HIT")
 
-if exit_sl
+if long_sl_hit
     strategy.close("RRMS Long", comment="STOP LOSS")
 
+if short_target_hit
+    strategy.close("RRMS Short", comment="TARGET HIT")
+
+if short_sl_hit
+    strategy.close("RRMS Short", comment="STOP LOSS")
+
 // === PLOTS ===
-plot(ltrp, "LTRP", color=color.new(color.blue, 0), linewidth=2, style=plot.style_stepline)
-plot(pivot_high, "Pivot High", color=color.new(color.green, 0), linewidth=2, style=plot.style_stepline)
-plot(stop_loss, "Stop Loss", color=color.new(color.red, 0), linewidth=1, style=plot.style_stepline)
+plot(ltrp, "LTRP (Support)", color=color.new(color.blue, 0), linewidth=2, style=plot.style_stepline)
+plot(pivot_high, "Pivot High (Resistance)", color=color.new(color.green, 0), linewidth=2, style=plot.style_stepline)
+plot(long_sl, "Long SL", color=color.new(color.red, 50), linewidth=1, style=plot.style_stepline)
+plot(enable_short ? short_sl : na, "Short SL", color=color.new(color.orange, 50), linewidth=1, style=plot.style_stepline)
 
 // Entry zone highlighting
-entry_zone_upper = ltrp * (1 + entry_zone_pct)
-bgcolor(close >= ltrp and close <= entry_zone_upper ? color.new(color.green, 90) : na, title="Entry Zone")
+long_zone_upper = ltrp * (1 + entry_zone_pct)
+short_zone_lower = pivot_high * (1 - entry_zone_pct)
+bgcolor(close >= ltrp and close <= long_zone_upper ? color.new(color.green, 90) : na, title="Long Entry Zone")
+bgcolor(enable_short and close <= pivot_high and close >= short_zone_lower ? color.new(color.red, 90) : na, title="Short Entry Zone")
 
 // === LABELS ===
-if long_condition
-    label.new(bar_index, low, "BUY\nRRR:" + str.tostring(rrr, "#.#") + "\nQty:" + str.tostring(qty), style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+if long_signal
+    label.new(bar_index, low, "BUY\nRRR:" + str.tostring(long_rrr, "#.#") + "\nQty:" + str.tostring(long_qty), style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
 
-// === ALERTS ===
-alertcondition(long_condition, "RRMS Buy Signal", "RRMS BUY: {{ticker}} @ {{close}} | SL: " + str.tostring(stop_loss) + " | Target: " + str.tostring(pivot_high) + " | RRR: " + str.tostring(rrr))
+if short_signal
+    label.new(bar_index, high, "SELL\nRRR:" + str.tostring(short_rrr, "#.#") + "\nQty:" + str.tostring(short_qty), style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
 
-// === WEBHOOK MESSAGE ===
-if long_condition and use_webhook
-    alert('{"ticker": "' + syminfo.ticker + '", "direction": "LONG", "entry": ' + str.tostring(close) + ', "sl": ' + str.tostring(stop_loss) + ', "target": ' + str.tostring(pivot_high) + ', "rrr": ' + str.tostring(rrr) + ', "qty": ' + str.tostring(qty) + ', "source": "tradingview"}', alert.freq_once_per_bar_close)
+// === ALERT CONDITIONS ===
+alertcondition(long_signal, "RRMS Buy Signal", "RRMS BUY: {{ticker}} @ {{close}}")
+alertcondition(short_signal, "RRMS Sell Signal", "RRMS SELL: {{ticker}} @ {{close}}")
+
+// === WEBHOOK ALERTS ===
+tf = timeframe.period
+if long_signal and use_webhook
+    alert('{"ticker": "' + syminfo.ticker + '", "direction": "LONG", "entry": ' + str.tostring(close) + ', "sl": ' + str.tostring(long_sl) + ', "target": ' + str.tostring(pivot_high) + ', "rrr": ' + str.tostring(long_rrr, "#.##") + ', "qty": ' + str.tostring(long_qty) + ', "timeframe": "' + tf + '"}', alert.freq_once_per_bar_close)
+
+if short_signal and use_webhook
+    alert('{"ticker": "' + syminfo.ticker + '", "direction": "SHORT", "entry": ' + str.tostring(close) + ', "sl": ' + str.tostring(short_sl) + ', "target": ' + str.tostring(ltrp) + ', "rrr": ' + str.tostring(short_rrr, "#.##") + ', "qty": ' + str.tostring(short_qty) + ', "timeframe": "' + tf + '"}', alert.freq_once_per_bar_close)
