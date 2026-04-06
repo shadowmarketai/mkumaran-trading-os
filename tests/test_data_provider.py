@@ -198,10 +198,11 @@ def test_yfinance_fetch_nse(mock_dl):
     mock_dl.assert_called_once_with("RELIANCE.NS", period="5d", interval="1d")
 
 
-def test_yfinance_fetch_nfo_returns_empty():
-    """yfinance has no NFO support — returns empty."""
+def test_yfinance_fetch_nfo_returns_data():
+    """yfinance NFO support via proxy — returns NIFTY index data."""
     df = _yfinance_fetch("NFO:NIFTY")
-    assert df.empty
+    assert not df.empty
+    assert list(df.columns) == ["open", "high", "low", "close", "volume"]
 
 
 @patch("mcp_server.data_provider._rate_limited_download")

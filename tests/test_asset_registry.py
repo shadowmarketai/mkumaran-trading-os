@@ -97,8 +97,9 @@ def test_resolve_yf_cds():
     assert resolve_yf_symbol("CDS:EURINR") == "EURINR=X"
 
 
-def test_resolve_yf_nfo_none():
-    assert resolve_yf_symbol("NFO:NIFTY") is None
+def test_resolve_yf_nfo_proxy():
+    assert resolve_yf_symbol("NFO:NIFTY") == "^NSEI"
+    assert resolve_yf_symbol("NFO:BANKNIFTY") == "^NSEBANK"
 
 
 def test_resolve_yf_default_nse():
