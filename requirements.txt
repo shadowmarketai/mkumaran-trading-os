@@ -1,6 +1,8 @@
 kiteconnect==4.2.0
 smartapi-python>=1.4.0
 logzero
+websocket-client
+pycryptodome
 fastapi==0.104.1
 uvicorn==0.24.0
 # mcp SDK requires Python 3.12+ — using FastAPI directly as MCP-compatible server
