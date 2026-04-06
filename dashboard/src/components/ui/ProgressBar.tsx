@@ -7,26 +7,20 @@ interface ProgressBarProps {
   max: number;
   label?: string;
   isShort?: boolean;
+  pnlPct?: number;
 }
 
-export default function ProgressBar({ current, min, max, label, isShort }: ProgressBarProps) {
+export default function ProgressBar({ current, min, max, label, isShort, pnlPct }: ProgressBarProps) {
   const range = max - min;
   const rawPct = range > 0 ? ((current - min) / range) * 100 : 50;
   const pct = Math.max(0, Math.min(100, rawPct));
 
-  // For SHORT: high pct = near SL = bad (red); low pct = near target = good (green)
-  // For LONG:  high pct = near target = good (green); low pct = near SL = bad (red)
-  const getColor = (percentage: number): string => {
-    const p = isShort ? 100 - percentage : percentage;
-    return p < 50 ? 'bg-trading-bear' : 'bg-trading-bull';
-  };
-
-  const getGlowColor = (percentage: number): string => {
-    const p = isShort ? 100 - percentage : percentage;
-    return p < 50
-      ? 'shadow-[0_0_8px_rgba(244,63,94,0.3)]'
-      : 'shadow-[0_0_8px_rgba(16,185,129,0.3)]';
-  };
+  // Color based on actual P&L: green = profit, red = loss
+  const isProfit = pnlPct !== undefined ? pnlPct >= 0 : (isShort ? 100 - pct >= 50 : pct >= 50);
+  const barColor = isProfit ? 'bg-trading-bull' : 'bg-trading-bear';
+  const glowColor = isProfit
+    ? 'shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+    : 'shadow-[0_0_8px_rgba(244,63,94,0.3)]';
 
   const slLabel = isShort ? max : min;
   const tLabel = isShort ? min : max;
@@ -50,7 +44,7 @@ export default function ProgressBar({ current, min, max, label, isShort }: Progr
             initial={{ width: 0 }}
             animate={{ width: `${pct}%` }}
             transition={{ duration: 0.8, ease: 'easeOut' }}
-            className={cn('h-full rounded-full', getColor(pct))}
+            className={cn('h-full rounded-full', barColor)}
           />
 
           {/* Current position marker */}
@@ -63,8 +57,8 @@ export default function ProgressBar({ current, min, max, label, isShort }: Progr
             <div
               className={cn(
                 'w-3.5 h-3.5 rounded-full border-2 border-white',
-                getColor(pct),
-                getGlowColor(pct)
+                barColor,
+                glowColor
               )}
             />
           </motion.div>

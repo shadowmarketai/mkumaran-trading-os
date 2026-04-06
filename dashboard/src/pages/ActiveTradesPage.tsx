@@ -199,6 +199,7 @@ export default function ActiveTradesPage() {
                         min={progressValues.min}
                         max={progressValues.max}
                         isShort={trade.direction === 'SHORT' || trade.direction === 'SELL'}
+                        pnlPct={trade.pnl_pct}
                       />
                     </td>
                   </motion.tr>
