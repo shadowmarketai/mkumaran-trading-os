@@ -99,8 +99,9 @@ class OrderManager:
         manager.close_all_positions()
     """
 
-    def __init__(self, kite=None, capital: float = 100000, paper_mode: bool = False):
+    def __init__(self, kite=None, broker=None, capital: float = 100000, paper_mode: bool = False):
         self.kite = kite
+        self.broker = broker  # Angel or other broker with place_order/cancel_order
         self.capital = capital
         self.paper_mode = paper_mode
         self.kill_switch = KillSwitchState(starting_capital=capital)
@@ -111,13 +112,15 @@ class OrderManager:
         if self.paper_mode:
             logger.info("OrderManager initialized in PAPER MODE (capital=%.0f)", capital)
 
-    def _validate_kite(self) -> str | None:
-        """Check if Kite is connected. Returns error message or None in paper mode."""
+    def _validate_broker(self) -> str | None:
+        """Check if any broker (Kite or Angel) is connected. Returns error message or None."""
         if self.paper_mode:
-            return None  # Skip Kite check in paper mode
-        if self.kite is None:
-            return "Kite not connected — live trading requires active Kite session"
-        return None
+            return None
+        if self.kite is not None:
+            return None
+        if self.broker is not None:
+            return None
+        return "No broker connected — live trading requires active Kite or Angel session"
 
     def _validate_order(
         self,
@@ -217,8 +220,8 @@ class OrderManager:
         """
         timestamp = datetime.now().isoformat()
 
-        # ── Validate Kite connection ──────────────────────────
-        kite_error = self._validate_kite()
+        # ── Validate broker connection ────────────────────────
+        kite_error = self._validate_broker()
         if kite_error:
             result = OrderResult(
                 success=False, message=kite_error, ticker=ticker,
@@ -275,11 +278,83 @@ class OrderManager:
             self.order_history.append(result)
             return result
 
+        # ── Place order via Angel (if Angel broker attached) ──
+        exchange = ticker.split(":")[0] if ":" in ticker else "NSE"
+        symbol = ticker.split(":")[-1] if ":" in ticker else ticker
+
+        if self.broker is not None and self.kite is None:
+            try:
+                trigger = stop_loss if order_type in ("SL", "SL-M") else 0
+                resp = self.broker.place_order(
+                    exchange=exchange,
+                    symbol=symbol,
+                    action=direction,
+                    qty=qty,
+                    price=price,
+                    order_type=order_type,
+                    product=product,
+                    trigger_price=trigger,
+                )
+
+                if resp.get("success"):
+                    angel_order_id = str(resp.get("order_id", ""))
+                    self.open_positions.append({
+                        "order_id": angel_order_id,
+                        "ticker": ticker,
+                        "direction": direction,
+                        "qty": qty,
+                        "entry_price": price,
+                        "stop_loss": stop_loss,
+                        "target": target,
+                        "timestamp": timestamp,
+                        "tag": tag,
+                    })
+                    result = OrderResult(
+                        success=True,
+                        order_id=angel_order_id,
+                        message=f"Order placed via Angel: {direction} {qty}x {ticker} @ {price}",
+                        ticker=ticker,
+                        direction=direction,
+                        qty=qty,
+                        price=price,
+                        order_type=order_type,
+                        timestamp=timestamp,
+                    )
+                    logger.info(
+                        "ANGEL ORDER PLACED: %s %d x %s @ %.2f (ID: %s)",
+                        direction, qty, ticker, price, angel_order_id,
+                    )
+                    self.order_history.append(result)
+                    return result
+                else:
+                    result = OrderResult(
+                        success=False,
+                        message=resp.get("message", "Angel order failed"),
+                        ticker=ticker,
+                        direction=direction,
+                        qty=qty,
+                        price=price,
+                        timestamp=timestamp,
+                    )
+                    self.order_history.append(result)
+                    return result
+
+            except Exception as e:
+                result = OrderResult(
+                    success=False,
+                    message=f"Angel order failed: {e}",
+                    ticker=ticker,
+                    direction=direction,
+                    qty=qty,
+                    price=price,
+                    timestamp=timestamp,
+                )
+                logger.error("ANGEL ORDER FAILED for %s: %s", ticker, e)
+                self.order_history.append(result)
+                return result
+
         # ── Place order via Kite ──────────────────────────────
         try:
-            exchange = ticker.split(":")[0] if ":" in ticker else "NSE"
-            symbol = ticker.split(":")[-1] if ":" in ticker else ticker
-
             kite_direction = "BUY" if direction == "BUY" else "SELL"
 
             order_params = {
@@ -375,10 +450,36 @@ class OrderManager:
             self.order_history.append(result)
             return result
 
-        kite_error = self._validate_kite()
-        if kite_error:
-            return OrderResult(success=False, message=kite_error, timestamp=timestamp)
+        broker_error = self._validate_broker()
+        if broker_error:
+            return OrderResult(success=False, message=broker_error, timestamp=timestamp)
 
+        # ── Cancel via Angel ──────────────────────────────────
+        if self.broker is not None and self.kite is None:
+            try:
+                resp = self.broker.cancel_order(order_id)
+                if resp.get("success"):
+                    self.open_positions = [
+                        p for p in self.open_positions if p["order_id"] != order_id
+                    ]
+                    result = OrderResult(
+                        success=True, order_id=order_id,
+                        message=f"Angel order {order_id} cancelled", timestamp=timestamp,
+                    )
+                    logger.info("ANGEL ORDER CANCELLED: %s", order_id)
+                    self.order_history.append(result)
+                    return result
+                return OrderResult(
+                    success=False, message=resp.get("message", "Angel cancel failed"),
+                    order_id=order_id, timestamp=timestamp,
+                )
+            except Exception as e:
+                return OrderResult(
+                    success=False, message=f"Angel cancel failed: {e}",
+                    order_id=order_id, timestamp=timestamp,
+                )
+
+        # ── Cancel via Kite ───────────────────────────────────
         try:
             self.kite.cancel_order(variety="regular", order_id=order_id)
 
@@ -746,6 +847,7 @@ class OrderManager:
             "daily_loss_limit": f"{DAILY_LOSS_LIMIT_PCT:.1%}",
             "capital": self.capital,
             "kite_connected": self.kite is not None,
+            "angel_connected": self.broker is not None,
             "orders_today": len([
                 o for o in self.order_history
                 if o.timestamp.startswith(str(date.today()))

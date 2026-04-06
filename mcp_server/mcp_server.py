@@ -124,6 +124,7 @@ AUTH_PUBLIC_PATHS = {
     "/api/tv_webhook", "/api/telegram_webhook",
     "/api/kite_callback", "/api/kite_login_url",
     "/api/gwc_callback", "/api/gwc_login_url",
+    "/tools/connect_angel", "/tools/refresh_angel_token",
     # n8n workflow endpoints (read-only scan/data tools)
     "/tools/run_mwa_scan", "/tools/get_stock_data",
     "/tools/order_status", "/tools/get_fo_signal",
@@ -2107,6 +2108,110 @@ async def tool_refresh_kite_token():
             "success": False,
             "message": f"Token refresh failed: {e}",
         }
+
+
+# ============================================================
+# Angel One SmartAPI Integration
+# ============================================================
+
+
+@app.post("/tools/connect_angel")
+async def tool_connect_angel():
+    """Connect Angel One to the order manager using angel_auth."""
+    manager = _get_order_manager()
+    if manager.broker is not None:
+        return {"angel_connected": True, "message": "Already connected"}
+
+    try:
+        from mcp_server.angel_auth import get_authenticated_angel
+        client = get_authenticated_angel()
+
+        # Wrap in AngelSource so OrderManager gets .place_order / .cancel_order
+        from mcp_server.data_provider import AngelSource
+        angel = AngelSource()
+        angel.client = client
+        angel.logged_in = True
+
+        manager.broker = angel
+
+        # Update capital from Angel RMS margins
+        try:
+            rms = client.rms()
+            if rms and rms.get("data"):
+                net = rms["data"].get("net", rms["data"].get("availablecash", 0))
+                if net:
+                    manager.capital = float(net)
+        except Exception:
+            pass  # Keep default capital
+
+        return {
+            "angel_connected": True,
+            "message": "Angel One connected successfully",
+            "capital": manager.capital,
+        }
+    except Exception as e:
+        logger.error("Angel connect failed: %s", e)
+        return {
+            "angel_connected": False,
+            "message": f"Angel connect failed: {e}",
+        }
+
+
+@app.post("/tools/refresh_angel_token")
+async def tool_refresh_angel_token():
+    """Refresh Angel access token via TOTP login (standalone)."""
+    try:
+        from mcp_server.angel_auth import refresh_angel_token
+        refresh_angel_token()
+        return {
+            "success": True,
+            "message": "Angel token refreshed",
+        }
+    except Exception as e:
+        logger.error("Angel token refresh failed: %s", e)
+        return {
+            "success": False,
+            "message": f"Angel token refresh failed: {e}",
+        }
+
+
+@app.get("/tools/angel_status")
+async def tool_angel_status():
+    """Get Angel One connection status + positions/holdings count."""
+    manager = _get_order_manager()
+    angel = manager.broker
+
+    if angel is None or not getattr(angel, "logged_in", False):
+        return {
+            "logged_in": False,
+            "message": "Angel not connected — call /tools/connect_angel first",
+        }
+
+    result = {"logged_in": True}
+
+    try:
+        positions = angel.get_positions()
+        pos_data = positions.get("data", []) if isinstance(positions, dict) else []
+        result["positions_count"] = len(pos_data) if pos_data else 0
+    except Exception:
+        result["positions_count"] = 0
+
+    try:
+        holdings = angel.get_holdings()
+        hold_data = holdings.get("data", []) if isinstance(holdings, dict) else []
+        result["holdings_count"] = len(hold_data) if hold_data else 0
+    except Exception:
+        result["holdings_count"] = 0
+
+    try:
+        balance = angel.get_balance()
+        if balance and balance.get("data"):
+            result["available_cash"] = balance["data"].get("availablecash", "N/A")
+            result["net"] = balance["data"].get("net", "N/A")
+    except Exception:
+        pass
+
+    return result
 
 
 # ============================================================

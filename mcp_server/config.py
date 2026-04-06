@@ -54,6 +54,13 @@ class Settings:
     # OpenAI (GPT second opinion for borderline signals)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 
+    # Angel One SmartAPI
+    ANGEL_API_KEY: str = os.getenv("ANGEL_API_KEY", "")
+    ANGEL_API_SECRET: str = os.getenv("ANGEL_API_SECRET", "")
+    ANGEL_CLIENT_ID: str = os.getenv("ANGEL_CLIENT_ID", "")
+    ANGEL_PASSWORD: str = os.getenv("ANGEL_PASSWORD", "")
+    ANGEL_TOTP_SECRET: str = os.getenv("ANGEL_TOTP_SECRET", "")
+
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")

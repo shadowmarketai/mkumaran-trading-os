@@ -546,8 +546,29 @@ class AngelSource:
         "day": "ONE_DAY",
     }
 
+    # Product mapping: Kite-style → Angel SmartAPI
+    PRODUCT_MAP = {
+        "CNC": "DELIVERY",
+        "MIS": "INTRADAY",
+        "NRML": "CARRYFORWARD",
+        "DELIVERY": "DELIVERY",
+        "INTRADAY": "INTRADAY",
+        "CARRYFORWARD": "CARRYFORWARD",
+    }
+
+    # Order type mapping: Kite-style → Angel SmartAPI
+    ORDER_TYPE_MAP = {
+        "MARKET": "MARKET",
+        "LIMIT": "LIMIT",
+        "SL": "STOPLOSS_LIMIT",
+        "SL-M": "STOPLOSS_MARKET",
+        "STOPLOSS_LIMIT": "STOPLOSS_LIMIT",
+        "STOPLOSS_MARKET": "STOPLOSS_MARKET",
+    }
+
     def __init__(self):
-        self.api_key = os.environ.get("ANGEL_API_KEY", "")
+        from mcp_server.config import settings as _settings
+        self.api_key = _settings.ANGEL_API_KEY
         self.client = None
         self.logged_in = False
         self._token_cache: Dict[str, str] = {}
@@ -557,25 +578,110 @@ class AngelSource:
             logger.warning("ANGEL_API_KEY not set — skipping Angel login")
             return False
         try:
-            from SmartApi import SmartConnect
-            self.client = SmartConnect(api_key=self.api_key)
-            totp = pyotp.TOTP(os.environ["ANGEL_TOTP_KEY"]).now()
-            data = self.client.generateSession(
-                os.environ["ANGEL_CLIENT_ID"],
-                os.environ["ANGEL_PIN"],
-                totp,
-            )
-            if data and data.get("status"):
-                self.client.setAccessToken(data["data"]["jwtToken"])
-                self.logged_in = True
-                logger.info("Angel SmartAPI login OK")
-                return True
-            logger.warning("Angel login failed")
+            from mcp_server.angel_auth import get_authenticated_angel
+            self.client = get_authenticated_angel()
+            self.logged_in = True
+            logger.info("Angel SmartAPI login OK (via angel_auth)")
+            return True
         except ImportError:
             logger.warning("smartapi-python not installed: pip install smartapi-python")
         except Exception as e:
             logger.warning("Angel login error: %s", e)
         return False
+
+    # ── Broker methods ───────────────────────────────────────
+
+    def place_order(
+        self,
+        exchange: str,
+        symbol: str,
+        action: str,
+        qty: int,
+        price: float = 0,
+        order_type: str = "LIMIT",
+        product: str = "CNC",
+        trigger_price: float = 0,
+        variety: str = "NORMAL",
+    ) -> dict:
+        """Place an order via Angel SmartAPI."""
+        if not self.logged_in or not self.client:
+            return {"success": False, "message": "Angel not connected"}
+
+        token = self._get_token(symbol, exchange)
+        if not token:
+            return {"success": False, "message": f"Symbol token not found for {symbol}"}
+
+        order_params = {
+            "variety": variety,
+            "tradingsymbol": symbol,
+            "symboltoken": token,
+            "transactiontype": action,
+            "exchange": exchange,
+            "ordertype": self.ORDER_TYPE_MAP.get(order_type, order_type),
+            "producttype": self.PRODUCT_MAP.get(product, product),
+            "duration": "DAY",
+            "price": str(price) if order_type != "MARKET" else "0",
+            "triggerprice": str(trigger_price),
+            "quantity": str(qty),
+        }
+
+        try:
+            resp = self.client.placeOrder(order_params)
+            if resp:
+                return {"success": True, "order_id": str(resp), "message": "Order placed via Angel"}
+            return {"success": False, "message": f"Angel placeOrder returned: {resp}"}
+        except Exception as e:
+            return {"success": False, "message": f"Angel order failed: {e}"}
+
+    def cancel_order(self, order_id: str, variety: str = "NORMAL") -> dict:
+        """Cancel an order via Angel SmartAPI."""
+        if not self.logged_in or not self.client:
+            return {"success": False, "message": "Angel not connected"}
+        try:
+            resp = self.client.cancelOrder(order_id, variety)
+            return {"success": True, "order_id": order_id, "message": f"Cancelled: {resp}"}
+        except Exception as e:
+            return {"success": False, "message": f"Cancel failed: {e}"}
+
+    def get_positions(self) -> dict:
+        """Get current positions from Angel."""
+        if not self.logged_in or not self.client:
+            return {}
+        try:
+            return self.client.position() or {}
+        except Exception as e:
+            logger.warning("Angel positions error: %s", e)
+            return {}
+
+    def get_holdings(self) -> dict:
+        """Get holdings from Angel."""
+        if not self.logged_in or not self.client:
+            return {}
+        try:
+            return self.client.holding() or {}
+        except Exception as e:
+            logger.warning("Angel holdings error: %s", e)
+            return {}
+
+    def get_balance(self) -> dict:
+        """Get RMS/margin data from Angel."""
+        if not self.logged_in or not self.client:
+            return {}
+        try:
+            return self.client.rms() or {}
+        except Exception as e:
+            logger.warning("Angel balance error: %s", e)
+            return {}
+
+    def get_orders(self) -> dict:
+        """Get order book from Angel."""
+        if not self.logged_in or not self.client:
+            return {}
+        try:
+            return self.client.orderBook() or {}
+        except Exception as e:
+            logger.warning("Angel orderBook error: %s", e)
+            return {}
 
     def _get_token(self, symbol: str, exchange: str = "NSE") -> Optional[str]:
         """Get instrument token for symbol (cached)."""
