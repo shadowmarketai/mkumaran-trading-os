@@ -15,10 +15,11 @@ import time
 import requests
 import anthropic
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 
 from mcp_server.config import settings
+from mcp_server.market_calendar import now_ist
 
 logger = logging.getLogger(__name__)
 
@@ -147,8 +148,8 @@ def fetch_rrms_setup(ticker: str, kite) -> dict:
         token   = kite.ltp(ticker)[ticker]["instrument_token"]
         candles = kite.historical_data(
             token,
-            from_date = datetime.now() - timedelta(days=120),
-            to_date   = datetime.now(),
+            from_date = now_ist() - timedelta(days=120),
+            to_date   = now_ist(),
             interval  = "day"
         )
         df        = pd.DataFrame(candles)

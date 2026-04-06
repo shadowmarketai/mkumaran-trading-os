@@ -17,6 +17,7 @@ import OptionsPage from './pages/OptionsPage';
 import PayoffPage from './pages/PayoffPage';
 import PaperTradingPage from './pages/PaperTradingPage';
 import SignalMonitorPage from './pages/SignalMonitorPage';
+import MarketMoversPage from './pages/MarketMoversPage';
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -50,6 +51,7 @@ function App() {
                     <Route path="/payoff" element={<PayoffPage />} />
                     <Route path="/paper" element={<PaperTradingPage />} />
                     <Route path="/monitor" element={<SignalMonitorPage />} />
+                    <Route path="/market-movers" element={<MarketMoversPage />} />
                   </Routes>
                 </main>
               </div>

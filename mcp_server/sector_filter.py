@@ -1,8 +1,9 @@
 import logging
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from mcp_server.asset_registry import filter_applies
+from mcp_server.market_calendar import now_ist
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ def get_sector_strength() -> dict[str, str]:
 
     Returns: Dict of {sector_name: "STRONG" | "NEUTRAL" | "WEAK"}
     """
-    end = datetime.now()
+    end = now_ist()
     start_4w = end - timedelta(weeks=4)
 
     results: dict[str, str] = {}

@@ -50,6 +50,16 @@ def test_calculate_mwa_score_bullish():
         "vsa_effort_bull": ["RELIANCE"],
         "harmonic_any_bull": ["RELIANCE"],
         "harmonic_gartley_bull": ["SBIN"],
+        # Advanced SMC bull scanners
+        "smc_breaker_bull": ["RELIANCE"],
+        "smc_mitigation_bull": ["SBIN"],
+        "smc_ifvg_bull": ["RELIANCE"],
+        "smc_mss_bull": ["SBIN"],
+        "smc_ote_bull": ["RELIANCE"],
+        "smc_idm_bull": ["SBIN"],
+        "smc_erl_bull": ["RELIANCE"],
+        "smc_fake_bo_bull": ["SBIN"],
+        "smc_ema_pullback_bull": ["RELIANCE"],
     }
     result = calculate_mwa_score(scanners)
     assert result["bull_pct"] > result["bear_pct"]
@@ -80,6 +90,16 @@ def test_calculate_mwa_score_bearish():
         "vsa_buying_climax": ["SBIN"],
         "vsa_stopping_bear": ["TATASTEEL"],
         "harmonic_any_bear": ["SBIN"],
+        # Advanced SMC bear scanners
+        "smc_breaker_bear": ["TATASTEEL"],
+        "smc_mitigation_bear": ["SBIN"],
+        "smc_ifvg_bear": ["TATASTEEL"],
+        "smc_mss_bear": ["SBIN"],
+        "smc_ote_bear": ["TATASTEEL"],
+        "smc_idm_bear": ["SBIN"],
+        "smc_erl_bear": ["TATASTEEL"],
+        "smc_fake_bo_bear": ["SBIN"],
+        "smc_ema_pullback_bear": ["TATASTEEL"],
     }
     result = calculate_mwa_score(scanners)
     assert result["bear_pct"] > result["bull_pct"]

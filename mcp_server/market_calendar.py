@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 # Indian Standard Time (UTC+5:30)
 IST = timezone(timedelta(hours=5, minutes=30))
 
+
+def now_ist() -> datetime:
+    """Current datetime in IST regardless of server timezone."""
+    return datetime.now(IST)
+
+
 # ── Exchange Trading Hours (IST) ────────────────────────────
 
 EXCHANGE_HOURS: dict[str, tuple[time, time]] = {

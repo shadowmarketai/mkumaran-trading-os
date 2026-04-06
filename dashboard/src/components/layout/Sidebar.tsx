@@ -14,6 +14,7 @@ import {
   LineChart,
   FileText,
   Shield,
+  BarChart3,
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -27,6 +28,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/overview', label: 'Overview', icon: <LayoutDashboard size={20} /> },
+  { to: '/market-movers', label: 'Market Movers', icon: <BarChart3 size={20} /> },
   { to: '/trades', label: 'Active Trades', icon: <TrendingUp size={20} /> },
   { to: '/monitor', label: 'Signal Monitor', icon: <Shield size={20} /> },
   { to: '/paper', label: 'Paper Trading', icon: <FileText size={20} /> },

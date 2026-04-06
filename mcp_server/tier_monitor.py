@@ -1,6 +1,7 @@
 import logging
-from datetime import datetime
 from sqlalchemy.orm import Session
+
+from mcp_server.market_calendar import now_ist
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ def tier2_monitor(db: Session) -> list[dict]:
                         "ltrp": ltrp,
                         "rrr": result.rrr,
                         "qty": result.qty,
-                        "timestamp": datetime.now().isoformat(),
+                        "timestamp": now_ist().isoformat(),
                     })
 
             # Check S&R breach
@@ -64,7 +65,7 @@ def tier2_monitor(db: Session) -> list[dict]:
                     "ticker": item.ticker,
                     "cmp": cmp,
                     "pivot_high": pivot,
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": now_ist().isoformat(),
                 })
             elif cmp < ltrp:
                 alerts.append({
@@ -72,7 +73,7 @@ def tier2_monitor(db: Session) -> list[dict]:
                     "ticker": item.ticker,
                     "cmp": cmp,
                     "ltrp": ltrp,
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": now_ist().isoformat(),
                 })
 
         except Exception as e:
@@ -112,7 +113,7 @@ def tier3_monitor(db: Session) -> list[dict]:
 
             # Update current price
             trade.current_price = cmp
-            trade.last_updated = datetime.now()
+            trade.last_updated = now_ist()
 
             # Calculate current RRR (direction-aware)
             if is_short:
@@ -141,7 +142,7 @@ def tier3_monitor(db: Session) -> list[dict]:
                     "cmp": cmp,
                     "target": float(trade.target),
                     "pnl_pct": pnl_pct,
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": now_ist().isoformat(),
                 })
 
             # Check stop loss hit
@@ -152,7 +153,7 @@ def tier3_monitor(db: Session) -> list[dict]:
                     "cmp": cmp,
                     "stop_loss": float(trade.stop_loss),
                     "pnl_pct": pnl_pct,
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": now_ist().isoformat(),
                 })
 
             # Check CRRR deterioration
@@ -164,7 +165,7 @@ def tier3_monitor(db: Session) -> list[dict]:
                         "cmp": cmp,
                         "prrr": float(trade.prrr),
                         "crrr": round(crrr, 2),
-                        "timestamp": datetime.now().isoformat(),
+                        "timestamp": now_ist().isoformat(),
                     })
                     trade.alert_sent = True
 

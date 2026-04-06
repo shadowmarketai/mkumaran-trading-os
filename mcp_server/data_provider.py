@@ -40,6 +40,7 @@ from functools import wraps
 
 from mcp_server.asset_registry import parse_ticker, resolve_yf_symbol
 from mcp_server.config import settings
+from mcp_server.market_calendar import now_ist
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,27 @@ _PERIOD_TO_DAYS: dict[str, int] = {
     "2y": 730,
     "5y": 1825,
 }
+
+
+# ── Segment-Aware Data Routing ──────────────────────────────
+# Each segment lists data sources in priority order.
+# Env-var override: DATA_ROUTE_MCX=angel,yfinance
+
+SEGMENT_ROUTING: dict[str, list[str]] = {
+    "NSE": ["angel", "nse", "yfinance"],
+    "BSE": ["angel", "nse", "yfinance"],
+    "NFO": ["angel", "kite", "yfinance"],
+    "MCX": ["gwc", "angel", "yfinance"],
+    "CDS": ["yfinance", "angel"],
+}
+
+# Apply env-var overrides (e.g. DATA_ROUTE_MCX=angel,yfinance)
+for _seg in list(SEGMENT_ROUTING):
+    _env_key = f"DATA_ROUTE_{_seg}"
+    _env_val = os.environ.get(_env_key, "")
+    if _env_val:
+        SEGMENT_ROUTING[_seg] = [s.strip() for s in _env_val.split(",") if s.strip()]
+        logging.getLogger(__name__).info("Segment routing override %s=%s", _env_key, SEGMENT_ROUTING[_seg])
 
 
 # ── Retry Decorator ──────────────────────────────────────────────
@@ -712,8 +734,8 @@ class AngelSource:
             logger.warning("Angel: no token found for %s", symbol)
             return pd.DataFrame()
 
-        from_dt = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
-        to_dt = datetime.now().strftime("%Y-%m-%d %H:%M")
+        from_dt = (now_ist() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
+        to_dt = now_ist().strftime("%Y-%m-%d %H:%M")
 
         data = self.client.getCandleData({
             "exchange": exchange,
@@ -970,8 +992,8 @@ class MarketDataProvider:
         # 2. NSE India free (equity only)
         if exchange in ("NSE", "BSE"):
             try:
-                from_dt = (datetime.now() - timedelta(days=days)).strftime("%d-%m-%Y")
-                to_dt = datetime.now().strftime("%d-%m-%Y")
+                from_dt = (now_ist() - timedelta(days=days)).strftime("%d-%m-%Y")
+                to_dt = now_ist().strftime("%d-%m-%Y")
                 df = self.nse.get_historical(symbol_clean, from_dt, to_dt)
                 if not df.empty:
                     self._hist_cache[cache_key] = (df, time.time())
@@ -994,6 +1016,151 @@ class MarketDataProvider:
                 return df
 
         logger.error("All historical sources failed for %s", symbol_clean)
+        return pd.DataFrame()
+
+    # ── Segment-Routed OHLCV ───────────────────────────────────
+
+    def get_ohlcv_routed(
+        self,
+        symbol: str,
+        interval: str = "day",
+        days: int = 60,
+        exchange: str = "NSE",
+    ) -> pd.DataFrame:
+        """Get OHLCV from best source for the given exchange/segment.
+
+        Uses SEGMENT_ROUTING to determine source priority per exchange.
+        Falls back gracefully when a source isn't configured.
+        """
+        cache_key = f"routed_{symbol}_{interval}_{days}_{exchange}"
+        if cache_key in self._hist_cache:
+            df, ts = self._hist_cache[cache_key]
+            if (time.time() - ts) < self._hist_ttl and not df.empty:
+                return df
+
+        symbol_clean = symbol.replace("NSE:", "").replace("BSE:", "").replace("MCX:", "").replace("CDS:", "").replace("NFO:", "")
+        sources = SEGMENT_ROUTING.get(exchange, ["yfinance"])
+
+        for source in sources:
+            df = self._try_source_ohlcv(source, symbol_clean, interval, days, exchange)
+            if df is not None and not df.empty:
+                logger.info("Routed %s:%s via %s (%d bars)", exchange, symbol_clean, source, len(df))
+                self._hist_cache[cache_key] = (df, time.time())
+                return df
+
+        logger.warning("All routed sources failed for %s:%s (tried %s)", exchange, symbol_clean, sources)
+        return pd.DataFrame()
+
+    def _try_source_ohlcv(
+        self,
+        source: str,
+        symbol: str,
+        interval: str,
+        days: int,
+        exchange: str,
+    ) -> pd.DataFrame:
+        """Try a single data source for OHLCV. Returns empty DF on failure."""
+        try:
+            if source == "angel" and self._sources.get("angel"):
+                return self._angel_fetch_with_refresh(symbol, interval, days, exchange)
+            elif source == "nse" and exchange in ("NSE", "BSE"):
+                from_dt = (now_ist() - timedelta(days=days)).strftime("%d-%m-%Y")
+                to_dt = now_ist().strftime("%d-%m-%Y")
+                return self.nse.get_historical(symbol, from_dt, to_dt)
+            elif source == "gwc" and self._sources.get("gwc"):
+                # Goodwill quote only — no historical OHLCV endpoint currently
+                return pd.DataFrame()
+            elif source == "kite":
+                try:
+                    from mcp_server.kite_auth import get_authenticated_kite
+                    kite = get_authenticated_kite()
+                    from mcp_server.data_provider import _resolve_instrument_token, _INTERVAL_MAP
+                    token = _resolve_instrument_token(f"{exchange}:{symbol}")
+                    if token is None:
+                        return pd.DataFrame()
+                    kite_interval = _INTERVAL_MAP.get(
+                        {"day": "1d", "1minute": "1m", "5minute": "5m",
+                         "15minute": "15m", "60minute": "1h"}.get(interval, "1d"),
+                        "day",
+                    )
+                    to_date = now_ist()
+                    from_date = to_date - timedelta(days=days)
+                    records = kite.historical_data(
+                        instrument_token=token,
+                        from_date=from_date,
+                        to_date=to_date,
+                        interval=kite_interval,
+                    )
+                    if records:
+                        df = pd.DataFrame(records)
+                        df["date"] = pd.to_datetime(df["date"])
+                        return df[["date", "open", "high", "low", "close", "volume"]].sort_values("date").reset_index(drop=True)
+                except Exception as e:
+                    logger.debug("Kite source failed for %s:%s: %s", exchange, symbol, e)
+                return pd.DataFrame()
+            elif source == "upstox" and self._sources.get("upstox") and exchange in ("NSE", "BSE"):
+                return self.upstox.get_historical(symbol, interval, days)
+            elif source == "yfinance":
+                ticker_str = f"{exchange}:{symbol}" if exchange not in ("NSE", "BSE") else symbol
+                yf_symbol = resolve_yf_symbol(ticker_str)
+                if not yf_symbol:
+                    return pd.DataFrame()
+                period_map = {1: "1d", 5: "5d", 30: "1mo", 60: "3mo", 90: "3mo",
+                              180: "6mo", 365: "1y", 730: "2y"}
+                period = "6mo"
+                for d, p in sorted(period_map.items()):
+                    if days <= d:
+                        period = p
+                        break
+                data = _rate_limited_download(yf_symbol, period=period, interval="1d")
+                if not data.empty:
+                    data.columns = [
+                        c.lower() if isinstance(c, str) else c[0].lower()
+                        for c in data.columns
+                    ]
+                    if isinstance(data.columns, pd.MultiIndex):
+                        data.columns = data.columns.get_level_values(0)
+                        data.columns = [c.lower() for c in data.columns]
+                    required = ["open", "high", "low", "close", "volume"]
+                    if all(c in data.columns for c in required):
+                        data = data[required].copy()
+                        data.index.name = "date"
+                        return data.reset_index()
+                return pd.DataFrame()
+        except Exception as e:
+            logger.debug("Source %s failed for %s:%s: %s", source, exchange, symbol, e)
+        return pd.DataFrame()
+
+    def _angel_fetch_with_refresh(
+        self,
+        symbol: str,
+        interval: str,
+        days: int,
+        exchange: str,
+    ) -> pd.DataFrame:
+        """Fetch OHLCV from Angel with auto-refresh on Invalid Token."""
+        try:
+            df = self.angel.get_historical(symbol, interval, days, exchange=exchange)
+            if not df.empty:
+                return df
+        except Exception as e:
+            err_str = str(e).lower()
+            if "invalid token" in err_str or "unauthorized" in err_str:
+                logger.warning("Angel token expired for %s:%s — attempting refresh", exchange, symbol)
+                try:
+                    from mcp_server.angel_auth import force_refresh_angel_token
+                    self.angel.client = force_refresh_angel_token()
+                    self.angel.logged_in = True
+                    self._sources["angel"] = True
+                    df = self.angel.get_historical(symbol, interval, days, exchange=exchange)
+                    if not df.empty:
+                        logger.info("Angel token refreshed — retry succeeded for %s:%s", exchange, symbol)
+                        return df
+                except Exception as refresh_err:
+                    logger.error("Angel token refresh failed: %s — marking unavailable", refresh_err)
+                    self._sources["angel"] = False
+            else:
+                logger.debug("Angel fetch failed for %s:%s: %s", exchange, symbol, e)
         return pd.DataFrame()
 
     # ── Live Quote ───────────────────────────────────────────────
@@ -1108,7 +1275,7 @@ class MarketDataProvider:
                 logger.warning("Morning data failed for %s: %s", sym, e)
 
         return {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now_ist().isoformat(),
             "fii_dii": fii_dii,
             "nifty_pcr": nifty_pcr,
             "bn_pcr": bn_pcr,
@@ -1118,7 +1285,7 @@ class MarketDataProvider:
             "quotes": quotes,
             "delivery": delivery,
             "fii_buying": fii_dii.get("fii_buying", True),
-            "market_open": 9 <= datetime.now().hour < 16,
+            "market_open": 9 <= now_ist().hour < 16,
         }
 
     # ── Diagnostics ──────────────────────────────────────────────
@@ -1276,7 +1443,7 @@ def fetch_kite_historical(
     if days is None:
         raise ValueError(f"Unsupported period: {period}")
 
-    to_date = datetime.now()
+    to_date = now_ist()
     from_date = to_date - timedelta(days=days)
 
     from mcp_server.kite_auth import get_authenticated_kite

@@ -345,6 +345,31 @@ export interface PreTradeResult {
   error?: string;
 }
 
+// ── Market Movers ────────────────────────────────────────
+export interface MarketMoverStock {
+  ticker: string;
+  exchange: string;
+  ltp: number;
+  change: number;
+  pct_change: number;
+  open: number;
+  high: number;
+  low: number;
+  prev_close: number;
+  volume: number;
+}
+
+export type MarketMoverCategory = 'gainers' | 'losers' | 'week52_high' | 'week52_low' | 'most_active';
+
+export interface MarketMoversData {
+  category: MarketMoverCategory;
+  exchange: string;
+  stocks: MarketMoverStock[];
+  total: number;
+  fetched_at: string | null;
+  total_universe: number;
+}
+
 export type MarketDirection = 'BULL' | 'BEAR' | 'SIDEWAYS' | 'MILD_BULL' | 'MILD_BEAR';
 export type TradeStatus = 'OPEN' | 'WIN' | 'LOSS' | 'EXPIRED';
 export type SectorStrength = 'STRONG' | 'NEUTRAL' | 'WEAK';

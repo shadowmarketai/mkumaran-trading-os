@@ -16,8 +16,9 @@
 
 import pandas as pd
 import numpy as np
-from datetime import datetime
 from typing import Optional
+
+from mcp_server.market_calendar import now_ist
 from dataclasses import dataclass
 
 
@@ -728,7 +729,7 @@ class SMCEngine:
         results = {
             "symbol":           symbol,
             "timeframe":        timeframe,
-            "timestamp":        datetime.now().isoformat(),
+            "timestamp":        now_ist().isoformat(),
             "amd_zones":        [],
             "crt_candles":      [],
             "c4_setup":         None,

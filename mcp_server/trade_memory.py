@@ -11,8 +11,9 @@ import json
 import logging
 import os
 from dataclasses import dataclass, asdict
-from datetime import datetime
 from typing import Optional
+
+from mcp_server.market_calendar import now_ist
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class TradeRecord:
 
     def __post_init__(self):
         if not self.timestamp:
-            self.timestamp = datetime.now().isoformat()
+            self.timestamp = now_ist().isoformat()
 
     def to_situation_text(self) -> str:
         """Convert to searchable text for BM25 indexing."""

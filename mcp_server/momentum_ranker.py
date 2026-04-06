@@ -12,8 +12,9 @@ All factors min-max normalized to [0,1] across the full universe before weightin
 import json
 import logging
 from dataclasses import dataclass, asdict
-from datetime import datetime
 from pathlib import Path
+
+from mcp_server.market_calendar import now_ist
 from typing import Optional
 
 import numpy as np
@@ -243,7 +244,7 @@ def save_momentum_portfolio(
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     payload = {
-        "ranked_at": datetime.now().isoformat(),
+        "ranked_at": now_ist().isoformat(),
         "top_n": top_n,
         "holdings": [s.ticker for s in rankings[:top_n]],
         "rankings": [asdict(s) for s in rankings],

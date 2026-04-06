@@ -24,7 +24,9 @@ MAX_BEAR_WEIGHT = sum(
 )
 
 
-def calculate_mwa_score(scanner_results: dict, symbol: str = "") -> dict:
+def calculate_mwa_score(
+    scanner_results: dict, symbol: str = "", segments_run: list[str] | None = None,
+) -> dict:
     """
     Calculate weighted MWA score from scanner results.
 
@@ -33,6 +35,8 @@ def calculate_mwa_score(scanner_results: dict, symbol: str = "") -> dict:
             with value either:
             - list of stocks (new format from MWAScanner.run_all)
             - dict with "stocks"/"count" keys (old format)
+        segments_run: List of market segments that were active for this scan
+            (e.g. ["MCX", "CDS"]).  None = all segments (backward compat).
 
     Returns:
         Dict with direction, bull_score, bear_score, bull_pct, bear_pct,
@@ -47,6 +51,12 @@ def calculate_mwa_score(scanner_results: dict, symbol: str = "") -> dict:
     for key, cfg in SCANNERS.items():
         if cfg["type"] in ("FILTER", "UNKNOWN"):
             continue
+
+        # Skip scanners that couldn't have run for the active segments
+        if segments_run is not None:
+            scanner_segs = cfg.get("segments", [])
+            if not any(s in scanner_segs for s in segments_run):
+                continue
 
         w = cfg["weight"]
         result = scanner_results.get(key)
@@ -88,7 +98,7 @@ def calculate_mwa_score(scanner_results: dict, symbol: str = "") -> dict:
         direction = "SIDEWAYS"
 
     # Signal chain detection
-    active_chains = detect_signal_chains(fired)
+    active_chains = detect_signal_chains(fired, segments_run=segments_run)
 
     chain_boost = sum(
         c["boost"] for c in active_chains if c["complete"]
@@ -134,12 +144,15 @@ def calculate_mwa_score(scanner_results: dict, symbol: str = "") -> dict:
     }
 
 
-def detect_signal_chains(fired: dict[str, list[str]]) -> list[dict]:
+def detect_signal_chains(
+    fired: dict[str, list[str]], segments_run: list[str] | None = None,
+) -> list[dict]:
     """
     Detect which signal chains are active (75%+ match).
 
     Args:
         fired: Dict with "bull" and "bear" lists of fired scanner keys
+        segments_run: List of active market segments.  None = all.
 
     Returns:
         List of active chain dicts with name, boost, complete flag, etc.
@@ -149,6 +162,18 @@ def detect_signal_chains(fired: dict[str, list[str]]) -> list[dict]:
 
     for name, chain in SIGNAL_CHAINS.items():
         needed = set(chain["scanners"])
+
+        # Filter needed to only include scanners available for active segments
+        if segments_run is not None:
+            available = {
+                k for k in needed
+                if any(s in SCANNERS.get(k, {}).get("segments", [])
+                       for s in segments_run)
+            }
+            if not available:
+                continue  # Skip chain entirely if no scanners available
+            needed = available
+
         matched = needed & all_fired
         if len(matched) >= len(needed) * 0.75:
             complete = matched == needed
@@ -184,6 +209,9 @@ def get_promoted_stocks(
         "supertrend_buy", "macd_buy_daily", "52week_high",
         "bandwalk_highs", "bullish_divergence", "failure_swing_bullish",
         "smc_bos_bull", "smc_choch_bull", "smc_demand_ob", "smc_liq_sweep_bull",
+        "smc_breaker_bull", "smc_mitigation_bull", "smc_ifvg_bull",
+        "smc_mss_bull", "smc_ote_bull", "smc_idm_bull",
+        "smc_erl_bull", "smc_fake_bo_bull", "smc_ema_pullback_bull",
         "wyckoff_accumulation", "wyckoff_spring", "wyckoff_sos", "wyckoff_test_bull",
         "vsa_selling_climax", "vsa_stopping_bull", "vsa_effort_bull",
         "harmonic_gartley_bull", "harmonic_any_bull",
@@ -192,6 +220,7 @@ def get_promoted_stocks(
         "cds_carry_trade", "cds_dxy_divergence",
         "mcx_ema_crossover", "mcx_rsi_oversold", "mcx_crude_momentum",
         "mcx_gold_silver_ratio", "mcx_metal_strength",
+        "intraday_momentum_bull", "daily_pct_change_py",
     ]
 
     stock_counts: dict[str, int] = {}

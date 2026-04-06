@@ -94,6 +94,48 @@ def refresh_angel_token():
     return client
 
 
+def force_refresh_angel_token():
+    """Force a fresh Angel login, bypassing the cached token.
+
+    Used by data_provider auto-refresh when mid-day "Invalid Token" is detected.
+    Deletes the cached token file, performs a fresh TOTP login, and returns a
+    new SmartConnect client.
+    """
+    from SmartApi import SmartConnect
+
+    # Delete stale cached token
+    if TOKEN_CACHE_PATH.exists():
+        try:
+            TOKEN_CACHE_PATH.unlink()
+            logger.info("Deleted stale Angel token cache")
+        except OSError as e:
+            logger.warning("Could not delete Angel token cache: %s", e)
+
+    logger.info("Force-refreshing Angel token via TOTP login...")
+
+    client = SmartConnect(api_key=settings.ANGEL_API_KEY)
+    totp = get_totp()
+
+    data = client.generateSession(
+        settings.ANGEL_CLIENT_ID,
+        settings.ANGEL_PASSWORD,
+        totp,
+    )
+
+    if not data or not data.get("status"):
+        raise RuntimeError(f"Angel force-refresh login failed: {data}")
+
+    jwt_token = data["data"]["jwtToken"]
+    refresh_token = data["data"].get("refreshToken", "")
+    feed_token = data["data"].get("feedToken", "")
+
+    client.setAccessToken(jwt_token)
+    _save_token(jwt_token, refresh_token, feed_token)
+    logger.info("Angel token force-refreshed successfully")
+
+    return client
+
+
 def get_authenticated_angel():
     """Get an authenticated SmartConnect instance (with caching)."""
     return refresh_angel_token()

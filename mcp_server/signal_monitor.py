@@ -13,9 +13,10 @@ Runs every 5 minutes during market hours, skips when market is closed.
 
 import asyncio
 import logging
-from datetime import date, datetime
+from datetime import date
 
 from mcp_server.config import settings
+from mcp_server.market_calendar import now_ist
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,7 @@ def monitor_open_signals() -> list[dict]:
                     ).first()
                     if active:
                         active.current_price = current_price
-                        active.last_updated = datetime.now()
+                        active.last_updated = now_ist()
                     continue
 
                 # ── Signal hit! Update everything ──

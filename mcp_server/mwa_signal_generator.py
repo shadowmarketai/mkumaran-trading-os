@@ -97,8 +97,23 @@ def generate_mwa_signals(
 
     for ticker in promoted:
         df = stock_data.get(ticker)
+
+        # On-the-fly fetch for promoted stocks not in stock_data
         if df is None or df.empty or len(df) < 15:
-            logger.debug("Skipping %s: insufficient OHLCV data", ticker)
+            try:
+                from mcp_server.nse_scanner import get_stock_data as _get_stock
+                exchange = _resolve_exchange(ticker)
+                prefix = f"{exchange}:" if exchange != "NSE" else ""
+                fetched = _get_stock(f"{prefix}{ticker}", period="6mo", interval="1d")
+                if fetched is not None and not fetched.empty and len(fetched) >= 15:
+                    df = fetched
+                    stock_data[ticker] = df
+                    logger.info("On-the-fly fetch OK for %s: %d bars", ticker, len(df))
+            except Exception as e:
+                logger.debug("On-the-fly fetch failed for %s: %s", ticker, e)
+
+        if df is None or df.empty or len(df) < 15:
+            logger.info("Skipping %s: insufficient OHLCV data", ticker)
             continue
 
         atr = _compute_atr(df, period=14)

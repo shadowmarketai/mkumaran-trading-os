@@ -24,7 +24,9 @@ Segment routing: signals also written to segment-specific tabs
 import logging
 import os
 import re
-from datetime import datetime, date
+from datetime import date
+
+from mcp_server.market_calendar import now_ist
 from dataclasses import dataclass
 
 from mcp_server.config import settings
@@ -92,7 +94,7 @@ def parse_signal_message(text: str) -> TelegramSignal | None:
 
     signal = TelegramSignal(
         date=date.today().isoformat(),
-        signal_id=f"SIG-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        signal_id=f"SIG-{now_ist().strftime('%Y%m%d%H%M%S')}",
         raw_message=text[:500],
     )
 
@@ -567,7 +569,7 @@ def record_signal_to_sheets(signal_data: dict) -> dict:
     """
     exchange = signal_data.get("exchange", "NSE")
     signal = TelegramSignal(
-        signal_id=signal_data.get("signal_id", f"SIG-{datetime.now().strftime('%Y%m%d%H%M%S')}"),
+        signal_id=signal_data.get("signal_id", f"SIG-{now_ist().strftime('%Y%m%d%H%M%S')}"),
         date=signal_data.get("date", date.today().isoformat()),
         ticker=signal_data.get("ticker", ""),
         exchange=exchange,

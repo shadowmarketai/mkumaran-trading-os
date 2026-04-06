@@ -13,9 +13,9 @@ import os
 import re
 import time
 import json
-from datetime import datetime
-
 import requests
+
+from mcp_server.market_calendar import now_ist
 
 logger = logging.getLogger(__name__)
 
@@ -358,6 +358,20 @@ SCANNERS = {
         "pairs_with": ["volume_avg", "breakout_200dma"],
         "status": "ACTIVE",
     },
+    "intraday_momentum_bull": {
+        "no": 119, "slug": "python:intraday_momentum_bull",
+        "type": "BULL", "weight": 3.0, "layer": "Breakout", "source": "Python",
+        "desc": "Intraday momentum: close > open by 3%+ AND above previous close. Catches strong gap-up + sustained moves.",
+        "pairs_with": ["volume_spike", "gap_up", "breakout_200dma"],
+        "status": "ACTIVE",
+    },
+    "intraday_momentum_bear": {
+        "no": 120, "slug": "python:intraday_momentum_bear",
+        "type": "BEAR", "weight": 3.0, "layer": "Breakout", "source": "Python",
+        "desc": "Intraday momentum: close < open by 3%+ AND below previous close. Catches strong sell-off moves.",
+        "pairs_with": ["volume_spike", "gap_down"],
+        "status": "ACTIVE",
+    },
 
     # ── LAYER 8 — SMART MONEY CONCEPTS (12 scanners) ─────────
 
@@ -443,6 +457,149 @@ SCANNERS = {
         "type": "FILTER", "weight": 0.0, "layer": "SMC", "source": "Python",
         "desc": "SMC Premium Zone. Price above equilibrium of dealing range.",
         "pairs_with": [],
+        "status": "ACTIVE",
+    },
+
+    # ── LAYER 8b — SMC ADVANCED (20 scanners) ────────────────
+
+    "smc_breaker_bull": {
+        "no": 99, "slug": "python:scan_breaker_block_bull",
+        "type": "BULL", "weight": 2.5, "layer": "SMC", "source": "Python",
+        "desc": "SMC Breaker Block bullish. Failed supply OB flips to demand.",
+        "pairs_with": ["smc_choch_bull", "smc_liq_sweep_bull", "smc_discount"],
+        "status": "ACTIVE",
+    },
+    "smc_breaker_bear": {
+        "no": 100, "slug": "python:scan_breaker_block_bear",
+        "type": "BEAR", "weight": 2.5, "layer": "SMC", "source": "Python",
+        "desc": "SMC Breaker Block bearish. Failed demand OB flips to supply.",
+        "pairs_with": ["smc_choch_bear", "smc_liq_sweep_bear", "smc_premium"],
+        "status": "ACTIVE",
+    },
+    "smc_mitigation_bull": {
+        "no": 101, "slug": "python:scan_mitigation_block_bull",
+        "type": "BULL", "weight": 2.0, "layer": "SMC", "source": "Python",
+        "desc": "SMC Mitigation Block bullish. Demand OB mitigated but held.",
+        "pairs_with": ["smc_demand_ob", "smc_bullish_fvg", "smc_discount"],
+        "status": "ACTIVE",
+    },
+    "smc_mitigation_bear": {
+        "no": 102, "slug": "python:scan_mitigation_block_bear",
+        "type": "BEAR", "weight": 2.0, "layer": "SMC", "source": "Python",
+        "desc": "SMC Mitigation Block bearish. Supply OB mitigated but held.",
+        "pairs_with": ["smc_supply_ob", "smc_bearish_fvg", "smc_premium"],
+        "status": "ACTIVE",
+    },
+    "smc_ifvg_bull": {
+        "no": 103, "slug": "python:scan_ifvg_bull",
+        "type": "BULL", "weight": 1.5, "layer": "SMC", "source": "Python",
+        "desc": "SMC Inversion FVG bullish. Filled bearish FVG now acts as support.",
+        "pairs_with": ["smc_demand_ob", "smc_discount", "smc_breaker_bull"],
+        "status": "ACTIVE",
+    },
+    "smc_ifvg_bear": {
+        "no": 104, "slug": "python:scan_ifvg_bear",
+        "type": "BEAR", "weight": 1.5, "layer": "SMC", "source": "Python",
+        "desc": "SMC Inversion FVG bearish. Filled bullish FVG now acts as resistance.",
+        "pairs_with": ["smc_supply_ob", "smc_premium", "smc_breaker_bear"],
+        "status": "ACTIVE",
+    },
+    "smc_mss_bull": {
+        "no": 105, "slug": "python:scan_mss_bull",
+        "type": "BULL", "weight": 3.0, "layer": "SMC", "source": "Python",
+        "desc": "SMC Market Structure Shift bullish. Liquidity sweep + structure break.",
+        "pairs_with": ["smc_liq_sweep_bull", "smc_choch_bull", "smc_demand_ob"],
+        "status": "ACTIVE",
+    },
+    "smc_mss_bear": {
+        "no": 106, "slug": "python:scan_mss_bear",
+        "type": "BEAR", "weight": 3.0, "layer": "SMC", "source": "Python",
+        "desc": "SMC Market Structure Shift bearish. Liquidity sweep + structure break.",
+        "pairs_with": ["smc_liq_sweep_bear", "smc_choch_bear", "smc_supply_ob"],
+        "status": "ACTIVE",
+    },
+    "smc_ote_bull": {
+        "no": 107, "slug": "python:scan_ote_bull",
+        "type": "BULL", "weight": 2.5, "layer": "SMC", "source": "Python",
+        "desc": "SMC Optimal Trade Entry bullish. Price at Fib 62-79% retracement.",
+        "pairs_with": ["smc_demand_ob", "smc_bullish_fvg", "smc_discount"],
+        "status": "ACTIVE",
+    },
+    "smc_ote_bear": {
+        "no": 108, "slug": "python:scan_ote_bear",
+        "type": "BEAR", "weight": 2.5, "layer": "SMC", "source": "Python",
+        "desc": "SMC Optimal Trade Entry bearish. Price at Fib 62-79% retracement.",
+        "pairs_with": ["smc_supply_ob", "smc_bearish_fvg", "smc_premium"],
+        "status": "ACTIVE",
+    },
+    "smc_idm_bull": {
+        "no": 109, "slug": "python:scan_inducement_bull",
+        "type": "BULL", "weight": 2.0, "layer": "SMC", "source": "Python",
+        "desc": "SMC Inducement bullish. Minor low swept, major low held.",
+        "pairs_with": ["smc_liq_sweep_bull", "smc_mss_bull", "smc_demand_ob"],
+        "status": "ACTIVE",
+    },
+    "smc_idm_bear": {
+        "no": 110, "slug": "python:scan_inducement_bear",
+        "type": "BEAR", "weight": 2.0, "layer": "SMC", "source": "Python",
+        "desc": "SMC Inducement bearish. Minor high swept, major high held.",
+        "pairs_with": ["smc_liq_sweep_bear", "smc_mss_bear", "smc_supply_ob"],
+        "status": "ACTIVE",
+    },
+    "smc_ce_bull": {
+        "no": 111, "slug": "python:scan_ce_bull",
+        "type": "FILTER", "weight": 0.0, "layer": "SMC", "source": "Python",
+        "desc": "SMC Consequent Encroachment bullish. Price at 50% of bullish FVG.",
+        "pairs_with": ["smc_bullish_fvg", "smc_demand_ob"],
+        "status": "ACTIVE",
+    },
+    "smc_ce_bear": {
+        "no": 112, "slug": "python:scan_ce_bear",
+        "type": "FILTER", "weight": 0.0, "layer": "SMC", "source": "Python",
+        "desc": "SMC Consequent Encroachment bearish. Price at 50% of bearish FVG.",
+        "pairs_with": ["smc_bearish_fvg", "smc_supply_ob"],
+        "status": "ACTIVE",
+    },
+    "smc_erl_bull": {
+        "no": 113, "slug": "python:scan_erl_bull",
+        "type": "BULL", "weight": 1.5, "layer": "SMC", "source": "Python",
+        "desc": "SMC External Range Liquidity bullish. Buy-side liquidity draw above.",
+        "pairs_with": ["smc_discount", "smc_demand_ob", "smc_ote_bull"],
+        "status": "ACTIVE",
+    },
+    "smc_erl_bear": {
+        "no": 114, "slug": "python:scan_erl_bear",
+        "type": "BEAR", "weight": 1.5, "layer": "SMC", "source": "Python",
+        "desc": "SMC External Range Liquidity bearish. Sell-side liquidity draw below.",
+        "pairs_with": ["smc_premium", "smc_supply_ob", "smc_ote_bear"],
+        "status": "ACTIVE",
+    },
+    "smc_fake_bo_bull": {
+        "no": 115, "slug": "python:scan_fake_breakout_bull",
+        "type": "BULL", "weight": 2.5, "layer": "SMC", "source": "Python",
+        "desc": "SMC Fake Breakout bullish. Bear trap — broke support then reversed.",
+        "pairs_with": ["smc_liq_sweep_bull", "smc_mss_bull", "smc_idm_bull"],
+        "status": "ACTIVE",
+    },
+    "smc_fake_bo_bear": {
+        "no": 116, "slug": "python:scan_fake_breakout_bear",
+        "type": "BEAR", "weight": 2.5, "layer": "SMC", "source": "Python",
+        "desc": "SMC Fake Breakout bearish. Bull trap — broke resistance then reversed.",
+        "pairs_with": ["smc_liq_sweep_bear", "smc_mss_bear", "smc_idm_bear"],
+        "status": "ACTIVE",
+    },
+    "smc_ema_pullback_bull": {
+        "no": 117, "slug": "python:scan_ema_pullback_bull",
+        "type": "BULL", "weight": 2.0, "layer": "SMC", "source": "Python",
+        "desc": "9/21 EMA pullback buy. Price between EMAs in uptrend, bullish candle.",
+        "pairs_with": ["upswing", "smc_bos_bull", "smc_demand_ob"],
+        "status": "ACTIVE",
+    },
+    "smc_ema_pullback_bear": {
+        "no": 118, "slug": "python:scan_ema_pullback_bear",
+        "type": "BEAR", "weight": 2.0, "layer": "SMC", "source": "Python",
+        "desc": "9/21 EMA pullback sell. Price between EMAs in downtrend, bearish candle.",
+        "pairs_with": ["downswing", "smc_bos_bear", "smc_supply_ob"],
         "status": "ACTIVE",
     },
 
@@ -787,6 +944,44 @@ SCANNERS = {
     },
 }
 
+
+# ── SEGMENT ASSIGNMENT ──────────────────────────────────────
+# Assign each scanner to the market segments where it should run.
+# Rules:
+#   - Chartink scanners → NSE only (Chartink is NSE-exclusive)
+#   - Filters (delivery, fii_dii, sector, large_cap) → NSE only
+#   - CDS-specific (layer=Forex) → CDS only
+#   - MCX-specific (layer=Commodity) → MCX only
+#   - All other Python scanners (SMC/Wyckoff/VSA/Harmonic/RL/supertrend/volume)
+#     are pure OHLCV and work universally → NSE, MCX, CDS, NFO
+
+_ALL_SEGMENTS = ["NSE", "MCX", "CDS", "NFO"]
+_NSE_ONLY_FILTERS = {
+    "large_cap_filter", "delivery_pct_filter", "fii_dii_filter",
+    "sector_rotation_filter",
+}
+
+for _key, _cfg in SCANNERS.items():
+    if "segments" in _cfg:
+        continue  # already set
+    if _cfg["source"] == "Chartink":
+        _cfg["segments"] = ["NSE"]
+    elif _cfg["layer"] == "Forex":
+        _cfg["segments"] = ["CDS"]
+    elif _cfg["layer"] == "Commodity":
+        _cfg["segments"] = ["MCX"]
+    elif _key in _NSE_ONLY_FILTERS:
+        _cfg["segments"] = ["NSE"]
+    else:
+        _cfg["segments"] = list(_ALL_SEGMENTS)
+
+# Computed segment dicts — scanners relevant to each segment
+NSE_SCANNERS = {k: v for k, v in SCANNERS.items() if "NSE" in v["segments"]}
+MCX_SCANNERS = {k: v for k, v in SCANNERS.items() if "MCX" in v["segments"]}
+CDS_SCANNERS = {k: v for k, v in SCANNERS.items() if "CDS" in v["segments"]}
+NFO_SCANNERS = {k: v for k, v in SCANNERS.items() if "NFO" in v["segments"]}
+
+
 # ── SIGNAL CHAINS ────────────────────────────────────────────
 
 SIGNAL_CHAINS = {
@@ -950,13 +1145,50 @@ SIGNAL_CHAINS = {
         "desc": "Gold/silver ratio mean-reversion + multi-metal relative strength",
         "boost": 15, "best_for": "Precious metals mean-reversion trades",
     },
+    # Advanced SMC chains
+    "smc_breaker_reversal_long": {
+        "scanners": ["smc_breaker_bull", "smc_liq_sweep_bull", "smc_mss_bull",
+                     "smc_ote_bull"],
+        "desc": "Breaker Block + liquidity sweep + MSS + OTE — advanced SMC reversal long",
+        "boost": 30, "best_for": "Advanced SMC reversal longs with breaker block confluence",
+    },
+    "smc_breaker_reversal_short": {
+        "scanners": ["smc_breaker_bear", "smc_liq_sweep_bear", "smc_mss_bear",
+                     "smc_ote_bear"],
+        "desc": "Breaker Block + liquidity sweep + MSS + OTE — advanced SMC reversal short",
+        "boost": 30, "best_for": "Advanced SMC reversal shorts with breaker block confluence",
+    },
+    "smc_ote_entry_long": {
+        "scanners": ["smc_ote_bull", "smc_demand_ob", "smc_discount",
+                     "smc_bullish_fvg"],
+        "desc": "OTE retracement + demand OB + discount zone + FVG — precision long entry",
+        "boost": 25, "best_for": "High-precision institutional long entries at OTE",
+    },
+    "smc_ote_entry_short": {
+        "scanners": ["smc_ote_bear", "smc_supply_ob", "smc_premium",
+                     "smc_bearish_fvg"],
+        "desc": "OTE retracement + supply OB + premium zone + FVG — precision short entry",
+        "boost": 25, "best_for": "High-precision institutional short entries at OTE",
+    },
+    "smc_fake_bo_reversal": {
+        "scanners": ["smc_fake_bo_bull", "smc_idm_bull", "smc_mss_bull",
+                     "volume_spike"],
+        "desc": "Fake breakout + inducement + MSS + volume — bear trap reversal",
+        "boost": 25, "best_for": "Fake breakout reversal longs with smart money confirmation",
+    },
+    "smc_ema_trend_long": {
+        "scanners": ["smc_ema_pullback_bull", "smc_bos_bull", "smc_demand_ob",
+                     "volume_avg"],
+        "desc": "9/21 EMA pullback + BOS + demand OB + volume — trend continuation",
+        "boost": 20, "best_for": "EMA pullback continuation longs with SMC confluence",
+    },
 }
 
 
 # ── MWA SCANNER CLASS ────────────────────────────────────────
 
 class MWAScanner:
-    """Full 52-scanner MWA breadth scanner with Chartink + Python + SMC integration."""
+    """Full 118-scanner MWA breadth scanner with Chartink + Python + SMC integration."""
 
     BASE = "https://chartink.com"
     PROCESS_URL = "https://chartink.com/screener/process"
@@ -1251,12 +1483,26 @@ class MWAScanner:
             logger.error("[CHARTINK] Fetch failed for %s: %s", slug, e)
             return []
 
-    def run_python_scanners(self, stock_data: dict | None = None) -> dict[str, list[str]]:
-        """Run Python-based scanners that replace/supplement Chartink."""
+    def run_python_scanners(self, stock_data: dict | None = None, segment: str = "ALL") -> dict[str, list[str]]:
+        """Run Python-based scanners that replace/supplement Chartink.
+
+        Args:
+            stock_data: Dict of {ticker: DataFrame} for Python scanners
+            segment: "ALL" runs every Python scanner, or "NSE"/"MCX"/"CDS"/"NFO"
+                     runs only scanners whose segments list includes that value.
+        """
         results: dict[str, list[str]] = {}
+
+        def _should_run(scanner_key: str) -> bool:
+            """Check if scanner should run for the given segment."""
+            if segment == "ALL":
+                return True
+            cfg = SCANNERS.get(scanner_key, {})
+            return segment in cfg.get("segments", [])
+
         try:
             from mcp_server.technical_scanners import scan_supertrend
-            if stock_data:
+            if stock_data and _should_run("supertrend_buy"):
                 st_result = scan_supertrend(stock_data)
                 results["supertrend_buy"] = st_result.get("stocks", [])
             else:
@@ -1264,6 +1510,62 @@ class MWAScanner:
         except ImportError:
             logger.warning("technical_scanners.scan_supertrend not available")
             results["supertrend_buy"] = []
+
+        # Intraday momentum scanner (catches top gainers/losers)
+        if stock_data:
+            for mom_key, mom_dir, mom_pct in [
+                ("intraday_momentum_bull", "bull", 3.0),
+                ("intraday_momentum_bear", "bear", -3.0),
+            ]:
+                if not _should_run(mom_key):
+                    results[mom_key] = []
+                    continue
+                try:
+                    hits: list[str] = []
+                    for ticker, df in stock_data.items():
+                        if df is None or df.empty or len(df) < 2:
+                            continue
+                        curr = df.iloc[-1]
+                        prev = df.iloc[-2]
+                        c = float(curr.get("Close", curr.get("close", 0)))
+                        o = float(curr.get("Open", curr.get("open", 0)))
+                        pc = float(prev.get("Close", prev.get("close", 0)))
+                        if o == 0 or pc == 0:
+                            continue
+                        intraday_pct = ((c - o) / o) * 100
+                        vs_prev_pct = ((c - pc) / pc) * 100
+                        if mom_dir == "bull" and intraday_pct >= mom_pct and vs_prev_pct > 0:
+                            hits.append(ticker.replace("NSE:", ""))
+                        elif mom_dir == "bear" and intraday_pct <= mom_pct and vs_prev_pct < 0:
+                            hits.append(ticker.replace("NSE:", ""))
+                    results[mom_key] = hits
+                    if hits:
+                        logger.info("[MOMENTUM] %s: %d stocks: %s", mom_key, len(hits), hits[:5])
+                except Exception as e:
+                    logger.error("Intraday momentum scanner %s failed: %s", mom_key, e)
+                    results[mom_key] = []
+
+            # daily_pct_change_py scanner (was defined but never executed)
+            if _should_run("daily_pct_change_py"):
+                try:
+                    hits = []
+                    for ticker, df in stock_data.items():
+                        if df is None or df.empty or len(df) < 2:
+                            continue
+                        curr = df.iloc[-1]
+                        prev = df.iloc[-2]
+                        c = float(curr.get("Close", curr.get("close", 0)))
+                        pc = float(prev.get("Close", prev.get("close", 0)))
+                        if pc > 0 and ((c - pc) / pc) * 100 > 3.0:
+                            hits.append(ticker.replace("NSE:", ""))
+                    results["daily_pct_change_py"] = hits
+                except Exception as e:
+                    logger.error("daily_pct_change_py failed: %s", e)
+                    results["daily_pct_change_py"] = []
+        else:
+            results["intraday_momentum_bull"] = []
+            results["intraday_momentum_bear"] = []
+            results["daily_pct_change_py"] = []
 
         # macd_buy_daily and 52week_high are now Chartink-sourced (no Python fallback needed)
 
@@ -1276,6 +1578,16 @@ class MWAScanner:
                 scan_bullish_fvg, scan_bearish_fvg,
                 scan_liquidity_sweep_bull, scan_liquidity_sweep_bear,
                 scan_discount_zone, scan_premium_zone,
+                scan_breaker_block_bull, scan_breaker_block_bear,
+                scan_mitigation_block_bull, scan_mitigation_block_bear,
+                scan_ifvg_bull, scan_ifvg_bear,
+                scan_mss_bull, scan_mss_bear,
+                scan_ote_bull, scan_ote_bear,
+                scan_inducement_bull, scan_inducement_bear,
+                scan_ce_bull, scan_ce_bear,
+                scan_erl_bull, scan_erl_bear,
+                scan_fake_breakout_bull, scan_fake_breakout_bear,
+                scan_ema_pullback_bull, scan_ema_pullback_bear,
             )
             if stock_data:
                 smc_scanners = {
@@ -1291,8 +1603,30 @@ class MWAScanner:
                     "smc_liq_sweep_bear": scan_liquidity_sweep_bear,
                     "smc_discount": scan_discount_zone,
                     "smc_premium": scan_premium_zone,
+                    "smc_breaker_bull": scan_breaker_block_bull,
+                    "smc_breaker_bear": scan_breaker_block_bear,
+                    "smc_mitigation_bull": scan_mitigation_block_bull,
+                    "smc_mitigation_bear": scan_mitigation_block_bear,
+                    "smc_ifvg_bull": scan_ifvg_bull,
+                    "smc_ifvg_bear": scan_ifvg_bear,
+                    "smc_mss_bull": scan_mss_bull,
+                    "smc_mss_bear": scan_mss_bear,
+                    "smc_ote_bull": scan_ote_bull,
+                    "smc_ote_bear": scan_ote_bear,
+                    "smc_idm_bull": scan_inducement_bull,
+                    "smc_idm_bear": scan_inducement_bear,
+                    "smc_ce_bull": scan_ce_bull,
+                    "smc_ce_bear": scan_ce_bear,
+                    "smc_erl_bull": scan_erl_bull,
+                    "smc_erl_bear": scan_erl_bear,
+                    "smc_fake_bo_bull": scan_fake_breakout_bull,
+                    "smc_fake_bo_bear": scan_fake_breakout_bear,
+                    "smc_ema_pullback_bull": scan_ema_pullback_bull,
+                    "smc_ema_pullback_bear": scan_ema_pullback_bear,
                 }
                 for key, scanner_fn in smc_scanners.items():
+                    if not _should_run(key):
+                        continue
                     try:
                         results[key] = scanner_fn(stock_data)
                     except Exception as e:
@@ -1303,6 +1637,12 @@ class MWAScanner:
                     "smc_bos_bull", "smc_bos_bear", "smc_choch_bull", "smc_choch_bear",
                     "smc_demand_ob", "smc_supply_ob", "smc_bullish_fvg", "smc_bearish_fvg",
                     "smc_liq_sweep_bull", "smc_liq_sweep_bear", "smc_discount", "smc_premium",
+                    "smc_breaker_bull", "smc_breaker_bear", "smc_mitigation_bull", "smc_mitigation_bear",
+                    "smc_ifvg_bull", "smc_ifvg_bear", "smc_mss_bull", "smc_mss_bear",
+                    "smc_ote_bull", "smc_ote_bear", "smc_idm_bull", "smc_idm_bear",
+                    "smc_ce_bull", "smc_ce_bear", "smc_erl_bull", "smc_erl_bear",
+                    "smc_fake_bo_bull", "smc_fake_bo_bear",
+                    "smc_ema_pullback_bull", "smc_ema_pullback_bear",
                 ]:
                     results[key] = []
         except ImportError:
@@ -1326,6 +1666,8 @@ class MWAScanner:
                     "wyckoff_test_bear": scan_test_bear,
                 }
                 for key, scanner_fn in wyckoff_scanners.items():
+                    if not _should_run(key):
+                        continue
                     try:
                         results[key] = scanner_fn(stock_data)
                     except Exception as e:
@@ -1361,6 +1703,8 @@ class MWAScanner:
                     "vsa_effort_bear": scan_effort_bear,
                 }
                 for key, scanner_fn in vsa_scanners.items():
+                    if not _should_run(key):
+                        continue
                     try:
                         results[key] = scanner_fn(stock_data)
                     except Exception as e:
@@ -1393,6 +1737,8 @@ class MWAScanner:
                     "harmonic_any_bear": scan_harmonic_any_bear,
                 }
                 for key, scanner_fn in harmonic_scanners.items():
+                    if not _should_run(key):
+                        continue
                     try:
                         results[key] = scanner_fn(stock_data)
                     except Exception as e:
@@ -1428,6 +1774,8 @@ class MWAScanner:
                     "cds_dxy_divergence": scan_cds_dxy_divergence,
                 }
                 for key, scanner_fn in forex_scanners.items():
+                    if not _should_run(key):
+                        continue
                     try:
                         results[key] = scanner_fn(stock_data)
                     except Exception as e:
@@ -1464,6 +1812,8 @@ class MWAScanner:
                     "mcx_metal_strength": scan_mcx_metal_strength,
                 }
                 for key, scanner_fn in commodity_scanners.items():
+                    if not _should_run(key):
+                        continue
                     try:
                         results[key] = scanner_fn(stock_data)
                     except Exception as e:
@@ -1500,6 +1850,8 @@ class MWAScanner:
                     "rl_optimal_entry_bear": scan_rl_optimal_entry_bear,
                 }
                 for key, scanner_fn in rl_scanners.items():
+                    if not _should_run(key):
+                        continue
                     try:
                         results[key] = scanner_fn(stock_data)
                     except Exception as e:
@@ -1518,13 +1870,16 @@ class MWAScanner:
 
         return results
 
-    def run_all(self, stock_data: dict | None = None, save: bool = True) -> dict[str, list[str]]:
+    def run_all(self, stock_data: dict | None = None, save: bool = True, segment: str = "ALL") -> dict[str, list[str]]:
         """
-        Run all 40 scanners (Chartink + Python) and return results.
+        Run scanners and return results.
 
         Args:
             stock_data: Dict of {ticker: DataFrame} for Python scanners
             save: Whether to save results to JSON file
+            segment: "ALL" runs everything (backward compatible),
+                     "NSE" runs Chartink + NSE-tagged Python scanners,
+                     "MCX"/"CDS"/"NFO" runs only segment-tagged Python scanners (no Chartink).
         """
         if not self._csrf:
             self.login()
@@ -1534,43 +1889,46 @@ class MWAScanner:
         skip_types = {"FILTER", "UNKNOWN"}
         layers = ["Trend", "Volume", "Breakout", "RSI", "Gap", "MA"]
 
-        logger.info("MWA Scan started at %s (csrf=%d chars)",
-                     datetime.now().strftime("%d %b %Y %H:%M"), len(self._csrf))
+        run_chartink = segment in ("ALL", "NSE")
 
-        # Chartink scanners by layer
-        for layer in layers:
-            items = {
-                k: v for k, v in SCANNERS.items()
-                if v["layer"] == layer
-                and v["type"] not in skip_types
-                and v["source"] == "Chartink"
-                and "CREATE" not in v.get("slug", "")
-                and "python:" not in v.get("slug", "")
-            }
-            if not items:
-                continue
-            logger.info("[CHARTINK] Scanning layer: %s (%d scanners)", layer, len(items))
-            for key, cfg in items.items():
-                try:
-                    stocks = self.fetch_chartink(cfg["slug"], cfg.get("scan_clause", ""))
-                    results[key] = stocks
-                    logger.info(
-                        "[CHARTINK] %s: %d stocks (%s)", key, len(stocks), cfg["type"]
-                    )
-                    time.sleep(self.delay)
-                except Exception as e:
-                    results[key] = []
-                    logger.error("[CHARTINK] Scanner %s failed: %s", key, e)
+        logger.info("MWA Scan started at %s (segment=%s, csrf=%d chars)",
+                     now_ist().strftime("%d %b %Y %H:%M"), segment, len(self._csrf))
 
-        # Chartink summary
-        chartink_active = sum(1 for k, v in results.items() if v)
-        chartink_total = len(results)
-        logger.info("[CHARTINK] Done: %d/%d scanners found stocks (logged_in=%s)",
-                     chartink_active, chartink_total, self.logged_in)
+        # Chartink scanners by layer — only for NSE/ALL
+        if run_chartink:
+            for layer in layers:
+                items = {
+                    k: v for k, v in SCANNERS.items()
+                    if v["layer"] == layer
+                    and v["type"] not in skip_types
+                    and v["source"] == "Chartink"
+                    and "CREATE" not in v.get("slug", "")
+                    and "python:" not in v.get("slug", "")
+                }
+                if not items:
+                    continue
+                logger.info("[CHARTINK] Scanning layer: %s (%d scanners)", layer, len(items))
+                for key, cfg in items.items():
+                    try:
+                        stocks = self.fetch_chartink(cfg["slug"], cfg.get("scan_clause", ""))
+                        results[key] = stocks
+                        logger.info(
+                            "[CHARTINK] %s: %d stocks (%s)", key, len(stocks), cfg["type"]
+                        )
+                        time.sleep(self.delay)
+                    except Exception as e:
+                        results[key] = []
+                        logger.error("[CHARTINK] Scanner %s failed: %s", key, e)
 
-        # Python scanners
-        logger.info("Running Python scanners...")
-        py_results = self.run_python_scanners(stock_data)
+            # Chartink summary
+            chartink_active = sum(1 for k, v in results.items() if v)
+            chartink_total = len(results)
+            logger.info("[CHARTINK] Done: %d/%d scanners found stocks (logged_in=%s)",
+                         chartink_active, chartink_total, self.logged_in)
+
+        # Python scanners (segment-filtered)
+        logger.info("Running Python scanners (segment=%s)...", segment)
+        py_results = self.run_python_scanners(stock_data, segment=segment)
         for key, stocks in py_results.items():
             results[key] = [s.replace("NSE:", "") for s in stocks]
             logger.info("[PYTHON] %s: %d stocks", key, len(results[key]))
@@ -1582,7 +1940,7 @@ class MWAScanner:
                 with open(os.path.join(data_dir, "mwa_results.json"), "w") as f:
                     json.dump(
                         {
-                            "timestamp": datetime.now().isoformat(),
+                            "timestamp": now_ist().isoformat(),
                             "counts": {k: len(v) for k, v in results.items()},
                             "stocks": results,
                         },

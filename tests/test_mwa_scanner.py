@@ -21,7 +21,7 @@ def _make_df(closes, volume=100000):
 # ── SCANNERS Dict Structure ─────────────────────────────────
 
 def test_scanners_count():
-    assert len(SCANNERS) == 98
+    assert len(SCANNERS) == 118
 
 
 def test_scanners_required_keys():

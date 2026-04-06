@@ -23,6 +23,8 @@ import type {
   CheckSignalsResult,
   PreTradeResult,
   OHLCVBar,
+  MarketMoversData,
+  MarketMoverCategory,
 } from '../types';
 
 const api = axios.create({
@@ -173,6 +175,14 @@ export const signalMonitorApi = {
     toolsApi.post<CheckSignalsResult>('/tools/check_signals', null, { timeout: 60000 }).then((r) => r.data),
   getOpenSignals: (filter?: SegmentFilter) =>
     api.get<Signal[]>('/signals', { params: { limit: 50, status: 'OPEN', ...filter } }).then((r) => r.data),
+};
+
+export const marketMoversApi = {
+  get: (category: MarketMoverCategory = 'gainers', exchange = 'ALL') =>
+    api.get<MarketMoversData>('/market-movers', {
+      params: { category, exchange },
+      timeout: 60000,
+    }).then((r) => r.data),
 };
 
 export const chartApi = {

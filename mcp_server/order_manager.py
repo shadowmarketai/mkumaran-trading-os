@@ -15,8 +15,10 @@ Requires: Active Kite session with valid access token.
 """
 
 import logging
-from datetime import datetime, date
+from datetime import date
 from dataclasses import dataclass, field
+
+from mcp_server.market_calendar import now_ist
 
 from mcp_server.market_calendar import validate_order_timing
 from mcp_server.portfolio_risk import validate_portfolio_risk
@@ -218,7 +220,7 @@ class OrderManager:
             target: Target price (for tracking, not sent to exchange)
             tag: Optional tag for tracking (e.g., signal_id)
         """
-        timestamp = datetime.now().isoformat()
+        timestamp = now_ist().isoformat()
 
         # ── Validate broker connection ────────────────────────
         kite_error = self._validate_broker()
@@ -429,7 +431,7 @@ class OrderManager:
 
     def cancel_order(self, order_id: str) -> OrderResult:
         """Cancel a pending order."""
-        timestamp = datetime.now().isoformat()
+        timestamp = now_ist().isoformat()
 
         # Paper mode: just remove from positions
         if self.paper_mode:
@@ -517,7 +519,7 @@ class OrderManager:
                 success=False,
                 message=f"No open position for {ticker}",
                 ticker=ticker,
-                timestamp=datetime.now().isoformat(),
+                timestamp=now_ist().isoformat(),
             )
 
         pos = matching[-1]  # Most recent
@@ -710,7 +712,7 @@ class OrderManager:
                 success=False,
                 message=f"exit_pct must be between 0 and 1, got {exit_pct}",
                 ticker=ticker,
-                timestamp=datetime.now().isoformat(),
+                timestamp=now_ist().isoformat(),
             )
 
         matching = [p for p in self.open_positions if p["ticker"] == ticker]
@@ -719,7 +721,7 @@ class OrderManager:
                 success=False,
                 message=f"No open position for {ticker}",
                 ticker=ticker,
-                timestamp=datetime.now().isoformat(),
+                timestamp=now_ist().isoformat(),
             )
 
         pos = matching[-1]
@@ -732,7 +734,7 @@ class OrderManager:
                 success=False,
                 message=f"Partial exit qty ({exit_qty}) >= total ({original_qty}). Use close_position instead.",
                 ticker=ticker,
-                timestamp=datetime.now().isoformat(),
+                timestamp=now_ist().isoformat(),
             )
 
         close_direction = "SELL" if pos["direction"] == "BUY" else "BUY"

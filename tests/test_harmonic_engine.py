@@ -155,9 +155,9 @@ def test_scanners_dict_has_harmonic():
 
 def test_total_scanner_count():
     from mcp_server.mwa_scanner import SCANNERS
-    assert len(SCANNERS) == 98, f"Expected 98 scanners, got {len(SCANNERS)}"
+    assert len(SCANNERS) == 118, f"Expected 118 scanners, got {len(SCANNERS)}"
 
 
 def test_total_signal_chain_count():
     from mcp_server.mwa_scanner import SIGNAL_CHAINS
-    assert len(SIGNAL_CHAINS) == 28, f"Expected 28 chains, got {len(SIGNAL_CHAINS)}"
+    assert len(SIGNAL_CHAINS) == 34, f"Expected 34 chains, got {len(SIGNAL_CHAINS)}"

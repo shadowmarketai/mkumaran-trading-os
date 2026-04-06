@@ -1,10 +1,11 @@
 import logging
+import json
+from pathlib import Path
 
 import pandas as pd
 import yfinance as yf
-from datetime import datetime
-
 from mcp_server.asset_registry import get_universe
+from mcp_server.market_calendar import now_ist
 from mcp_server.data_provider import get_stock_data  # noqa: F401 — re-exported
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,83 @@ logger = logging.getLogger(__name__)
 MIN_VOLUME = 100000  # Average daily volume
 MIN_PRICE = 10.0     # Minimum stock price
 MAX_PRICE = 50000.0  # Maximum stock price
+
+# Cache path for dynamically fetched Nifty 500 list
+_NIFTY500_CACHE = Path(__file__).parent.parent / "data" / "nifty500.json"
+_nse_universe_cache: list[str] | None = None
+
+
+def _fetch_nifty500_from_nse() -> list[str]:
+    """Fetch Nifty 500 constituent list from NSE India (free CSV endpoint)."""
+    import requests
+
+    url = "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv"
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "text/csv,*/*",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        lines = resp.text.strip().split("\n")
+        symbols: list[str] = []
+        for line in lines[1:]:  # Skip header
+            parts = line.split(",")
+            if len(parts) >= 3:
+                sym = parts[2].strip().strip('"')
+                if sym and sym != "Symbol":
+                    symbols.append(sym)
+        if symbols:
+            logger.info("Fetched %d Nifty 500 symbols from NSE", len(symbols))
+            return symbols
+    except Exception as e:
+        logger.warning("Nifty 500 fetch from NSE failed: %s", e)
+
+    # Fallback: try NSE India direct
+    try:
+        nse_url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20500"
+        sess = requests.Session()
+        sess.headers.update(headers)
+        sess.get("https://www.nseindia.com", timeout=5)  # Set cookies
+        resp = sess.get(nse_url, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        symbols = [d["symbol"] for d in data.get("data", []) if d.get("symbol")]
+        if symbols:
+            logger.info("Fetched %d Nifty 500 symbols from NSE India API", len(symbols))
+            return symbols
+    except Exception as e:
+        logger.warning("Nifty 500 fetch from NSE India API failed: %s", e)
+
+    return []
+
+
+def _save_nifty500_cache(symbols: list[str]) -> None:
+    """Persist Nifty 500 list to disk for offline fallback."""
+    try:
+        _NIFTY500_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _NIFTY500_CACHE.write_text(json.dumps({
+            "symbols": symbols,
+            "fetched_at": now_ist().isoformat(),
+            "count": len(symbols),
+        }))
+        logger.info("Nifty 500 cache saved: %d symbols", len(symbols))
+    except Exception as e:
+        logger.warning("Failed to save Nifty 500 cache: %s", e)
+
+
+def _load_nifty500_cache() -> list[str]:
+    """Load cached Nifty 500 list from disk."""
+    try:
+        if _NIFTY500_CACHE.exists():
+            data = json.loads(_NIFTY500_CACHE.read_text())
+            symbols = data.get("symbols", [])
+            if symbols:
+                logger.info("Loaded %d symbols from Nifty 500 cache", len(symbols))
+                return symbols
+    except Exception as e:
+        logger.warning("Failed to load Nifty 500 cache: %s", e)
+    return []
 
 
 def get_liquid_nse_stocks(min_volume: int = MIN_VOLUME) -> list[str]:
@@ -34,27 +112,78 @@ def get_liquid_nse_stocks(min_volume: int = MIN_VOLUME) -> list[str]:
 
 def _get_nse_universe() -> list[str]:
     """
-    Fallback: return a curated list of liquid NSE stocks.
-    In production, this fetches from NSE/Chartink.
+    Return expanded NSE universe:
+    1. Try dynamic Nifty 500 fetch (cached daily)
+    2. Fall back to disk cache
+    3. Fall back to hardcoded top 200 liquid stocks
     """
-    # Top 100 liquid NSE stocks for MVP
-    return [
-        "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY",
-        "SBIN", "BHARTIARTL", "ITC", "KOTAKBANK", "LT",
-        "AXISBANK", "WIPRO", "HCLTECH", "ASIANPAINT", "MARUTI",
-        "SUNPHARMA", "TATAMOTORS", "ULTRACEMCO", "NESTLEIND", "BAJFINANCE",
-        "BAJAJFINSV", "TITAN", "TECHM", "POWERGRID", "NTPC",
-        "ADANIGREEN", "ADANIPORTS", "TATASTEEL", "JSWSTEEL", "HINDALCO",
-        "GRASIM", "INDUSINDBK", "ONGC", "COALINDIA", "BPCL",
-        "IOC", "DRREDDY", "CIPLA", "DIVISLAB", "BRITANNIA",
-        "EICHERMOT", "HEROMOTOCO", "BAJAJ-AUTO", "M&M", "TATACONSUM",
-        "APOLLOHOSP", "DABUR", "GODREJCP", "PIDILITIND", "BERGEPAINT",
-        "ACC", "CDSL", "CENTURYTEX", "GUJGASLTD", "JINDALSTEL",
-        "BHARATFORG", "ECLERX", "SHYAMMETL", "ABCAPITAL", "ABFRL",
-        "CASTROLIND", "GMRINFRA", "PEL", "LICHSGFIN", "BEL",
-        "TANLA", "IRCTC", "IDEA", "IRB", "NBCC",
-        "CHENNPETRO", "NFL", "APLLTD", "INDIACEM", "LICI",
-    ]
+    global _nse_universe_cache
+
+    if _nse_universe_cache:
+        return _nse_universe_cache
+
+    # Try dynamic fetch first
+    symbols = _fetch_nifty500_from_nse()
+    if symbols:
+        _save_nifty500_cache(symbols)
+        _nse_universe_cache = symbols
+        return symbols
+
+    # Try disk cache
+    symbols = _load_nifty500_cache()
+    if symbols:
+        _nse_universe_cache = symbols
+        return symbols
+
+    # Hardcoded fallback: expanded to ~200 liquid stocks
+    logger.warning("Using hardcoded NSE universe (200 stocks)")
+    _nse_universe_cache = _HARDCODED_NSE_UNIVERSE
+    return _nse_universe_cache
+
+
+# Expanded hardcoded fallback (Nifty 200 equivalent)
+_HARDCODED_NSE_UNIVERSE: list[str] = [
+    # Nifty 50
+    "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY",
+    "SBIN", "BHARTIARTL", "ITC", "KOTAKBANK", "LT",
+    "AXISBANK", "WIPRO", "HCLTECH", "ASIANPAINT", "MARUTI",
+    "SUNPHARMA", "TATAMOTORS", "ULTRACEMCO", "NESTLEIND", "BAJFINANCE",
+    "BAJAJFINSV", "TITAN", "TECHM", "POWERGRID", "NTPC",
+    "ADANIGREEN", "ADANIPORTS", "TATASTEEL", "JSWSTEEL", "HINDALCO",
+    "GRASIM", "INDUSINDBK", "ONGC", "COALINDIA", "BPCL",
+    "IOC", "DRREDDY", "CIPLA", "DIVISLAB", "BRITANNIA",
+    "EICHERMOT", "HEROMOTOCO", "BAJAJ-AUTO", "M&M", "TATACONSUM",
+    "APOLLOHOSP", "DABUR", "GODREJCP", "PIDILITIND", "BERGEPAINT",
+    # Nifty Next 50
+    "ACC", "ADANIENT", "ADANIENSOL", "AMBUJACEM", "BANKBARODA",
+    "BOSCHLTD", "CHOLAFIN", "COLPAL", "DLF", "GAIL",
+    "GODREJPROP", "HAL", "HAVELLS", "HINDPETRO", "ICICIPRULI",
+    "IDFCFIRSTB", "INDIGO", "INDUSTOWER", "JSWENERGY", "JUBLFOOD",
+    "LICI", "LUPIN", "MARICO", "MUTHOOTFIN", "NAUKRI",
+    "PFC", "PGHH", "PIIND", "PNB", "RECLTD",
+    "SBICARD", "SBILIFE", "SHREECEM", "SIEMENS", "SRF",
+    "TATAPOWER", "TORNTPHARM", "TRENT", "UPL", "VEDL",
+    "ZOMATO", "ZYDUSLIFE",
+    # Top gainers that were missing + high liquidity mid-caps
+    "DMART", "BSE", "MCX", "DALBHARAT", "ABCAPITAL",
+    "NMDC", "BANDHANBNK", "MAHABANK", "PNBHOUSING", "KAYNES",
+    "GRAVITA", "KALYANKJIL", "NEULANDLAB", "LTF", "RBLBANK",
+    "IEX", "PTCIL", "SOBHA", "EIHOTEL", "GRANULES",
+    "LENSKART", "SIGNATURE", "SHRIRAMFIN", "TITAGARH", "CUB",
+    "ECLERX", "NH",
+    # Additional liquid stocks
+    "CDSL", "CENTURYTEX", "GUJGASLTD", "JINDALSTEL",
+    "BHARATFORG", "SHYAMMETL", "ABFRL",
+    "CASTROLIND", "GMRINFRA", "PEL", "LICHSGFIN", "BEL",
+    "TANLA", "IRCTC", "IDEA", "IRB", "NBCC",
+    "CHENNPETRO", "NFL", "APLLTD", "INDIACEM",
+    "ACUTAAS", "LGEINDIA", "VMM", "NSLNISP", "GODREJPROP",
+    "MAXHEALTH", "FEDERALBNK", "CANBK", "OFSS", "MFSL",
+    "POLYCAB", "ASTRAL", "PERSISTENT", "COFORGE", "LTTS",
+    "LAURUSLABS", "AUROPHARMA", "BIOCON", "ALKEM", "IPCALAB",
+    "PAGEIND", "TATAELXSI", "NAVINFLUOR", "DEEPAKNTR", "ATUL",
+    "SYNGENE", "SUMICHEM", "AARTI", "CLEAN", "SONACOMS",
+]
 
 
 def get_multi_asset_data(
@@ -134,6 +263,6 @@ def tier1_scan(
         "tier": 1,
         "exchange": exchange,
         "total_scanned": len(stocks),
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": now_ist().isoformat(),
         "candidates": [],  # Filled by full pipeline
     }
