@@ -969,6 +969,24 @@ def _execute_mwa_scan(db: Session) -> dict:
 
             confidence_boosts = [f"MWA Promoted ({sig['scanner_count']} scanners)"]
 
+            # SMC analysis — AMD + CRT + C4 confidence boost
+            smc_card_text = ""
+            try:
+                from mcp_server.smart_money_concepts import SMCEngine, smc_confidence_boost
+                smc_engine = SMCEngine()
+                sig_df = stock_data.get(sig["ticker"])
+                if sig_df is not None and len(sig_df) >= 15:
+                    smc_result = smc_engine.analyse(sig_df, symbol=sig["ticker"], timeframe="day")
+                    rrms_dir = "BULL" if sig["direction"] == "LONG" else "BEAR"
+                    smc_boost = smc_confidence_boost(smc_result, rrms_dir)
+                    if smc_boost != 0:
+                        pre_confidence += smc_boost
+                        confidence_boosts.append(f"SMC {smc_result['smc_direction']} ({smc_boost:+d}%)")
+                        logger.info("SMC boost for %s: %+d%% (direction=%s)", sig["ticker"], smc_boost, smc_result["smc_direction"])
+                    smc_card_text = smc_result.get("telegram_summary", "")
+            except Exception as smc_err:
+                logger.debug("SMC analysis skipped for %s: %s", sig["ticker"], smc_err)
+
             # AI validation (same as TV signals)
             try:
                 from mcp_server.debate_validator import run_debate
@@ -1117,6 +1135,8 @@ def _execute_mwa_scan(db: Session) -> dict:
                 f"AI Confidence: {confidence}% ({recommendation})\n"
                 f"Signal ID: {record_result.get('signal_id', 'N/A')}"
             )
+            if smc_card_text:
+                msg += "\n" + smc_card_text
             _fire_and_forget(send_telegram_message(msg, exchange=sig["exchange"], force=True))
             mwa_signal_cards.append({
                 "ticker": sig["ticker"], "direction": sig["direction"],
