@@ -3795,6 +3795,33 @@ async def tool_cache_purge(req: CachePurgeRequest):
     }
 
 
+# ── RealtimeEngine API endpoints ──────────────────────────────────────────────
+
+@app.get("/api/live-prices")
+async def api_live_prices(symbols: str = Query(..., description="Comma-separated symbols")):
+    """Batch LTP from WebSocket tick cache."""
+    syms = [s.strip() for s in symbols.split(",") if s.strip()]
+    if _realtime_engine:
+        return _realtime_engine.cache.get_multiple_ltps(syms)
+    return {s: None for s in syms}
+
+
+@app.get("/api/realtime/status")
+async def api_realtime_status():
+    """RealtimeEngine health / status."""
+    if not _realtime_engine:
+        return {"active": False, "reason": "engine_not_started"}
+    return {
+        "active": _realtime_engine._active,
+        "websocket_connected": (
+            _realtime_engine.gwc_ws.connected if _realtime_engine.gwc_ws else False
+        ),
+        "subscribed_symbols": len(_realtime_engine._subscribed_symbols),
+        "monitored_positions": len(_realtime_engine.monitor.positions),
+        "redis_available": _realtime_engine.cache._available,
+    }
+
+
 # ============================================================
 # Dashboard — serve frontend static files (SPA)
 # ============================================================
@@ -3835,33 +3862,6 @@ else:
         }
 
     logger.info("Dashboard frontend not found at %s — API-only mode", DASHBOARD_DIR)
-
-
-# ── RealtimeEngine API endpoints ──────────────────────────────────────────────
-
-@app.get("/api/live-prices")
-async def api_live_prices(symbols: str = Query(..., description="Comma-separated symbols")):
-    """Batch LTP from WebSocket tick cache."""
-    syms = [s.strip() for s in symbols.split(",") if s.strip()]
-    if _realtime_engine:
-        return _realtime_engine.cache.get_multiple_ltps(syms)
-    return {s: None for s in syms}
-
-
-@app.get("/api/realtime/status")
-async def api_realtime_status():
-    """RealtimeEngine health / status."""
-    if not _realtime_engine:
-        return {"active": False, "reason": "engine_not_started"}
-    return {
-        "active": _realtime_engine._active,
-        "websocket_connected": (
-            _realtime_engine.gwc_ws.connected if _realtime_engine.gwc_ws else False
-        ),
-        "subscribed_symbols": len(_realtime_engine._subscribed_symbols),
-        "monitored_positions": len(_realtime_engine.monitor.positions),
-        "redis_available": _realtime_engine.cache._available,
-    }
 
 
 if __name__ == "__main__":
