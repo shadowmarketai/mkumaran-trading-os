@@ -170,6 +170,8 @@ def get_promoted_stocks(
 ) -> list[str]:
     """
     Auto-promote stocks that appear in 3+ bull scanners to Tier 2 watchlist.
+    MCX/CDS/NFO tickers use a lower threshold (1 scanner) since they have
+    fewer scanners available compared to NSE equities.
 
     Args:
         scanner_results: Dict keyed by scanner name with stock lists or dicts
@@ -186,8 +188,9 @@ def get_promoted_stocks(
         "vsa_selling_climax", "vsa_stopping_bull", "vsa_effort_bull",
         "harmonic_gartley_bull", "harmonic_any_bull",
         "rl_trend_bull", "rl_momentum_bull", "rl_optimal_entry_bull",
-        "cds_ema_crossover", "cds_carry_trade",
-        "mcx_ema_crossover", "mcx_crude_momentum",
+        "cds_ema_crossover", "cds_rsi_oversold", "cds_bb_squeeze",
+        "cds_carry_trade", "cds_dxy_divergence",
+        "mcx_ema_crossover", "mcx_rsi_oversold", "mcx_crude_momentum",
         "mcx_gold_silver_ratio", "mcx_metal_strength",
     ]
 
@@ -209,7 +212,15 @@ def get_promoted_stocks(
         for stock in stocks:
             stock_counts[stock] = stock_counts.get(stock, 0) + 1
 
-    promoted = [s for s, c in stock_counts.items() if c >= min_scanners]
+    from mcp_server.asset_registry import MCX_UNIVERSE, CDS_UNIVERSE, NFO_INDEX_UNIVERSE
+    multi_asset_tickers = set(MCX_UNIVERSE + CDS_UNIVERSE + NFO_INDEX_UNIVERSE)
+
+    promoted = []
+    for s, c in stock_counts.items():
+        # MCX/CDS/NFO tickers need only 1 scanner (they have fewer scanners)
+        threshold = 1 if s in multi_asset_tickers else min_scanners
+        if c >= threshold:
+            promoted.append(s)
 
     if promoted:
         logger.info(

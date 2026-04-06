@@ -43,7 +43,8 @@ async def _auto_scan_loop():
 
     while True:
         try:
-            if is_market_open("NSE"):
+            any_open = is_market_open("NSE") or is_market_open("MCX") or is_market_open("CDS")
+            if any_open:
                 logger.info("Auto-scan: market open — running MWA scan")
                 try:
                     db = SessionLocal()
@@ -851,6 +852,13 @@ def _execute_mwa_scan(db: Session) -> dict:
     promoted = get_promoted_stocks(raw_results)
     brief = format_morning_brief(score)
 
+    # Log CDS/MCX scanner results for diagnostics
+    for k, v in raw_results.items():
+        if k.startswith(("cds_", "mcx_")):
+            stocks = v if isinstance(v, list) else []
+            if stocks:
+                logger.info("Scanner %s fired: %s", k, stocks)
+
     # Build structured scanner_results for the frontend
     from mcp_server.mwa_scanner import SCANNERS
     structured_results = {}
@@ -952,15 +960,9 @@ def _execute_mwa_scan(db: Session) -> dict:
             scanner_results=raw_results,
         )
 
-        # Market hours gate: skip signal cards for exchanges that are closed
         from mcp_server.market_calendar import is_market_open as _is_mkt_open
 
         for sig in mwa_signals:
-            sig_exchange = sig.get("exchange", "NSE")
-            if not _is_mkt_open(sig_exchange):
-                logger.info("MWA signal %s skipped: %s market closed", sig["ticker"], sig_exchange)
-                continue
-
             # Build pre_confidence from scanner count + MWA alignment
             pre_confidence = 50 + min(sig["scanner_count"] * 3, 15)
             if (score["direction"] in ("BULL", "MILD_BULL") and sig["direction"] == "LONG") or \
@@ -1070,8 +1072,10 @@ def _execute_mwa_scan(db: Session) -> dict:
                 db.add(db_signal)
                 db.flush()  # Get db_signal.id
 
-                # Fetch live CMP to validate entry
-                live_price = _get_live_ltp(sig["ticker"])
+                # Fetch live CMP to validate entry (only during market hours)
+                sig_exchange = sig.get("exchange", "NSE")
+                market_open = _is_mkt_open(sig_exchange)
+                live_price = _get_live_ltp(sig["ticker"]) if market_open else None
                 if not live_price or live_price <= 0:
                     live_price = sig["entry"]  # fallback
 
