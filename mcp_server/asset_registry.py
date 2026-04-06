@@ -113,6 +113,14 @@ NFO_INDEX_UNIVERSE: list[str] = [
     "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
 ]
 
+# yfinance proxy tickers for NFO indices (index spot data)
+NFO_YF_PROXY: dict[str, str] = {
+    "NIFTY": "^NSEI",
+    "BANKNIFTY": "^NSEBANK",
+    "FINNIFTY": "NIFTY_FIN_SERVICE.NS",
+    "MIDCPNIFTY": "NIFTY_MID_SELECT.NS",
+}
+
 
 # ── Symbol Resolution ───────────────────────────────────────
 
@@ -164,7 +172,9 @@ def resolve_yf_symbol(ticker: str) -> str | None:
         return f"{symbol}=X"
 
     if exchange == "NFO":
-        # F&O needs Kite API for live data
+        proxy = NFO_YF_PROXY.get(symbol)
+        if proxy:
+            return proxy
         return None
 
     logger.warning("Unknown exchange: %s", exchange)

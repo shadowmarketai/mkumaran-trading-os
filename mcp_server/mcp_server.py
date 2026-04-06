@@ -794,11 +794,11 @@ def _execute_mwa_scan(db: Session) -> dict:
     """Core MWA scan logic — used by both sync and async modes."""
     from mcp_server.mwa_scanner import MWAScanner
     from mcp_server.mwa_scoring import calculate_mwa_score, get_promoted_stocks, format_morning_brief
-    from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, resolve_yf_symbol
+    from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, NFO_INDEX_UNIVERSE, resolve_yf_symbol
 
-    # Build stock_data dict: NSE equities + CDS + MCX tickers
+    # Build stock_data dict: NSE equities + CDS + MCX + NFO tickers
     stock_data: dict = {}
-    data_diag: dict = {"nse": 0, "cds": 0, "mcx": 0, "errors": []}
+    data_diag: dict = {"nse": 0, "cds": 0, "mcx": 0, "nfo": 0, "errors": []}
     try:
         from mcp_server.nse_scanner import get_stock_data as _get_stock, _get_nse_universe
 
@@ -839,8 +839,20 @@ def _execute_mwa_scan(db: Session) -> dict:
                     data_diag["errors"].append(f"MCX:{ticker}: {e}")
                     logger.warning("MCX fetch failed for %s: %s", ticker, e)
 
-        logger.info("Data fetched: NSE=%d, CDS=%d, MCX=%d, total=%d",
-                     data_diag["nse"], data_diag["cds"], data_diag["mcx"], len(stock_data))
+        # 4) Fetch NFO index data (NIFTY, BANKNIFTY, etc.)
+        for ticker in NFO_INDEX_UNIVERSE:
+            try:
+                df = _get_stock(f"NFO:{ticker}", period="6mo", interval="1d")
+                if df is not None and not df.empty:
+                    stock_data[ticker] = df
+                    data_diag["nfo"] += 1
+            except Exception as e:
+                data_diag["errors"].append(f"NFO:{ticker}: {e}")
+                logger.warning("NFO fetch failed for %s: %s", ticker, e)
+
+        logger.info("Data fetched: NSE=%d, CDS=%d, MCX=%d, NFO=%d, total=%d",
+                     data_diag["nse"], data_diag["cds"], data_diag["mcx"],
+                     data_diag["nfo"], len(stock_data))
     except Exception as e:
         logger.error("Data fetch failed: %s", e)
         data_diag["errors"].append(str(e))

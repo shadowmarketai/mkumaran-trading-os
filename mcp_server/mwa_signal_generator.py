@@ -13,6 +13,7 @@ import pandas as pd
 from mcp_server.asset_registry import (
     CDS_UNIVERSE,
     MCX_UNIVERSE,
+    NFO_INDEX_UNIVERSE,
     AssetClass,
     Exchange,
 )
@@ -42,6 +43,8 @@ def _resolve_exchange(ticker: str) -> str:
         return Exchange.MCX.value
     if t in CDS_UNIVERSE:
         return Exchange.CDS.value
+    if t in NFO_INDEX_UNIVERSE:
+        return Exchange.NFO.value
     return Exchange.NSE.value
 
 
