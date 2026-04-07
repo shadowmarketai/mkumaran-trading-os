@@ -261,11 +261,16 @@ async def signal_monitor_loop() -> None:
         try:
             await asyncio.sleep(MONITOR_INTERVAL)
 
-            # Only run during market hours
+            # Only run if ANY market is open (NSE/BSE/NFO/MCX/CDS)
+            # CDS hours are 09:00-17:00 IST, NSE only 09:15-15:30 — so we
+            # cannot gate on NSE alone or forex SL/TP hits get missed.
             try:
                 from mcp_server.market_calendar import is_market_open
-                if not is_market_open("NSE"):
-                    logger.debug("Signal monitor: market closed, skipping cycle")
+                any_market_open = any(
+                    is_market_open(seg) for seg in ("NSE", "MCX", "CDS")
+                )
+                if not any_market_open:
+                    logger.debug("Signal monitor: all markets closed, skipping cycle")
                     continue
             except Exception:
                 pass  # If calendar check fails, run anyway

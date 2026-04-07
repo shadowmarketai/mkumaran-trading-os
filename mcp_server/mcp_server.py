@@ -162,6 +162,10 @@ def _price_refresh_once_sync() -> None:
 async def _price_refresh_loop():
     """Background task: refresh active trade prices every 60s during market hours.
 
+    Runs whenever ANY tracked market segment is open (NSE/MCX/CDS).
+    Previously only ran during NSE hours, which left forex (CDS) and
+    commodity (MCX) active trades with stale prices outside 09:15-15:30.
+
     The actual refresh is a sync blocking operation (REST + DB), so we run it
     in a worker thread to keep the event loop responsive for /health, API
     requests, and Telegram.
@@ -169,7 +173,10 @@ async def _price_refresh_loop():
     from mcp_server.market_calendar import is_market_open
     while True:
         try:
-            if is_market_open("NSE"):
+            any_market_open = any(
+                is_market_open(seg) for seg in ("NSE", "MCX", "CDS")
+            )
+            if any_market_open:
                 try:
                     await asyncio.to_thread(_price_refresh_once_sync)
                 except Exception as e:
@@ -226,6 +233,16 @@ async def lifespan(app: FastAPI):
         from mcp_server.scanner_review import scanner_review_loop
         scanner_review_task = asyncio.create_task(scanner_review_loop())
         logger.info("Scanner review background task started (15:45 IST daily)")
+
+    # Start F&O analytics auto-monitor (every 5 min during NFO hours)
+    fno_analytics_task = None
+    if getattr(settings, "FNO_ANALYTICS_ENABLED", True):
+        try:
+            from mcp_server.fno_analytics_monitor import fno_analytics_loop
+            fno_analytics_task = asyncio.create_task(fno_analytics_loop())
+            logger.info("F&O analytics monitor started (every 5 min during NFO hours)")
+        except Exception as e:
+            logger.warning("F&O analytics monitor startup skipped: %s", e)
 
     # Auto-login to Goodwill (GWC) at startup — mirrors Kite auto-login pattern.
     # Runs in worker thread to avoid blocking the event loop.
@@ -327,6 +344,14 @@ async def lifespan(app: FastAPI):
             await scanner_review_task
         except asyncio.CancelledError:
             pass
+
+    # Shutdown — cancel F&O analytics monitor
+    if fno_analytics_task and not fno_analytics_task.done():
+        fno_analytics_task.cancel()
+        try:
+            await fno_analytics_task
+        except asyncio.CancelledError:
+            pass
     logger.info("MCP Server shutting down")
 
 
@@ -370,6 +395,8 @@ AUTH_PUBLIC_PATHS = {
     "/tools/run_scanner_review",
     # F&O OI buildup scanner (n8n compatible)
     "/tools/scan_oi_buildup",
+    # F&O analytics manual trigger (n8n compatible)
+    "/tools/run_fno_analytics",
     # F&O pure-math endpoint (caller supplies all inputs, no proprietary data)
     "/api/fno/option_greeks",
 }
@@ -1731,6 +1758,39 @@ async def api_option_greeks(
         "vega": greeks.vega,
         "rho": greeks.rho,
         "fair_price": greeks.price,
+    }
+
+
+@app.post("/tools/run_fno_analytics")
+async def tool_run_fno_analytics():
+    """
+    Manually trigger one F&O analytics cycle.
+
+    Returns alerts + per-symbol snapshots and updates the persisted state.
+    Useful for n8n hooks or for testing alert wiring outside market hours.
+    """
+    from mcp_server.fno_analytics_monitor import check_fno_analytics_once, _send_alerts
+
+    result = await asyncio.to_thread(check_fno_analytics_once)
+    alerts = result.get("alerts", [])
+    if alerts:
+        try:
+            await _send_alerts(alerts)
+        except Exception as e:
+            logger.warning("F&O alerts dispatch failed: %s", e)
+    return {"status": "ok", "tool": "run_fno_analytics", **result}
+
+
+@app.get("/api/fno/analytics/state")
+async def api_fno_analytics_state():
+    """Return the most recent F&O analytics monitor snapshot/state file."""
+    from mcp_server.fno_analytics_monitor import _load_state, STATE_FILE
+
+    state = _load_state()
+    return {
+        "exists": STATE_FILE.exists(),
+        "path": str(STATE_FILE),
+        "state": state,
     }
 
 

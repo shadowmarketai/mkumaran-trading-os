@@ -134,5 +134,8 @@ class Settings:
     SCANNER_REVIEW_ENABLED: bool = os.getenv("SCANNER_REVIEW_ENABLED", "true").lower() == "true"
     SCANNER_REVIEW_HOUR: int = int(os.getenv("SCANNER_REVIEW_HOUR", "15"))
 
+    # F&O Analytics Auto-Monitor (IV rank / PCR / OI / expiry alerts)
+    FNO_ANALYTICS_ENABLED: bool = os.getenv("FNO_ANALYTICS_ENABLED", "true").lower() == "true"
+
 
 settings = Settings()
