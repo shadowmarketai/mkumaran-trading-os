@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import pandas as pd
-import requests
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import date, datetime
@@ -228,6 +227,33 @@ async def lifespan(app: FastAPI):
         scanner_review_task = asyncio.create_task(scanner_review_loop())
         logger.info("Scanner review background task started (15:45 IST daily)")
 
+    # Auto-login to Goodwill (GWC) at startup — mirrors Kite auto-login pattern.
+    # Runs in worker thread to avoid blocking the event loop.
+    try:
+        if (
+            getattr(settings, "GWC_API_KEY", "")
+            and getattr(settings, "GWC_CLIENT_ID", "")
+            and getattr(settings, "GOODWILL_PASSWORD", "")
+            and getattr(settings, "GOODWILL_TOTP_KEY", "")
+        ):
+            async def _gwc_startup_login():
+                try:
+                    from mcp_server.gwc_auth import refresh_gwc_token
+                    from mcp_server.data_provider import get_provider
+                    access_token = await asyncio.to_thread(refresh_gwc_token)
+                    provider = get_provider()
+                    provider.gwc.set_access_token(access_token)
+                    provider._sources["gwc"] = True
+                    logger.info("GWC auto-login OK at startup (token_prefix=%s...)", access_token[:8])
+                except Exception as exc:
+                    logger.warning("GWC auto-login at startup failed: %s", exc)
+            asyncio.create_task(_gwc_startup_login())
+            logger.info("GWC auto-login background task scheduled")
+        else:
+            logger.info("GWC auto-login skipped (credentials incomplete)")
+    except Exception as e:
+        logger.warning("GWC auto-login scheduling error: %s", e)
+
     # Start Telegram bot polling (so /health, /kitelogin commands work)
     try:
         from mcp_server.telegram_bot import create_bot_application
@@ -333,6 +359,7 @@ AUTH_PUBLIC_PATHS = {
     "/api/kite_callback", "/api/kite_login_url",
     "/api/gwc_callback", "/api/gwc_login_url",
     "/tools/connect_angel", "/tools/refresh_angel_token",
+    "/tools/connect_gwc", "/tools/refresh_gwc_token",
     # n8n workflow endpoints (read-only scan/data tools)
     "/tools/run_mwa_scan", "/tools/get_stock_data",
     "/tools/order_status", "/tools/get_fo_signal",
@@ -2670,6 +2697,66 @@ async def tool_refresh_kite_token():
         }
 
 
+@app.post("/tools/refresh_gwc_token")
+async def tool_refresh_gwc_token():
+    """Refresh Goodwill (GWC) access token via auto-login.
+
+    Uses /v1/quickauth with client-generated TOTP (no SMS OTP), then
+    /v1/login-response to exchange the request_token for an access_token.
+    Result is cached to data/gwc_token.json for the rest of the trading day.
+    """
+    try:
+        from mcp_server.gwc_auth import refresh_gwc_token
+        from mcp_server.data_provider import get_provider
+        # Auto-login is blocking I/O — run in worker thread
+        access_token = await asyncio.to_thread(refresh_gwc_token)
+        # Inject the fresh token into the live data provider
+        try:
+            provider = get_provider()
+            provider.gwc.set_access_token(access_token)
+            provider._sources["gwc"] = True
+        except Exception as exc:
+            logger.warning("GWC token set on provider failed: %s", exc)
+        return {
+            "success": True,
+            "message": "GWC token refreshed",
+            "token_prefix": access_token[:8] + "..." if access_token else None,
+        }
+    except Exception as e:
+        logger.error("GWC token refresh failed: %s", e)
+        return {
+            "success": False,
+            "message": f"Token refresh failed: {e}",
+        }
+
+
+@app.post("/tools/connect_gwc")
+async def tool_connect_gwc():
+    """Activate Goodwill (GWC) as a live data source via auto-login.
+
+    Mirrors /tools/connect_kite — runs the full GWC login flow in a worker
+    thread and wires the resulting access_token into the MarketDataProvider.
+    """
+    try:
+        from mcp_server.gwc_auth import refresh_gwc_token
+        from mcp_server.data_provider import get_provider
+        access_token = await asyncio.to_thread(refresh_gwc_token)
+        provider = get_provider()
+        provider.gwc.set_access_token(access_token)
+        provider._sources["gwc"] = True
+        return {
+            "gwc_connected": True,
+            "token_prefix": access_token[:8] + "..." if access_token else None,
+            "message": "Goodwill connected via auto-login",
+        }
+    except Exception as e:
+        logger.error("GWC connect failed: %s", e)
+        return {
+            "gwc_connected": False,
+            "message": f"GWC connect failed: {e}",
+        }
+
+
 # ============================================================
 # Angel One SmartAPI Integration
 # ============================================================
@@ -2891,35 +2978,9 @@ async def api_gwc_callback(request_token: str = Query(...)):
     → we exchange it for an access token and activate the GWC source.
     """
     try:
-        import hashlib
-        api_key = settings.GWC_API_KEY
-        api_secret = settings.GWC_API_SECRET
-        if not api_key or not api_secret:
-            raise ValueError("GWC_API_KEY or GWC_API_SECRET not configured")
-
-        # Generate signature: SHA-256(api_key + request_token + api_secret)
-        raw = api_key + request_token + api_secret
-        signature = hashlib.sha256(raw.encode()).hexdigest()
-
+        from mcp_server.gwc_auth import handle_gwc_callback
         # Exchange request_token for access_token (blocking HTTP — run in thread)
-        def _gwc_token_exchange():
-            return requests.post(
-                "https://api.gwcindia.in/v1/login-response",
-                json={
-                    "api_key": api_key,
-                    "request_token": request_token,
-                    "signature": signature,
-                },
-                headers={"x-api-key": api_key},
-                timeout=15,
-            )
-
-        resp = await asyncio.to_thread(_gwc_token_exchange)
-        data = resp.json()
-        if data.get("status") != "success":
-            raise ValueError(f"GWC login-response failed: {data.get('error_msg', data)}")
-
-        access_token = data["data"]["access_token"]
+        access_token = await asyncio.to_thread(handle_gwc_callback, request_token)
 
         # Inject token into data provider's GoodwillSource
         from mcp_server.data_provider import get_provider

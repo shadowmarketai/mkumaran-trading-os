@@ -31,7 +31,6 @@ import json
 import logging
 import requests
 import pandas as pd
-import pyotp
 import yfinance as yf
 from datetime import datetime, timedelta, date
 from pathlib import Path
@@ -346,26 +345,20 @@ class GoodwillSource:
         self._token_map_date: str | None = None
 
     def login(self) -> bool:
+        """Auto-login via gwc_auth.refresh_gwc_token (direct /v1/quickauth +
+        /v1/login-response flow, no browser, no SMS OTP)."""
         if not self.api_key:
             logger.warning("GWC_API_KEY not set — skipping Goodwill login")
             return False
         try:
-            totp = pyotp.TOTP(os.environ["GOODWILL_TOTP_KEY"]).now()
-            resp = requests.post(f"{self.BASE}/login", json={
-                "client_id": self.client_id,
-                "password": os.environ.get("GOODWILL_PASSWORD", ""),
-                "totp": totp,
-            }, headers={"x-api-key": self.api_key}, timeout=10)
-            data = resp.json()
-            if data.get("status") == "success":
-                self.access_token = data["data"]["access_token"]
-                self.logged_in = True
-                logger.info("Goodwill login OK")
-                return True
-            logger.warning("Goodwill login failed: %s", data.get("error_msg"))
+            from mcp_server.gwc_auth import refresh_gwc_token
+            self.access_token = refresh_gwc_token()
+            self.logged_in = True
+            logger.info("Goodwill login OK (auto-login)")
+            return True
         except Exception as e:
-            logger.warning("Goodwill login error: %s", e)
-        return False
+            logger.warning("Goodwill auto-login failed: %s", e)
+            return False
 
     def set_access_token(self, token: str) -> None:
         """Inject access token from OAuth callback (no TOTP needed)."""

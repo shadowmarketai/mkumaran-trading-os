@@ -103,6 +103,9 @@ class Settings:
     GWC_API_SECRET: str = os.getenv("GWC_API_SECRET", "")
     GWC_CLIENT_ID: str = os.getenv("GWC_CLIENT_ID", "")
     GWC_REDIRECT_URL: str = os.getenv("GWC_REDIRECT_URL", "https://money.shadowmarket.ai/api/gwc_callback")
+    # Goodwill auto-login credentials (used by gwc_auth.refresh_gwc_token)
+    GOODWILL_PASSWORD: str = os.getenv("GOODWILL_PASSWORD", "")
+    GOODWILL_TOTP_KEY: str = os.getenv("GOODWILL_TOTP_KEY", "")
 
     # Data Provider
     DATA_PROVIDER_PRIMARY: str = os.getenv("DATA_PROVIDER_PRIMARY", "kite")  # "kite" or "yfinance"
