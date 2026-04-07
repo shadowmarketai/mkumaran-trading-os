@@ -505,7 +505,8 @@ async def tool_get_stock_data(
     """Get OHLCV data for any instrument via yfinance. Supports NSE, BSE, MCX, CDS, NFO."""
     from mcp_server.nse_scanner import get_stock_data
 
-    df = get_stock_data(ticker, period="1y", interval="1d")
+    # get_stock_data does blocking network calls — run in worker thread
+    df = await asyncio.to_thread(get_stock_data, ticker, "1y", "1d")
     if df is None or df.empty:
         return {"status": "error", "message": f"No data for {ticker}"}
 
@@ -558,7 +559,7 @@ async def api_chart_ohlcv(
     else:
         period = "1y"
 
-    df = get_stock_data(ticker, period=period, interval=data_interval)
+    df = await asyncio.to_thread(get_stock_data, ticker, period, data_interval)
     if df is None or df.empty:
         return {"status": "error", "bars": [], "message": f"No data for {ticker}"}
 
@@ -599,7 +600,7 @@ async def tool_run_rrms(
         # Try to fetch live price via yfinance
         from mcp_server.nse_scanner import get_stock_data
 
-        df = get_stock_data(ticker, days=5)
+        df = await asyncio.to_thread(get_stock_data, ticker, "5d", "1d")
         if df is not None and not df.empty:
             cmp = float(df["Close"].iloc[-1])
         else:
@@ -615,7 +616,7 @@ async def tool_detect_pattern(ticker: str, timeframe: str = "day"):
     from mcp_server.pattern_engine import PatternEngine
     from mcp_server.nse_scanner import get_stock_data
 
-    df = get_stock_data(ticker, timeframe=timeframe)
+    df = await asyncio.to_thread(get_stock_data, ticker)
     if df is None or df.empty:
         return {"status": "error", "message": f"No data for {ticker}"}
 
@@ -638,7 +639,7 @@ async def tool_detect_smc(ticker: str, timeframe: str = "day"):
     from mcp_server.smc_engine import SMCEngine
     from mcp_server.nse_scanner import get_stock_data
 
-    df = get_stock_data(ticker, timeframe=timeframe)
+    df = await asyncio.to_thread(get_stock_data, ticker)
     if df is None or df.empty:
         return {"status": "error", "message": f"No data for {ticker}"}
 
@@ -661,7 +662,7 @@ async def tool_detect_wyckoff(ticker: str, timeframe: str = "day"):
     from mcp_server.wyckoff_engine import WyckoffEngine
     from mcp_server.nse_scanner import get_stock_data
 
-    df = get_stock_data(ticker, timeframe=timeframe)
+    df = await asyncio.to_thread(get_stock_data, ticker)
     if df is None or df.empty:
         return {"status": "error", "message": f"No data for {ticker}"}
 
@@ -684,7 +685,7 @@ async def tool_detect_vsa(ticker: str, timeframe: str = "day"):
     from mcp_server.vsa_engine import VSAEngine
     from mcp_server.nse_scanner import get_stock_data
 
-    df = get_stock_data(ticker, timeframe=timeframe)
+    df = await asyncio.to_thread(get_stock_data, ticker)
     if df is None or df.empty:
         return {"status": "error", "message": f"No data for {ticker}"}
 
@@ -707,7 +708,7 @@ async def tool_detect_harmonic(ticker: str, timeframe: str = "day"):
     from mcp_server.harmonic_engine import HarmonicEngine
     from mcp_server.nse_scanner import get_stock_data
 
-    df = get_stock_data(ticker, timeframe=timeframe)
+    df = await asyncio.to_thread(get_stock_data, ticker)
     if df is None or df.empty:
         return {"status": "error", "message": f"No data for {ticker}"}
 
@@ -730,7 +731,7 @@ async def tool_detect_rl(ticker: str, timeframe: str = "day"):
     from mcp_server.rl_engine import RLEngine
     from mcp_server.nse_scanner import get_stock_data
 
-    df = get_stock_data(ticker, timeframe=timeframe)
+    df = await asyncio.to_thread(get_stock_data, ticker)
     if df is None or df.empty:
         return {"status": "error", "message": f"No data for {ticker}"}
 
