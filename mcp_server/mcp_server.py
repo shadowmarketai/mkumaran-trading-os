@@ -972,9 +972,24 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
             if stocks:
                 logger.info("Scanner %s fired: %s", k, stocks)
 
-    # Build structured scanner_results for the frontend
+    # Build structured scanner_results for the frontend.
+    # Pre-seed with ALL scanners (BULL/BEAR/FILTER) from the SCANNERS dict
+    # so that every scanner — including Forex/FnO/Chartink — always appears
+    # in the heatmap even when its segment was closed or a fetch failed.
+    # Then overlay the actual raw_results on top.
     from mcp_server.mwa_scanner import SCANNERS
-    structured_results = {}
+    structured_results: dict = {}
+    for k, cfg in SCANNERS.items():
+        if cfg.get("type") in ("UNKNOWN",):
+            continue
+        structured_results[k] = {
+            "name": k,
+            "group": cfg.get("layer", "Other"),
+            "weight": cfg.get("weight", 0),
+            "count": 0,
+            "direction": cfg.get("type", "NEUTRAL"),
+            "stocks": [],
+        }
     for k, v in raw_results.items():
         stocks = v if isinstance(v, list) else []
         cfg = SCANNERS.get(k, {})
@@ -1830,10 +1845,25 @@ async def api_mwa_latest(db: Session = Depends(get_db)):
     if not score:
         return {"status": "no_data"}
 
-    # Normalize scanner_results: upgrade old int-count format to ScannerResult
+    # Normalize scanner_results: upgrade old int-count format to ScannerResult.
+    # Pre-seed with ALL scanners from SCANNERS dict so every segment (NSE /
+    # MCX / CDS / NFO) renders a full heatmap even when the persisted record
+    # only contains a subset (e.g. segments that were closed when the scan
+    # ran, or Chartink fetches that failed). Overlays actual stored values.
     raw_sr = score.scanner_results or {}
-    scanner_results = {}
+    scanner_results: dict = {}
     from mcp_server.mwa_scanner import SCANNERS
+    for k, cfg in SCANNERS.items():
+        if cfg.get("type") in ("UNKNOWN",):
+            continue
+        scanner_results[k] = {
+            "name": k,
+            "group": cfg.get("layer", "Other"),
+            "weight": cfg.get("weight", 0),
+            "count": 0,
+            "direction": cfg.get("type", "NEUTRAL"),
+            "stocks": [],
+        }
     for k, v in raw_sr.items():
         if isinstance(v, dict) and "name" in v:
             scanner_results[k] = v  # already structured
