@@ -813,15 +813,30 @@ class AngelSource:
             data = self.client.searchScrip(exchange, symbol)
         except Exception as e:
             if _is_angel_token_error(str(e)):
-                self._note_failure(f"searchScrip {symbol}: {e}")
+                self.trip_breaker(f"searchScrip {symbol} AG8001 (raised): {e}")
                 raise AngelTokenInvalid(f"Angel token invalid during searchScrip: {e}") from e
             return None
         # searchScrip returns {"status": False, "message": "Invalid Token", ...}
-        # when the JWT has expired — no exception is raised, so we detect it here.
+        # or {"success": False, ...} when the JWT has expired — no exception is
+        # raised by some SDK versions, so we detect it from the response dict.
         if isinstance(data, dict) and _is_angel_token_error(data):
-            self._note_failure(f"searchScrip {symbol}: {data.get('message')}")
+            self.trip_breaker(f"searchScrip {symbol} AG8001: {data.get('message')}")
             raise AngelTokenInvalid(
                 f"Angel searchScrip returned invalid token: {data.get('message')}"
+            )
+        # Some SDK versions return a generic failure dict (status/success False)
+        # without explicit "Invalid Token" text when Angel rejects the IP.
+        # Treat any {"status": False} / {"success": False} with empty data as
+        # a terminal auth failure and trip the session breaker.
+        if isinstance(data, dict) and (
+            data.get("status") is False or data.get("success") is False
+        ) and not data.get("data"):
+            self.trip_breaker(
+                f"searchScrip {symbol} rejected: {data.get('message') or data}"
+            )
+            raise AngelTokenInvalid(
+                f"Angel searchScrip rejected (likely AG8001/whitelist): "
+                f"{data.get('message') or data}"
             )
         if data and data.get("data"):
             token = data["data"][0]["symboltoken"]
@@ -861,14 +876,14 @@ class AngelSource:
             })
         except Exception as e:
             if _is_angel_token_error(str(e)):
-                self._note_failure(f"getCandleData {symbol}: {e}")
+                self.trip_breaker(f"getCandleData {symbol} AG8001 (raised): {e}")
                 raise AngelTokenInvalid(
                     f"Angel token invalid during getCandleData: {e}"
                 ) from e
             raise
 
         if isinstance(data, dict) and _is_angel_token_error(data):
-            self._note_failure(f"getCandleData {symbol}: {data.get('message')}")
+            self.trip_breaker(f"getCandleData {symbol} AG8001: {data.get('message')}")
             raise AngelTokenInvalid(
                 f"Angel getCandleData returned invalid token: {data.get('message')}"
             )
@@ -897,10 +912,10 @@ class AngelSource:
             raise
         except Exception as e:
             if _is_angel_token_error(str(e)):
-                self._note_failure(f"ltpData {symbol}: {e}")
+                self.trip_breaker(f"ltpData {symbol} AG8001 (raised): {e}")
             return {}
         if isinstance(data, dict) and _is_angel_token_error(data):
-            self._note_failure(f"ltpData {symbol}: {data.get('message')}")
+            self.trip_breaker(f"ltpData {symbol} AG8001: {data.get('message')}")
             return {}
         try:
             ltp = data["data"]["ltp"] if data else 0
@@ -1310,7 +1325,14 @@ class MarketDataProvider:
             df = self.angel.get_historical(symbol, interval, days, exchange=exchange)
             if not df.empty:
                 return df
-            return pd.DataFrame()
+            # Empty df without exception = searchScrip/getCandleData returned
+            # a silent failure (common with AG8001 on older SDK versions that
+            # log the error but don't raise). Fall through to the refresh +
+            # retry path so the sticky breaker has a chance to trip.
+            logger.warning(
+                "Angel returned empty df for %s:%s — attempting force refresh",
+                exchange, symbol,
+            )
         except AngelTokenInvalid as token_err:
             logger.warning(
                 "Angel token expired for %s:%s (%s) — attempting force refresh",
@@ -1325,6 +1347,10 @@ class MarketDataProvider:
             else:
                 logger.debug("Angel fetch failed for %s:%s: %s", exchange, symbol, e)
                 return pd.DataFrame()
+        # If the breaker was already tripped by get_historical→_get_token
+        # while we were in the try block, skip the refresh attempt.
+        if self.angel.is_disabled():
+            return pd.DataFrame()
 
         # Force-refresh the JWT and retry once. Clear the symbol→token cache
         # because tokens are tied to the old session.
