@@ -271,7 +271,9 @@ async def signal_monitor_loop() -> None:
                 pass  # If calendar check fails, run anyway
 
             logger.info("Signal monitor: checking open signals...")
-            closed_signals = monitor_open_signals()
+            # monitor_open_signals() does blocking DB + network calls;
+            # run in a worker thread so the event loop stays responsive.
+            closed_signals = await asyncio.to_thread(monitor_open_signals)
 
             if closed_signals:
                 logger.info("Signal monitor: %d signals closed", len(closed_signals))

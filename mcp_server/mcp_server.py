@@ -62,8 +62,30 @@ async def _auto_scan_loop():
                 logger.info("Auto-scan: open segments=%s", open_segments)
                 # Run the sync scan in a worker thread so the event loop stays
                 # responsive (health checks, API, Telegram sends) during the
-                # ~5-minute scan window.
+                # ~5-minute scan window. We also proactively refresh the Angel
+                # JWT before each scan — the SmartAPI library logs AG8001
+                # errors internally and returns None/empty instead of raising,
+                # so per-request detection is unreliable. Refreshing once per
+                # cycle guarantees a healthy token.
                 def _run_scan_sync(segs: list[str]) -> None:
+                    try:
+                        from mcp_server.angel_auth import force_refresh_angel_token
+                        from mcp_server.data_provider import get_provider
+                        new_client = force_refresh_angel_token()
+                        provider = get_provider()
+                        if hasattr(provider, "angel") and provider.angel:
+                            provider.angel.client = new_client
+                            provider.angel.logged_in = True
+                            if hasattr(provider.angel, "_token_cache"):
+                                provider.angel._token_cache.clear()
+                            provider._sources["angel"] = True
+                        logger.info("Auto-scan: Angel token pre-refreshed")
+                    except Exception as refresh_err:
+                        logger.warning(
+                            "Auto-scan: Angel pre-refresh failed (%s) — "
+                            "continuing with yfinance fallback",
+                            refresh_err,
+                        )
                     db = SessionLocal()
                     try:
                         _execute_mwa_scan(db, segments=segs)
@@ -83,50 +105,62 @@ async def _auto_scan_loop():
             await asyncio.sleep(900)
 
 
+def _price_refresh_once_sync() -> None:
+    """One pass of active-trade LTP refresh. Synchronous — must run in
+    a worker thread via asyncio.to_thread so the event loop stays
+    responsive (health checks, API, Telegram)."""
+    db = SessionLocal()
+    try:
+        trades = db.query(ActiveTrade).options(
+            joinedload(ActiveTrade.signal),
+        ).all()
+        count = 0
+        for t in trades:
+            try:
+                ltp = None
+                if _realtime_engine:
+                    ticker_clean = t.ticker.replace("NSE:", "") if t.ticker else ""
+                    if ticker_clean:
+                        ltp = _realtime_engine.get_ltp(ticker_clean)
+                if not ltp or ltp <= 0:
+                    ltp = _get_live_ltp(t.ticker)
+                if ltp and ltp > 0:
+                    t.current_price = ltp
+                    t.last_updated = _now_ist()
+                    direction = (
+                        t.signal.direction if t.signal else "LONG"
+                    )
+                    is_short = direction in ("SELL", "SHORT")
+                    sl = float(t.stop_loss)
+                    tgt = float(t.target)
+                    risk = (sl - ltp) if is_short else (ltp - sl)
+                    reward = (ltp - tgt) if is_short else (tgt - ltp)
+                    t.crrr = round(reward / risk, 2) if risk > 0 else 0
+                    count += 1
+            except Exception as e:
+                logger.debug("Price tick error %s: %s", t.ticker, e)
+        if count:
+            db.commit()
+            logger.info("Price refresh: %d/%d updated", count, len(trades))
+    finally:
+        db.close()
+
+
 async def _price_refresh_loop():
-    """Background task: refresh active trade prices every 60s during market hours."""
+    """Background task: refresh active trade prices every 60s during market hours.
+
+    The actual refresh is a sync blocking operation (REST + DB), so we run it
+    in a worker thread to keep the event loop responsive for /health, API
+    requests, and Telegram.
+    """
     from mcp_server.market_calendar import is_market_open
-    from mcp_server.db import SessionLocal
     while True:
         try:
             if is_market_open("NSE"):
-                db = SessionLocal()
                 try:
-                    trades = db.query(ActiveTrade).options(
-                        joinedload(ActiveTrade.signal),
-                    ).all()
-                    count = 0
-                    for t in trades:
-                        try:
-                            # Try WebSocket cache first (sub-ms)
-                            ltp = None
-                            if _realtime_engine:
-                                ticker_clean = t.ticker.replace("NSE:", "") if t.ticker else ""
-                                if ticker_clean:
-                                    ltp = _realtime_engine.get_ltp(ticker_clean)
-                            # Fallback to REST API
-                            if not ltp or ltp <= 0:
-                                ltp = _get_live_ltp(t.ticker)
-                            if ltp and ltp > 0:
-                                t.current_price = ltp
-                                t.last_updated = _now_ist()
-                                direction = (
-                                    t.signal.direction if t.signal else "LONG"
-                                )
-                                is_short = direction in ("SELL", "SHORT")
-                                sl = float(t.stop_loss)
-                                tgt = float(t.target)
-                                risk = (sl - ltp) if is_short else (ltp - sl)
-                                reward = (ltp - tgt) if is_short else (tgt - ltp)
-                                t.crrr = round(reward / risk, 2) if risk > 0 else 0
-                                count += 1
-                        except Exception as e:
-                            logger.debug("Price tick error %s: %s", t.ticker, e)
-                    if count:
-                        db.commit()
-                        logger.info("Price refresh: %d/%d updated", count, len(trades))
-                finally:
-                    db.close()
+                    await asyncio.to_thread(_price_refresh_once_sync)
+                except Exception as e:
+                    logger.error("Price refresh worker thread failed: %s", e)
             await asyncio.sleep(60)
         except asyncio.CancelledError:
             break
