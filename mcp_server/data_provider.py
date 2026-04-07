@@ -632,6 +632,28 @@ class AngelSource:
         self.client = None
         self.logged_in = False
         self._token_cache: Dict[str, str] = {}
+        # Circuit breaker: after this many consecutive AG8001 / invalid-token
+        # responses, the source self-disables for the rest of the session.
+        # Prevents the scan loop from doing N × TOTP-login when Angel's IP
+        # whitelist is rejecting our server.
+        self._consecutive_failures = 0
+        self._failure_threshold = 5
+
+    def _note_failure(self, reason: str) -> None:
+        """Record a token failure; disable the source if threshold exceeded."""
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self._failure_threshold and self.logged_in:
+            logger.error(
+                "AngelSource: %d consecutive AG8001/token failures — "
+                "disabling for session (last: %s)",
+                self._consecutive_failures, reason,
+            )
+            self.logged_in = False
+
+    def _note_success(self) -> None:
+        """Reset the failure counter after a successful call."""
+        if self._consecutive_failures:
+            self._consecutive_failures = 0
 
     def login(self) -> bool:
         if not self.api_key:
@@ -747,8 +769,11 @@ class AngelSource:
         """Get instrument token for symbol (cached).
 
         Raises AngelTokenInvalid if the JWT has expired so the caller can
-        trigger a mid-day force refresh.
+        trigger a mid-day force refresh. Also bumps the session-level
+        failure counter so a fully rejected source auto-disables.
         """
+        if not self.logged_in:
+            return None
         key = f"{exchange}:{symbol}"
         if key in self._token_cache:
             return self._token_cache[key]
@@ -756,17 +781,20 @@ class AngelSource:
             data = self.client.searchScrip(exchange, symbol)
         except Exception as e:
             if _is_angel_token_error(str(e)):
+                self._note_failure(f"searchScrip {symbol}: {e}")
                 raise AngelTokenInvalid(f"Angel token invalid during searchScrip: {e}") from e
             return None
         # searchScrip returns {"status": False, "message": "Invalid Token", ...}
         # when the JWT has expired — no exception is raised, so we detect it here.
         if isinstance(data, dict) and _is_angel_token_error(data):
+            self._note_failure(f"searchScrip {symbol}: {data.get('message')}")
             raise AngelTokenInvalid(
                 f"Angel searchScrip returned invalid token: {data.get('message')}"
             )
         if data and data.get("data"):
             token = data["data"][0]["symboltoken"]
             self._token_cache[key] = token
+            self._note_success()
             return token
         return None
 
@@ -801,12 +829,14 @@ class AngelSource:
             })
         except Exception as e:
             if _is_angel_token_error(str(e)):
+                self._note_failure(f"getCandleData {symbol}: {e}")
                 raise AngelTokenInvalid(
                     f"Angel token invalid during getCandleData: {e}"
                 ) from e
             raise
 
         if isinstance(data, dict) and _is_angel_token_error(data):
+            self._note_failure(f"getCandleData {symbol}: {data.get('message')}")
             raise AngelTokenInvalid(
                 f"Angel getCandleData returned invalid token: {data.get('message')}"
             )
@@ -818,15 +848,32 @@ class AngelSource:
                           columns=["date", "open", "high", "low", "close", "volume"])
         df["date"] = pd.to_datetime(df["date"])
         df = df.sort_values("date").reset_index(drop=True)
+        self._note_success()
         return df
 
-    @retry(max_attempts=2, delay=1.0)
+    @retry(max_attempts=2, delay=1.0, no_retry=(AngelTokenInvalid,))
     def get_quote(self, symbol: str, exchange: str = "NSE") -> dict:
         if not self.logged_in:
             return {}
         try:
-            data = self.client.ltpData(exchange, symbol, self._get_token(symbol, exchange))
+            token = self._get_token(symbol, exchange)
+            if not token:
+                return {}
+            data = self.client.ltpData(exchange, symbol, token)
+        except AngelTokenInvalid:
+            # Already noted via _get_token; propagate so caller breakers trip.
+            raise
+        except Exception as e:
+            if _is_angel_token_error(str(e)):
+                self._note_failure(f"ltpData {symbol}: {e}")
+            return {}
+        if isinstance(data, dict) and _is_angel_token_error(data):
+            self._note_failure(f"ltpData {symbol}: {data.get('message')}")
+            return {}
+        try:
             ltp = data["data"]["ltp"] if data else 0
+            if ltp:
+                self._note_success()
             return {"symbol": symbol, "source": "ANGEL", "ltp": ltp}
         except Exception:
             return {}
