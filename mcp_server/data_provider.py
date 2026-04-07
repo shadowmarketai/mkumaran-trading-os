@@ -1048,8 +1048,10 @@ class MarketDataProvider:
         symbol_clean = symbol.replace("NSE:", "").replace("BSE:", "")
 
         # 1. Angel SmartAPI (supports all segments: NSE/BSE/NFO/MCX/CDS/BFO)
+        # Routed through _angel_fetch_with_refresh so the session-level
+        # circuit breaker (trips on AG8001 after refresh retry) applies.
         if self._sources["angel"]:
-            df = self.angel.get_historical(symbol_clean, interval, days, exchange=exchange)
+            df = self._angel_fetch_with_refresh(symbol_clean, interval, days, exchange)
             if not df.empty:
                 self._hist_cache[cache_key] = (df, time.time())
                 return df
@@ -1213,7 +1215,15 @@ class MarketDataProvider:
         days: int,
         exchange: str,
     ) -> pd.DataFrame:
-        """Fetch OHLCV from Angel with auto-refresh on Invalid Token."""
+        """Fetch OHLCV from Angel with auto-refresh on Invalid Token.
+
+        Circuit breaker: once a force-refresh retry still returns AG8001
+        (i.e. the token is valid but Angel's IP whitelist rejects us),
+        we flip `_sources["angel"] = False` so subsequent tickers skip
+        Angel entirely for the rest of the session. This prevents the
+        scan from doing N × (3s TOTP login + AG8001 retry) on every
+        ticker when the server IP isn't whitelisted.
+        """
         try:
             df = self.angel.get_historical(symbol, interval, days, exchange=exchange)
             if not df.empty:
@@ -1244,10 +1254,11 @@ class MarketDataProvider:
             self._sources["angel"] = True
         except Exception as refresh_err:
             logger.error(
-                "Angel token refresh failed: %s — marking unavailable",
+                "Angel token refresh failed: %s — marking unavailable for session",
                 refresh_err,
             )
             self._sources["angel"] = False
+            self.angel.logged_in = False
             return pd.DataFrame()
 
         try:
@@ -1258,11 +1269,30 @@ class MarketDataProvider:
                     exchange, symbol,
                 )
                 return df
-        except Exception as retry_err:
+            # Empty df after refresh → likely IP whitelist issue. Trip breaker.
             logger.error(
-                "Angel retry after refresh failed for %s:%s: %s",
+                "Angel retry returned empty for %s:%s after fresh TOTP login — "
+                "marking Angel unavailable for session (likely IP whitelist issue)",
+                exchange, symbol,
+            )
+            self._sources["angel"] = False
+            self.angel.logged_in = False
+        except AngelTokenInvalid as retry_err:
+            logger.error(
+                "Angel retry after refresh still AG8001 for %s:%s (%s) — "
+                "marking Angel unavailable for session (likely IP whitelist issue)",
                 exchange, symbol, retry_err,
             )
+            self._sources["angel"] = False
+            self.angel.logged_in = False
+        except Exception as retry_err:
+            logger.error(
+                "Angel retry after refresh failed for %s:%s: %s — "
+                "marking Angel unavailable for session",
+                exchange, symbol, retry_err,
+            )
+            self._sources["angel"] = False
+            self.angel.logged_in = False
         return pd.DataFrame()
 
     # ── Live Quote ───────────────────────────────────────────────
@@ -1279,12 +1309,26 @@ class MarketDataProvider:
 
         quote = {}
 
-        # 1. Angel SmartAPI (supports all segments)
+        # 1. Angel SmartAPI (supports all segments). Trips the session
+        # circuit breaker on AG8001 so subsequent quotes skip Angel.
         if self._sources["angel"]:
             try:
                 quote = self.angel.get_quote(symbol_clean, exchange=exchange)
-            except Exception:
-                pass
+            except AngelTokenInvalid as ag_err:
+                logger.warning(
+                    "Angel quote AG8001 for %s:%s (%s) — disabling Angel for session",
+                    exchange, symbol_clean, ag_err,
+                )
+                self._sources["angel"] = False
+                self.angel.logged_in = False
+            except Exception as quote_err:
+                if _is_angel_token_error(str(quote_err)):
+                    logger.warning(
+                        "Angel quote AG8001 for %s:%s — disabling Angel for session",
+                        exchange, symbol_clean,
+                    )
+                    self._sources["angel"] = False
+                    self.angel.logged_in = False
 
         # 2. Goodwill
         if not quote.get("ltp") and self._sources["gwc"]:
