@@ -60,12 +60,21 @@ async def _auto_scan_loop():
 
             if open_segments:
                 logger.info("Auto-scan: open segments=%s", open_segments)
-                db = SessionLocal()
+                # Run the sync scan in a worker thread so the event loop stays
+                # responsive (health checks, API, Telegram sends) during the
+                # ~5-minute scan window.
+                def _run_scan_sync(segs: list[str]) -> None:
+                    db = SessionLocal()
+                    try:
+                        _execute_mwa_scan(db, segments=segs)
+                        logger.info("Auto-scan: MWA scan completed")
+                    finally:
+                        db.close()
+
                 try:
-                    _execute_mwa_scan(db, segments=open_segments)
-                    logger.info("Auto-scan: MWA scan completed")
-                finally:
-                    db.close()
+                    await asyncio.to_thread(_run_scan_sync, open_segments)
+                except Exception as e:
+                    logger.error("Auto-scan worker thread failed: %s", e)
             await asyncio.sleep(900)  # 15 minutes
         except asyncio.CancelledError:
             break

@@ -1,4 +1,5 @@
 """Telegram bot for MKUMARAN Trading OS."""
+import asyncio
 import logging
 from telegram import Update
 from telegram.ext import (
@@ -355,6 +356,11 @@ async def send_telegram_message(
 ) -> None:
     """Send a message to the configured Telegram chat.
 
+    Uses direct httpx calls to the Telegram Bot HTTP API with explicit
+    timeouts and retries. This is more reliable than constructing a
+    ``telegram.Bot`` instance per call (which does a handshake + getMe
+    and was prone to time out under scan load).
+
     Args:
         text: Message content.
         exchange: Exchange code for market hours check (NSE, MCX, CDS, etc.).
@@ -376,17 +382,46 @@ async def send_telegram_message(
             )
             return
 
-    try:
-        from telegram import Bot
-        bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
-        await bot.send_message(
-            chat_id=settings.TELEGRAM_CHAT_ID,
-            text=text,
-            parse_mode=None,
-        )
-        logger.info("Telegram message sent (%d chars)", len(text))
-    except Exception as e:
-        logger.error("Failed to send Telegram message: %s", e)
+    # Telegram hard limit is 4096 chars; trim to be safe.
+    if len(text) > 4000:
+        text = text[:3990] + "…"
+
+    url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": settings.TELEGRAM_CHAT_ID,
+        "text": text,
+        "disable_web_page_preview": True,
+    }
+
+    # httpx is already a dependency (FastAPI). Use generous timeouts and retry
+    # up to 3 times with exponential backoff to tolerate transient network hiccups.
+    import httpx
+
+    timeout = httpx.Timeout(connect=10.0, read=25.0, write=10.0, pool=10.0)
+    last_err: Exception | None = None
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(url, json=payload)
+            if resp.status_code == 200 and resp.json().get("ok"):
+                logger.info("Telegram message sent (%d chars)", len(text))
+                return
+            # 429 = rate-limited, 5xx = transient — retry
+            if resp.status_code in (429, 500, 502, 503, 504):
+                last_err = RuntimeError(
+                    f"Telegram HTTP {resp.status_code}: {resp.text[:160]}"
+                )
+            else:
+                logger.error(
+                    "Telegram send failed (non-retryable HTTP %d): %s",
+                    resp.status_code, resp.text[:200],
+                )
+                return
+        except Exception as e:
+            last_err = e
+        if attempt < 2:
+            await asyncio.sleep(1.5 * (2 ** attempt))
+    logger.error("Failed to send Telegram message after 3 attempts: %s", last_err)
 
 
 def create_bot_application() -> Application:

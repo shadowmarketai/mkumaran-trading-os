@@ -95,14 +95,24 @@ for _seg in list(SEGMENT_ROUTING):
 
 # ── Retry Decorator ──────────────────────────────────────────────
 
-def retry(max_attempts: int = 3, delay: float = 1.0):
-    """Retry decorator with exponential backoff."""
+def retry(max_attempts: int = 3, delay: float = 1.0, no_retry: tuple = ()):
+    """Retry decorator with exponential backoff.
+
+    Args:
+        max_attempts: Maximum attempts before giving up.
+        delay: Base delay between retries (exponential backoff).
+        no_retry: Tuple of exception types that should be re-raised immediately
+                  without retrying (e.g. AngelTokenInvalid — the caller wants
+                  to force-refresh the token, not retry the same broken call).
+    """
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             for attempt in range(max_attempts):
                 try:
                     return func(*args, **kwargs)
+                except no_retry:
+                    raise
                 except Exception as e:
                     if attempt == max_attempts - 1:
                         raise
@@ -557,6 +567,34 @@ class GoodwillSource:
 # Free for Angel account holders. Best for: historical OHLCV
 # ══════════════════════════════════════════════════════════════════
 
+class AngelTokenInvalid(Exception):
+    """Raised when Angel SmartAPI returns an Invalid Token (AG8001) error.
+
+    Caught by MarketDataProvider._angel_fetch_with_refresh to trigger a
+    mid-day TOTP re-login via force_refresh_angel_token().
+    """
+    pass
+
+
+def _is_angel_token_error(payload: dict | str | None) -> bool:
+    """Detect Angel SmartAPI Invalid Token / auth errors from any response shape."""
+    if payload is None:
+        return False
+    if isinstance(payload, dict):
+        text = " ".join(
+            str(payload.get(k, "")) for k in ("message", "errorcode", "errorCode", "error")
+        ).lower()
+    else:
+        text = str(payload).lower()
+    return (
+        "invalid token" in text
+        or "ag8001" in text
+        or "ag8002" in text
+        or "unauthorized" in text
+        or "session expired" in text
+    )
+
+
 class AngelSource:
 
     INTERVAL_MAP = {
@@ -706,26 +744,42 @@ class AngelSource:
             return {}
 
     def _get_token(self, symbol: str, exchange: str = "NSE") -> Optional[str]:
-        """Get instrument token for symbol (cached)."""
+        """Get instrument token for symbol (cached).
+
+        Raises AngelTokenInvalid if the JWT has expired so the caller can
+        trigger a mid-day force refresh.
+        """
         key = f"{exchange}:{symbol}"
         if key in self._token_cache:
             return self._token_cache[key]
         try:
             data = self.client.searchScrip(exchange, symbol)
-            if data and data.get("data"):
-                token = data["data"][0]["symboltoken"]
-                self._token_cache[key] = token
-                return token
-        except Exception:
-            pass
+        except Exception as e:
+            if _is_angel_token_error(str(e)):
+                raise AngelTokenInvalid(f"Angel token invalid during searchScrip: {e}") from e
+            return None
+        # searchScrip returns {"status": False, "message": "Invalid Token", ...}
+        # when the JWT has expired — no exception is raised, so we detect it here.
+        if isinstance(data, dict) and _is_angel_token_error(data):
+            raise AngelTokenInvalid(
+                f"Angel searchScrip returned invalid token: {data.get('message')}"
+            )
+        if data and data.get("data"):
+            token = data["data"][0]["symboltoken"]
+            self._token_cache[key] = token
+            return token
         return None
 
-    @retry(max_attempts=3, delay=1.0)
+    @retry(max_attempts=3, delay=1.0, no_retry=(AngelTokenInvalid,))
     def get_historical(self, symbol: str,
                        interval: str = "day",
                        days: int = 60,
                        exchange: str = "NSE") -> pd.DataFrame:
-        """Historical OHLCV — best free source."""
+        """Historical OHLCV — best free source.
+
+        Raises AngelTokenInvalid when the JWT is expired, so the caller can
+        trigger a mid-day force refresh via force_refresh_angel_token().
+        """
         if not self.logged_in:
             return pd.DataFrame()
 
@@ -737,13 +791,25 @@ class AngelSource:
         from_dt = (now_ist() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
         to_dt = now_ist().strftime("%Y-%m-%d %H:%M")
 
-        data = self.client.getCandleData({
-            "exchange": exchange,
-            "symboltoken": token,
-            "interval": self.INTERVAL_MAP.get(interval, "ONE_DAY"),
-            "fromdate": from_dt,
-            "todate": to_dt,
-        })
+        try:
+            data = self.client.getCandleData({
+                "exchange": exchange,
+                "symboltoken": token,
+                "interval": self.INTERVAL_MAP.get(interval, "ONE_DAY"),
+                "fromdate": from_dt,
+                "todate": to_dt,
+            })
+        except Exception as e:
+            if _is_angel_token_error(str(e)):
+                raise AngelTokenInvalid(
+                    f"Angel token invalid during getCandleData: {e}"
+                ) from e
+            raise
+
+        if isinstance(data, dict) and _is_angel_token_error(data):
+            raise AngelTokenInvalid(
+                f"Angel getCandleData returned invalid token: {data.get('message')}"
+            )
 
         if not data or not data.get("data"):
             return pd.DataFrame()
@@ -1105,14 +1171,23 @@ class MarketDataProvider:
                 yf_symbol = resolve_yf_symbol(ticker_str)
                 if not yf_symbol:
                     return pd.DataFrame()
-                period_map = {1: "1d", 5: "5d", 30: "1mo", 60: "3mo", 90: "3mo",
-                              180: "6mo", 365: "1y", 730: "2y"}
-                period = "6mo"
-                for d, p in sorted(period_map.items()):
-                    if days <= d:
-                        period = p
-                        break
-                data = _rate_limited_download(yf_symbol, period=period, interval="1d")
+                # Futures (=F) and FX pairs (=X) return only 1 bar when called
+                # with period strings — use explicit start/end dates instead.
+                if _is_futures_or_fx_symbol(yf_symbol):
+                    start_dt = (date.today() - timedelta(days=days + 5)).isoformat()
+                    end_dt = (date.today() + timedelta(days=1)).isoformat()
+                    data = _rate_limited_download(
+                        yf_symbol, start=start_dt, end=end_dt, interval="1d",
+                    )
+                else:
+                    period_map = {1: "1d", 5: "5d", 30: "1mo", 60: "3mo", 90: "3mo",
+                                  180: "6mo", 365: "1y", 730: "2y"}
+                    period = "6mo"
+                    for d, p in sorted(period_map.items()):
+                        if days <= d:
+                            period = p
+                            break
+                    data = _rate_limited_download(yf_symbol, period=period, interval="1d")
                 if not data.empty:
                     data.columns = [
                         c.lower() if isinstance(c, str) else c[0].lower()
@@ -1143,24 +1218,51 @@ class MarketDataProvider:
             df = self.angel.get_historical(symbol, interval, days, exchange=exchange)
             if not df.empty:
                 return df
+            return pd.DataFrame()
+        except AngelTokenInvalid as token_err:
+            logger.warning(
+                "Angel token expired for %s:%s (%s) — attempting force refresh",
+                exchange, symbol, token_err,
+            )
         except Exception as e:
-            err_str = str(e).lower()
-            if "invalid token" in err_str or "unauthorized" in err_str:
-                logger.warning("Angel token expired for %s:%s — attempting refresh", exchange, symbol)
-                try:
-                    from mcp_server.angel_auth import force_refresh_angel_token
-                    self.angel.client = force_refresh_angel_token()
-                    self.angel.logged_in = True
-                    self._sources["angel"] = True
-                    df = self.angel.get_historical(symbol, interval, days, exchange=exchange)
-                    if not df.empty:
-                        logger.info("Angel token refreshed — retry succeeded for %s:%s", exchange, symbol)
-                        return df
-                except Exception as refresh_err:
-                    logger.error("Angel token refresh failed: %s — marking unavailable", refresh_err)
-                    self._sources["angel"] = False
+            if _is_angel_token_error(str(e)):
+                logger.warning(
+                    "Angel token expired for %s:%s (%s) — attempting force refresh",
+                    exchange, symbol, e,
+                )
             else:
                 logger.debug("Angel fetch failed for %s:%s: %s", exchange, symbol, e)
+                return pd.DataFrame()
+
+        # Force-refresh the JWT and retry once. Clear the symbol→token cache
+        # because tokens are tied to the old session.
+        try:
+            from mcp_server.angel_auth import force_refresh_angel_token
+            self.angel.client = force_refresh_angel_token()
+            self.angel.logged_in = True
+            self.angel._token_cache.clear()
+            self._sources["angel"] = True
+        except Exception as refresh_err:
+            logger.error(
+                "Angel token refresh failed: %s — marking unavailable",
+                refresh_err,
+            )
+            self._sources["angel"] = False
+            return pd.DataFrame()
+
+        try:
+            df = self.angel.get_historical(symbol, interval, days, exchange=exchange)
+            if not df.empty:
+                logger.info(
+                    "Angel token refreshed — retry succeeded for %s:%s",
+                    exchange, symbol,
+                )
+                return df
+        except Exception as retry_err:
+            logger.error(
+                "Angel retry after refresh failed for %s:%s: %s",
+                exchange, symbol, retry_err,
+            )
         return pd.DataFrame()
 
     # ── Live Quote ───────────────────────────────────────────────
@@ -1478,6 +1580,21 @@ def fetch_kite_historical(
 
 # ── yfinance Fallback ────────────────────────────────────────────
 
+def _is_futures_or_fx_symbol(yf_symbol: str) -> bool:
+    """Return True if the yfinance symbol is a continuous futures/FX contract.
+
+    yfinance returns only 1 bar for continuous futures (NG=F, GC=F, CL=F...)
+    and FX pairs (USDINR=X) when called with period strings. Using explicit
+    start/end dates works around this issue.
+    """
+    return yf_symbol.endswith("=F") or yf_symbol.endswith("=X")
+
+
+def _period_to_days(period: str) -> int:
+    """Convert yfinance-style period string to a calendar day count."""
+    return _PERIOD_TO_DAYS.get(period, 365)
+
+
 def _yfinance_fetch(
     ticker: str,
     period: str = "1y",
@@ -1490,7 +1607,19 @@ def _yfinance_fetch(
         return pd.DataFrame()
 
     try:
-        data = _rate_limited_download(yf_symbol, period=period, interval=interval)
+        # Futures (=F) and FX pairs (=X) misbehave with period strings and
+        # return only 1 bar — use explicit start/end dates instead.
+        if _is_futures_or_fx_symbol(yf_symbol) and interval in ("1d", "1wk", "1mo"):
+            days = _period_to_days(period)
+            # Pad by 5 days to cover weekends/holidays so we still hit the
+            # requested bar count.
+            start_dt = (date.today() - timedelta(days=days + 5)).isoformat()
+            end_dt = (date.today() + timedelta(days=1)).isoformat()
+            data = _rate_limited_download(
+                yf_symbol, start=start_dt, end=end_dt, interval=interval,
+            )
+        else:
+            data = _rate_limited_download(yf_symbol, period=period, interval=interval)
 
         if data.empty:
             logger.warning("No data returned for %s (yf: %s)", ticker, yf_symbol)
