@@ -116,6 +116,7 @@ const layerColors: Record<string, string> = {
   RL: 'bg-emerald-400',
   Forex: 'bg-indigo-400',
   Commodity: 'bg-orange-400',
+  FnO: 'bg-lime-400',
 };
 
 function groupByLayer(scanners: ScannerResult[]): [string, ScannerResult[]][] {
@@ -126,7 +127,7 @@ function groupByLayer(scanners: ScannerResult[]): [string, ScannerResult[]][] {
     groups[layer].push(s);
   }
   // Sort layers in a logical order
-  const order = ['Trend', 'Volume', 'Breakout', 'RSI', 'Gap', 'MA', 'Filter', 'SMC', 'Wyckoff', 'VSA', 'Harmonic', 'RL', 'Forex', 'Commodity'];
+  const order = ['Trend', 'Volume', 'Breakout', 'RSI', 'Gap', 'MA', 'Filter', 'SMC', 'Wyckoff', 'VSA', 'Harmonic', 'RL', 'Forex', 'Commodity', 'FnO'];
   const entries = Object.entries(groups);
   entries.sort((a, b) => {
     const ia = order.indexOf(a[0]);
@@ -257,12 +258,16 @@ export default function OverviewPage() {
     );
   }
 
-  // Filter scanners by segment
+  // Filter scanners by segment — maps the selected exchange to the scanner
+  // layers that actually run for that segment (matches backend segment
+  // assignment in mwa_scanner.py). NFO/F&O was previously missing, so the
+  // F&O tab was falling through to show ALL scanners instead of FnO-only.
   const allScannerEntries = mwa?.scanner_results ? Object.values(mwa.scanner_results) : [];
   const segmentLayerMap: Record<string, string[]> = {
     NSE: ['Trend', 'Volume', 'Breakout', 'RSI', 'Gap', 'MA', 'Filter', 'SMC', 'Wyckoff', 'VSA', 'Harmonic', 'RL'],
     MCX: ['Commodity'],
     CDS: ['Forex'],
+    NFO: ['FnO'],
   };
   const scannerEntries = filter.exchange && segmentLayerMap[filter.exchange]
     ? allScannerEntries.filter((s) => segmentLayerMap[filter.exchange!].includes(s.group))
