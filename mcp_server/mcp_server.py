@@ -368,11 +368,14 @@ AUTH_PUBLIC_PATHS = {
     "/tools/ai_report", "/tools/news_sentiment",
     # Scanner review (n8n compatible)
     "/tools/run_scanner_review",
+    # F&O OI buildup scanner (n8n compatible)
+    "/tools/scan_oi_buildup",
 }
 AUTH_PUBLIC_PREFIXES = (
     "/assets/", "/docs/", "/redoc/",
     "/tools/mwa_scan_status/", "/api/chart/",
     "/api/scanner-review/",
+    "/api/fno/",
 )
 
 
@@ -944,7 +947,7 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
     """
     from mcp_server.mwa_scanner import MWAScanner
     from mcp_server.mwa_scoring import calculate_mwa_score, get_promoted_stocks, format_morning_brief
-    from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, NFO_INDEX_UNIVERSE
+    from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, NFO_INDEX_UNIVERSE, NFO_STOCK_UNIVERSE
     from mcp_server.data_provider import get_provider
 
     provider = get_provider()
@@ -1003,8 +1006,9 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                     data_diag["errors"].append(f"MCX:{ticker}: {e}")
                     logger.warning("MCX fetch failed for %s: %s", ticker, e)
 
-        # 4) NFO — routed via Angel → Kite
+        # 4) NFO — indices via Kite NFO; F&O stocks reuse NSE OHLCV
         if segments is None or "NFO" in segments:
+            # 4a) Index futures (NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY)
             for ticker in NFO_INDEX_UNIVERSE:
                 try:
                     df = provider.get_ohlcv_routed(ticker, interval="day", days=180, exchange="NFO")
@@ -1015,6 +1019,29 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                         data_diag["nfo"] += 1
                 except Exception as e:
                     data_diag["errors"].append(f"NFO:{ticker}: {e}")
+
+            # 4b) F&O stocks — same OHLCV as NSE underlying, reuse if already
+            # fetched, otherwise pull via NSE route. Stored under NFO: prefix
+            # so the nfo_stk_* scanners can find them.
+            for stk in NFO_STOCK_UNIVERSE:
+                try:
+                    nse_key = next(
+                        (k for k in nse_data
+                         if k.upper().replace("NSE:", "").replace(".NS", "") == stk),
+                        None,
+                    )
+                    if nse_key is not None:
+                        nfo_data[f"NFO:{stk}"] = nse_data[nse_key]
+                        data_diag["nfo"] += 1
+                        continue
+                    df = provider.get_ohlcv_routed(stk, interval="day", days=180, exchange="NSE")
+                    if df is not None and not df.empty:
+                        if "date" in df.columns:
+                            df = df.set_index("date")
+                        nfo_data[f"NFO:{stk}"] = df
+                        data_diag["nfo"] += 1
+                except Exception as e:
+                    data_diag["errors"].append(f"NFO_STK:{stk}: {e}")
                     logger.warning("NFO fetch failed for %s: %s", ticker, e)
 
         logger.info("Data fetched (routed): NSE=%d, CDS=%d, MCX=%d, NFO=%d (segments=%s)",
@@ -1590,6 +1617,118 @@ async def tool_get_fo_signal():
 
     result = get_fo_signal()
     return {"status": "ok", "tool": "get_fo_signal", **result}
+
+
+# ── F&O Stock Endpoints ───────────────────────────────────────
+
+
+def _get_kite_for_fo():
+    """Helper: return Kite client from data provider, or None if not connected."""
+    try:
+        from mcp_server.data_provider import get_provider
+        provider = get_provider()
+        if hasattr(provider, "kite") and provider.kite:
+            return getattr(provider.kite, "kite", None) or getattr(provider.kite, "client", None)
+    except Exception as e:
+        logger.warning("Failed to get Kite client for F&O: %s", e)
+    return None
+
+
+@app.post("/tools/scan_oi_buildup")
+async def tool_scan_oi_buildup(symbols: str | None = None):
+    """
+    OI buildup scan across F&O indices + stocks.
+
+    symbols: optional comma-separated list (default: all indices + F&O stocks).
+    Returns LONG_BUILDUP / SHORT_BUILDUP / SHORT_COVERING / LONG_UNWINDING per symbol.
+    """
+    from mcp_server.fo_module import scan_oi_buildup
+
+    sym_list = [s.strip().upper() for s in symbols.split(",")] if symbols else None
+    kite = _get_kite_for_fo()
+    result = await asyncio.to_thread(scan_oi_buildup, kite, sym_list)
+    return {"status": "ok", "tool": "scan_oi_buildup", **result}
+
+
+@app.get("/api/fno/oi_buildup")
+async def api_oi_buildup(symbols: str | None = None):
+    """GET variant of OI buildup scan for dashboard consumption."""
+    from mcp_server.fo_module import scan_oi_buildup
+
+    sym_list = [s.strip().upper() for s in symbols.split(",")] if symbols else None
+    kite = _get_kite_for_fo()
+    return await asyncio.to_thread(scan_oi_buildup, kite, sym_list)
+
+
+@app.get("/api/fno/snapshot/{symbol}")
+async def api_fno_snapshot(symbol: str):
+    """Full F&O snapshot for any symbol: futures OI + chain + IV + buildup + expiry."""
+    from mcp_server.fo_module import get_stock_fo_snapshot
+
+    kite = _get_kite_for_fo()
+    return await asyncio.to_thread(get_stock_fo_snapshot, kite, symbol.upper())
+
+
+@app.get("/api/fno/iv_rank/{symbol}")
+async def api_iv_rank(symbol: str):
+    """IV rank + percentile for a symbol (NIFTY, BANKNIFTY, RELIANCE, ...)."""
+    from mcp_server.fo_module import get_iv_rank
+
+    kite = _get_kite_for_fo()
+    return await asyncio.to_thread(get_iv_rank, kite, symbol.upper())
+
+
+@app.get("/api/fno/volatility_setup/{symbol}")
+async def api_volatility_setup(symbol: str):
+    """Detect long/short straddle setup based on IV rank."""
+    from mcp_server.fo_module import detect_volatility_setup
+
+    kite = _get_kite_for_fo()
+    return await asyncio.to_thread(detect_volatility_setup, kite, symbol.upper())
+
+
+@app.get("/api/fno/expiry/{symbol}")
+async def api_fno_expiry(symbol: str):
+    """Check if today is expiry day for a given symbol."""
+    from mcp_server.fo_module import is_expiry_day
+
+    kite = _get_kite_for_fo()
+    return await asyncio.to_thread(is_expiry_day, kite, symbol.upper())
+
+
+@app.get("/api/fno/option_greeks")
+async def api_option_greeks(
+    symbol: str,
+    strike: float,
+    expiry_days: int,
+    market_price: float,
+    spot: float,
+    option_type: str = "CE",
+):
+    """
+    Compute full Greeks (delta/gamma/theta/vega/rho/IV) for a single option.
+
+    Pure-Python Black-Scholes — no Kite needed.
+    """
+    from mcp_server.options_greeks import calculate_iv, calculate_greeks
+
+    iv = calculate_iv(market_price, spot, strike, expiry_days, 0.065, option_type)
+    greeks = calculate_greeks(spot, strike, expiry_days, 0.065, iv if iv > 0 else 0.20, option_type)
+    return {
+        "symbol": symbol,
+        "strike": strike,
+        "expiry_days": expiry_days,
+        "spot": spot,
+        "market_price": market_price,
+        "option_type": option_type,
+        "iv_pct": round(iv * 100, 2),
+        "delta": greeks.delta,
+        "gamma": greeks.gamma,
+        "theta": greeks.theta,
+        "vega": greeks.vega,
+        "rho": greeks.rho,
+        "fair_price": greeks.price,
+    }
 
 
 # ============================================================

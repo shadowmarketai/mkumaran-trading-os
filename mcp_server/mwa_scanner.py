@@ -1001,6 +1001,64 @@ SCANNERS = {
         "pairs_with": ["nfo_ema_crossover_bear", "nfo_vol_squeeze_bear"],
         "status": "ACTIVE",
     },
+
+    # ── F&O Stock scanners (129-136) — RELIANCE, TCS, INFY, HDFCBANK, ... ──
+    "nfo_stk_ema_crossover": {
+        "no": 129, "slug": "python:scan_nfo_stk_ema_crossover",
+        "type": "BULL", "weight": 2.0, "layer": "FnO", "source": "Python",
+        "desc": "F&O stock 9/21 EMA bullish crossover (~190 stocks).",
+        "pairs_with": ["nfo_stk_rsi_oversold", "nfo_stk_vol_squeeze_bull", "nfo_stk_range_breakout_bull"],
+        "status": "ACTIVE",
+    },
+    "nfo_stk_ema_crossover_bear": {
+        "no": 130, "slug": "python:scan_nfo_stk_ema_crossover_bear",
+        "type": "BEAR", "weight": 2.0, "layer": "FnO", "source": "Python",
+        "desc": "F&O stock 9/21 EMA bearish crossover.",
+        "pairs_with": ["nfo_stk_rsi_overbought", "nfo_stk_vol_squeeze_bear", "nfo_stk_range_breakdown_bear"],
+        "status": "ACTIVE",
+    },
+    "nfo_stk_rsi_oversold": {
+        "no": 131, "slug": "python:scan_nfo_stk_rsi_oversold",
+        "type": "BULL", "weight": 1.5, "layer": "FnO", "source": "Python",
+        "desc": "F&O stock RSI(14) < 30 — oversold long entry candidate.",
+        "pairs_with": ["nfo_stk_ema_crossover", "nfo_stk_vol_squeeze_bull"],
+        "status": "ACTIVE",
+    },
+    "nfo_stk_rsi_overbought": {
+        "no": 132, "slug": "python:scan_nfo_stk_rsi_overbought",
+        "type": "BEAR", "weight": 1.5, "layer": "FnO", "source": "Python",
+        "desc": "F&O stock RSI(14) > 70 — overbought short entry candidate.",
+        "pairs_with": ["nfo_stk_ema_crossover_bear", "nfo_stk_vol_squeeze_bear"],
+        "status": "ACTIVE",
+    },
+    "nfo_stk_vol_squeeze_bull": {
+        "no": 133, "slug": "python:scan_nfo_stk_vol_squeeze_bull",
+        "type": "BULL", "weight": 2.0, "layer": "FnO", "source": "Python",
+        "desc": "F&O stock BB squeeze with price ≥ middle band — bullish breakout setup.",
+        "pairs_with": ["nfo_stk_ema_crossover", "nfo_stk_range_breakout_bull"],
+        "status": "ACTIVE",
+    },
+    "nfo_stk_vol_squeeze_bear": {
+        "no": 134, "slug": "python:scan_nfo_stk_vol_squeeze_bear",
+        "type": "BEAR", "weight": 2.0, "layer": "FnO", "source": "Python",
+        "desc": "F&O stock BB squeeze with price < middle band — bearish breakdown setup.",
+        "pairs_with": ["nfo_stk_ema_crossover_bear", "nfo_stk_range_breakdown_bear"],
+        "status": "ACTIVE",
+    },
+    "nfo_stk_range_breakout_bull": {
+        "no": 135, "slug": "python:scan_nfo_stk_range_breakout_bull",
+        "type": "BULL", "weight": 2.5, "layer": "FnO", "source": "Python",
+        "desc": "F&O stock 20-day breakout with volume — high-conviction F&O stock long.",
+        "pairs_with": ["nfo_stk_ema_crossover", "nfo_stk_vol_squeeze_bull"],
+        "status": "ACTIVE",
+    },
+    "nfo_stk_range_breakdown_bear": {
+        "no": 136, "slug": "python:scan_nfo_stk_range_breakdown_bear",
+        "type": "BEAR", "weight": 2.5, "layer": "FnO", "source": "Python",
+        "desc": "F&O stock 20-day breakdown with volume — high-conviction F&O stock short.",
+        "pairs_with": ["nfo_stk_ema_crossover_bear", "nfo_stk_vol_squeeze_bear"],
+        "status": "ACTIVE",
+    },
 }
 
 
@@ -1912,13 +1970,17 @@ class MWAScanner:
         except ImportError:
             logger.warning("commodity_scanners not available — skipping Commodity scanners")
 
-        # F&O (NFO) scanners
+        # F&O (NFO) scanners — indices (121-128) + F&O stocks (129-136)
         try:
             from mcp_server.nfo_scanners import (
                 scan_nfo_ema_crossover, scan_nfo_ema_crossover_bear,
                 scan_nfo_rsi_oversold, scan_nfo_rsi_overbought,
                 scan_nfo_vol_squeeze_bull, scan_nfo_vol_squeeze_bear,
                 scan_nfo_range_breakout_bull, scan_nfo_range_breakdown_bear,
+                scan_nfo_stk_ema_crossover, scan_nfo_stk_ema_crossover_bear,
+                scan_nfo_stk_rsi_oversold, scan_nfo_stk_rsi_overbought,
+                scan_nfo_stk_vol_squeeze_bull, scan_nfo_stk_vol_squeeze_bear,
+                scan_nfo_stk_range_breakout_bull, scan_nfo_stk_range_breakdown_bear,
             )
             if stock_data:
                 nfo_scanners = {
@@ -1930,6 +1992,15 @@ class MWAScanner:
                     "nfo_vol_squeeze_bear": scan_nfo_vol_squeeze_bear,
                     "nfo_range_breakout_bull": scan_nfo_range_breakout_bull,
                     "nfo_range_breakdown_bear": scan_nfo_range_breakdown_bear,
+                    # F&O stock variants (RELIANCE, TCS, HDFCBANK, ...)
+                    "nfo_stk_ema_crossover": scan_nfo_stk_ema_crossover,
+                    "nfo_stk_ema_crossover_bear": scan_nfo_stk_ema_crossover_bear,
+                    "nfo_stk_rsi_oversold": scan_nfo_stk_rsi_oversold,
+                    "nfo_stk_rsi_overbought": scan_nfo_stk_rsi_overbought,
+                    "nfo_stk_vol_squeeze_bull": scan_nfo_stk_vol_squeeze_bull,
+                    "nfo_stk_vol_squeeze_bear": scan_nfo_stk_vol_squeeze_bear,
+                    "nfo_stk_range_breakout_bull": scan_nfo_stk_range_breakout_bull,
+                    "nfo_stk_range_breakdown_bear": scan_nfo_stk_range_breakdown_bear,
                 }
                 for key, scanner_fn in nfo_scanners.items():
                     if not _should_run(key):
@@ -1945,6 +2016,10 @@ class MWAScanner:
                     "nfo_rsi_oversold", "nfo_rsi_overbought",
                     "nfo_vol_squeeze_bull", "nfo_vol_squeeze_bear",
                     "nfo_range_breakout_bull", "nfo_range_breakdown_bear",
+                    "nfo_stk_ema_crossover", "nfo_stk_ema_crossover_bear",
+                    "nfo_stk_rsi_oversold", "nfo_stk_rsi_overbought",
+                    "nfo_stk_vol_squeeze_bull", "nfo_stk_vol_squeeze_bear",
+                    "nfo_stk_range_breakout_bull", "nfo_stk_range_breakdown_bear",
                 ]:
                     results[key] = []
         except ImportError:

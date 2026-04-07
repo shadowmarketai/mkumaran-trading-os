@@ -113,6 +113,51 @@ NFO_INDEX_UNIVERSE: list[str] = [
     "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
 ]
 
+# F&O Stock universe (NSE F&O eligible securities, ~190 names).
+# Sourced from NSE FO_STK_SECURITIES master list. Auto-refreshable via
+# nse_scanner._fetch_fno_stocks_from_nse() with disk fallback.
+NFO_STOCK_UNIVERSE: list[str] = [
+    "AARTIIND", "ABB", "ABBOTINDIA", "ABCAPITAL", "ABFRL", "ACC", "ADANIENSOL",
+    "ADANIENT", "ADANIGREEN", "ADANIPORTS", "ALKEM", "AMBUJACEM", "ANGELONE",
+    "APLAPOLLO", "APOLLOHOSP", "APOLLOTYRE", "ASHOKLEY", "ASIANPAINT", "ASTRAL",
+    "ATUL", "AUBANK", "AUROPHARMA", "AXISBANK", "BAJAJ-AUTO", "BAJAJFINSV",
+    "BAJFINANCE", "BALKRISIND", "BALRAMCHIN", "BANDHANBNK", "BANKBARODA",
+    "BANKINDIA", "BATAINDIA", "BEL", "BERGEPAINT", "BHARATFORG", "BHARTIARTL",
+    "BHEL", "BIOCON", "BOSCHLTD", "BPCL", "BRITANNIA", "BSOFT", "CANBK",
+    "CANFINHOME", "CDSL", "CESC", "CGPOWER", "CHAMBLFERT", "CHOLAFIN", "CIPLA",
+    "COALINDIA", "COFORGE", "COLPAL", "CONCOR", "COROMANDEL", "CROMPTON",
+    "CUB", "CUMMINSIND", "DABUR", "DALBHARAT", "DEEPAKNTR", "DELHIVERY",
+    "DIVISLAB", "DIXON", "DLF", "DRREDDY", "EICHERMOT", "ESCORTS", "EXIDEIND",
+    "FEDERALBNK", "GAIL", "GLENMARK", "GMRAIRPORT", "GNFC", "GODREJCP",
+    "GODREJPROP", "GRANULES", "GRASIM", "GUJGASLTD", "HAL", "HAVELLS",
+    "HCLTECH", "HDFCAMC", "HDFCBANK", "HDFCLIFE", "HEROMOTOCO", "HINDALCO",
+    "HINDCOPPER", "HINDPETRO", "HINDUNILVR", "HUDCO", "ICICIBANK", "ICICIGI",
+    "ICICIPRULI", "IDEA", "IDFCFIRSTB", "IEX", "IGL", "INDHOTEL", "INDIACEM",
+    "INDIAMART", "INDIANB", "INDIGO", "INDUSINDBK", "INDUSTOWER", "INFY",
+    "IOC", "IPCALAB", "IRB", "IRCTC", "IRFC", "ITC", "JINDALSTEL", "JIOFIN",
+    "JKCEMENT", "JSL", "JSWENERGY", "JSWSTEEL", "JUBLFOOD", "KALYANKJIL",
+    "KEI", "KOTAKBANK", "KPITTECH", "LALPATHLAB", "LAURUSLABS", "LICHSGFIN",
+    "LICI", "LODHA", "LT", "LTF", "LTIM", "LTTS", "LUPIN", "M&M", "M&MFIN",
+    "MANAPPURAM", "MARICO", "MARUTI", "MAXHEALTH", "MCX", "METROPOLIS",
+    "MFSL", "MGL", "MOTHERSON", "MPHASIS", "MRF", "MUTHOOTFIN", "NATIONALUM",
+    "NAUKRI", "NAVINFLUOR", "NBCC", "NCC", "NESTLEIND", "NHPC", "NMDC",
+    "NTPC", "NYKAA", "OBEROIRLTY", "OFSS", "OIL", "ONGC", "PAGEIND",
+    "PAYTM", "PEL", "PERSISTENT", "PETRONET", "PFC", "PIDILITIND", "PIIND",
+    "PNB", "POLICYBZR", "POLYCAB", "POONAWALLA", "POWERGRID", "PRESTIGE",
+    "PVRINOX", "RAMCOCEM", "RBLBANK", "RECLTD", "RELIANCE", "SAIL", "SBICARD",
+    "SBILIFE", "SBIN", "SHREECEM", "SHRIRAMFIN", "SIEMENS", "SJVN", "SOLARINDS",
+    "SONACOMS", "SRF", "SUNPHARMA", "SUNTV", "SUPREMEIND", "SYNGENE",
+    "TATACHEM", "TATACOMM", "TATACONSUM", "TATAELXSI", "TATAMOTORS", "TATAPOWER",
+    "TATASTEEL", "TCS", "TECHM", "TIINDIA", "TITAN", "TORNTPHARM", "TORNTPOWER",
+    "TRENT", "TVSMOTOR", "UBL", "ULTRACEMCO", "UNIONBANK", "UNITDSPR", "UPL",
+    "VBL", "VEDL", "VOLTAS", "WIPRO", "YESBANK", "ZOMATO", "ZYDUSLIFE",
+]
+
+# Combined NFO universe (indices + stocks)
+def get_nfo_universe_full() -> list[str]:
+    """Return indices + F&O stocks. Used by stock-level NFO scanners."""
+    return NFO_INDEX_UNIVERSE + NFO_STOCK_UNIVERSE
+
 # yfinance proxy tickers for NFO indices (index spot data)
 NFO_YF_PROXY: dict[str, str] = {
     "NIFTY": "^NSEI",
@@ -175,6 +220,9 @@ def resolve_yf_symbol(ticker: str) -> str | None:
         proxy = NFO_YF_PROXY.get(symbol)
         if proxy:
             return proxy
+        # F&O stocks use the underlying NSE equity ticker for OHLCV
+        if symbol in NFO_STOCK_UNIVERSE:
+            return f"{symbol}.NS"
         return None
 
     logger.warning("Unknown exchange: %s", exchange)
@@ -231,7 +279,8 @@ def get_universe(exchange: str | Exchange = Exchange.NSE) -> list[str]:
         return CDS_UNIVERSE.copy()
 
     if exchange == Exchange.NFO:
-        return NFO_INDEX_UNIVERSE.copy()
+        # Return indices + F&O stocks so NFO scanners cover the full segment
+        return get_nfo_universe_full()
 
     return []
 

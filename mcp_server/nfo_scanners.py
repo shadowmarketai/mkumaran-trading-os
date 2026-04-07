@@ -13,7 +13,7 @@ import logging
 
 import pandas as pd
 
-from mcp_server.asset_registry import NFO_INDEX_UNIVERSE
+from mcp_server.asset_registry import NFO_INDEX_UNIVERSE, NFO_STOCK_UNIVERSE
 from mcp_server.technical_scanners import compute_ema
 
 logger = logging.getLogger(__name__)
@@ -62,12 +62,23 @@ def _get_volume(df: pd.DataFrame) -> pd.Series:
 
 
 def _filter_nfo(stock_data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
-    """Filter stock_data to only NFO universe tickers."""
+    """Filter stock_data to only NFO index tickers (NIFTY, BANKNIFTY, ...)."""
     nfo_set = {t.upper() for t in NFO_INDEX_UNIVERSE}
     filtered: dict[str, pd.DataFrame] = {}
     for ticker, df in stock_data.items():
         clean = ticker.upper().replace("NFO:", "").replace("NSE:", "")
         if clean in nfo_set:
+            filtered[ticker] = df
+    return filtered
+
+
+def _filter_nfo_stocks(stock_data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    """Filter stock_data to only NFO F&O stocks (RELIANCE, TCS, ...)."""
+    nfo_stk_set = {t.upper() for t in NFO_STOCK_UNIVERSE}
+    filtered: dict[str, pd.DataFrame] = {}
+    for ticker, df in stock_data.items():
+        clean = ticker.upper().replace("NFO:", "").replace("NSE:", "").replace(".NS", "")
+        if clean in nfo_stk_set:
             filtered[ticker] = df
     return filtered
 
@@ -278,4 +289,179 @@ def scan_nfo_range_breakdown_bear(stock_data: dict[str, pd.DataFrame]) -> list[s
                 results.append(ticker)
         except Exception as e:
             logger.error("scan_nfo_range_breakdown_bear failed for %s: %s", ticker, e)
+    return results
+
+
+# ═══════════════════════════════════════════════════════════════
+# F&O STOCK Scanners (IDs 129-136)
+# Same technical logic as 121-128, but applied to ~190 F&O stocks
+# (RELIANCE, TCS, INFY, HDFCBANK, etc.) instead of just 4 indices.
+# ═══════════════════════════════════════════════════════════════
+
+
+def scan_nfo_stk_ema_crossover(stock_data: dict[str, pd.DataFrame]) -> list[str]:
+    """F&O stock 9/21 EMA bullish crossover."""
+    results: list[str] = []
+    for ticker, df in _filter_nfo_stocks(stock_data).items():
+        if len(df) < 25:
+            continue
+        try:
+            close = _get_close(df)
+            fast = compute_ema(close, 9)
+            slow = compute_ema(close, 21)
+            if fast.iloc[-1] > slow.iloc[-1] and fast.iloc[-2] <= slow.iloc[-2]:
+                results.append(ticker)
+        except Exception as e:
+            logger.error("scan_nfo_stk_ema_crossover failed for %s: %s", ticker, e)
+    return results
+
+
+def scan_nfo_stk_ema_crossover_bear(stock_data: dict[str, pd.DataFrame]) -> list[str]:
+    """F&O stock 9/21 EMA bearish crossover."""
+    results: list[str] = []
+    for ticker, df in _filter_nfo_stocks(stock_data).items():
+        if len(df) < 25:
+            continue
+        try:
+            close = _get_close(df)
+            fast = compute_ema(close, 9)
+            slow = compute_ema(close, 21)
+            if fast.iloc[-1] < slow.iloc[-1] and fast.iloc[-2] >= slow.iloc[-2]:
+                results.append(ticker)
+        except Exception as e:
+            logger.error("scan_nfo_stk_ema_crossover_bear failed for %s: %s", ticker, e)
+    return results
+
+
+def scan_nfo_stk_rsi_oversold(stock_data: dict[str, pd.DataFrame]) -> list[str]:
+    """F&O stock RSI(14) < 30."""
+    results: list[str] = []
+    for ticker, df in _filter_nfo_stocks(stock_data).items():
+        if len(df) < 20:
+            continue
+        try:
+            rsi = _compute_rsi(_get_close(df), 14)
+            if rsi.iloc[-1] < 30:
+                results.append(ticker)
+        except Exception as e:
+            logger.error("scan_nfo_stk_rsi_oversold failed for %s: %s", ticker, e)
+    return results
+
+
+def scan_nfo_stk_rsi_overbought(stock_data: dict[str, pd.DataFrame]) -> list[str]:
+    """F&O stock RSI(14) > 70."""
+    results: list[str] = []
+    for ticker, df in _filter_nfo_stocks(stock_data).items():
+        if len(df) < 20:
+            continue
+        try:
+            rsi = _compute_rsi(_get_close(df), 14)
+            if rsi.iloc[-1] > 70:
+                results.append(ticker)
+        except Exception as e:
+            logger.error("scan_nfo_stk_rsi_overbought failed for %s: %s", ticker, e)
+    return results
+
+
+def scan_nfo_stk_vol_squeeze_bull(stock_data: dict[str, pd.DataFrame]) -> list[str]:
+    """F&O stock Bollinger squeeze + price ≥ middle band."""
+    results: list[str] = []
+    for ticker, df in _filter_nfo_stocks(stock_data).items():
+        if len(df) < 25:
+            continue
+        try:
+            close = _get_close(df)
+            middle = close.rolling(20).mean()
+            std = close.rolling(20).std()
+            upper = middle + 2 * std
+            lower = middle - 2 * std
+            bandwidth = (upper - lower) / middle.replace(0, float("nan"))
+            bw_min = bandwidth.rolling(20).min()
+            if (
+                pd.notna(bandwidth.iloc[-1])
+                and pd.notna(bw_min.iloc[-1])
+                and bandwidth.iloc[-1] <= bw_min.iloc[-1] * 1.05
+                and close.iloc[-1] >= middle.iloc[-1]
+            ):
+                results.append(ticker)
+        except Exception as e:
+            logger.error("scan_nfo_stk_vol_squeeze_bull failed for %s: %s", ticker, e)
+    return results
+
+
+def scan_nfo_stk_vol_squeeze_bear(stock_data: dict[str, pd.DataFrame]) -> list[str]:
+    """F&O stock Bollinger squeeze + price < middle band."""
+    results: list[str] = []
+    for ticker, df in _filter_nfo_stocks(stock_data).items():
+        if len(df) < 25:
+            continue
+        try:
+            close = _get_close(df)
+            middle = close.rolling(20).mean()
+            std = close.rolling(20).std()
+            upper = middle + 2 * std
+            lower = middle - 2 * std
+            bandwidth = (upper - lower) / middle.replace(0, float("nan"))
+            bw_min = bandwidth.rolling(20).min()
+            if (
+                pd.notna(bandwidth.iloc[-1])
+                and pd.notna(bw_min.iloc[-1])
+                and bandwidth.iloc[-1] <= bw_min.iloc[-1] * 1.05
+                and close.iloc[-1] < middle.iloc[-1]
+            ):
+                results.append(ticker)
+        except Exception as e:
+            logger.error("scan_nfo_stk_vol_squeeze_bear failed for %s: %s", ticker, e)
+    return results
+
+
+def scan_nfo_stk_range_breakout_bull(stock_data: dict[str, pd.DataFrame]) -> list[str]:
+    """F&O stock 20-day breakout + above-average volume."""
+    results: list[str] = []
+    for ticker, df in _filter_nfo_stocks(stock_data).items():
+        if len(df) < 25:
+            continue
+        try:
+            close = _get_close(df)
+            high = _get_high(df)
+            volume = _get_volume(df)
+            prev_high_20 = high.iloc[-21:-1].max()
+            current_close = close.iloc[-1]
+            vol_avg = volume.rolling(20).mean().iloc[-1]
+            current_vol = volume.iloc[-1]
+            if (
+                pd.notna(prev_high_20)
+                and current_close > prev_high_20
+                and pd.notna(vol_avg)
+                and current_vol > vol_avg
+            ):
+                results.append(ticker)
+        except Exception as e:
+            logger.error("scan_nfo_stk_range_breakout_bull failed for %s: %s", ticker, e)
+    return results
+
+
+def scan_nfo_stk_range_breakdown_bear(stock_data: dict[str, pd.DataFrame]) -> list[str]:
+    """F&O stock 20-day breakdown + above-average volume."""
+    results: list[str] = []
+    for ticker, df in _filter_nfo_stocks(stock_data).items():
+        if len(df) < 25:
+            continue
+        try:
+            close = _get_close(df)
+            low = _get_low(df)
+            volume = _get_volume(df)
+            prev_low_20 = low.iloc[-21:-1].min()
+            current_close = close.iloc[-1]
+            vol_avg = volume.rolling(20).mean().iloc[-1]
+            current_vol = volume.iloc[-1]
+            if (
+                pd.notna(prev_low_20)
+                and current_close < prev_low_20
+                and pd.notna(vol_avg)
+                and current_vol > vol_avg
+            ):
+                results.append(ticker)
+        except Exception as e:
+            logger.error("scan_nfo_stk_range_breakdown_bear failed for %s: %s", ticker, e)
     return results

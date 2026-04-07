@@ -9,11 +9,17 @@ Fixes over v1:
 - Multi-expiry support
 """
 
+import json
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+from pathlib import Path
 
 import pandas as pd
 from mcp_server.technical_scanners import compute_ema, detect_ema_crossover
+
+# OI snapshot cache for buildup classification (delta vs prior day)
+_OI_SNAPSHOT_PATH = Path("data/fo_oi_snapshots.json")
+_IV_HISTORY_PATH = Path("data/iv_history.json")
 
 logger = logging.getLogger(__name__)
 
@@ -407,3 +413,509 @@ def get_fo_signal(
         "available_components": total,
         "data_quality": data_quality,
     }
+
+
+# ═══════════════════════════════════════════════════════════════
+# OI Buildup Classification (Long/Short Buildup, Covering, Unwinding)
+# ═══════════════════════════════════════════════════════════════
+
+
+def classify_oi_buildup(price_change_pct: float, oi_change_pct: float) -> dict:
+    """
+    Classify futures OI behaviour into one of 4 buckets.
+
+    | Price | OI    | Classification    | Bias              |
+    |-------|-------|-------------------|-------------------|
+    | UP    | UP    | LONG_BUILDUP      | BULLISH (strong)  |
+    | DOWN  | UP    | SHORT_BUILDUP     | BEARISH (strong)  |
+    | UP    | DOWN  | SHORT_COVERING    | BULLISH (weak)    |
+    | DOWN  | DOWN  | LONG_UNWINDING    | BEARISH (weak)    |
+    """
+    threshold = 0.1  # noise filter — ignore moves under 0.1%
+    if abs(price_change_pct) < threshold and abs(oi_change_pct) < threshold:
+        return {
+            "classification": "FLAT",
+            "bias": "NEUTRAL",
+            "strength": "NONE",
+            "price_change_pct": round(price_change_pct, 2),
+            "oi_change_pct": round(oi_change_pct, 2),
+        }
+
+    price_up = price_change_pct > 0
+    oi_up = oi_change_pct > 0
+
+    if price_up and oi_up:
+        cls, bias, strength = "LONG_BUILDUP", "BULLISH", "STRONG"
+    elif (not price_up) and oi_up:
+        cls, bias, strength = "SHORT_BUILDUP", "BEARISH", "STRONG"
+    elif price_up and (not oi_up):
+        cls, bias, strength = "SHORT_COVERING", "BULLISH", "WEAK"
+    else:
+        cls, bias, strength = "LONG_UNWINDING", "BEARISH", "WEAK"
+
+    return {
+        "classification": cls,
+        "bias": bias,
+        "strength": strength,
+        "price_change_pct": round(price_change_pct, 2),
+        "oi_change_pct": round(oi_change_pct, 2),
+    }
+
+
+def _load_oi_snapshots() -> dict:
+    """Load yesterday's OI snapshots from disk."""
+    try:
+        if _OI_SNAPSHOT_PATH.exists():
+            return json.loads(_OI_SNAPSHOT_PATH.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Failed to load OI snapshots: %s", e)
+    return {}
+
+
+def _save_oi_snapshots(snapshots: dict) -> None:
+    """Persist today's OI snapshots."""
+    try:
+        _OI_SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _OI_SNAPSHOT_PATH.write_text(json.dumps(snapshots, indent=2, default=str))
+    except OSError as e:
+        logger.error("Failed to save OI snapshots: %s", e)
+
+
+def get_futures_oi(kite, symbol: str) -> dict:
+    """
+    Fetch current futures OI for a symbol (NIFTY, BANKNIFTY, RELIANCE, etc.).
+
+    Returns: {oi, ltp, volume, expiry, status}
+    """
+    if kite is None:
+        return {"symbol": symbol, "oi": 0, "ltp": 0,
+                "status": STATUS_NO_KITE, "message": "Kite not connected"}
+    try:
+        instruments = _get_kite_instruments(kite, "NFO")
+        if not instruments:
+            return {"symbol": symbol, "status": STATUS_ERROR,
+                    "message": "Failed to fetch NFO instruments"}
+
+        futs = [
+            inst for inst in instruments
+            if inst.get("name") == symbol
+            and inst.get("instrument_type") == "FUT"
+        ]
+        if not futs:
+            return {"symbol": symbol, "status": STATUS_ERROR,
+                    "message": f"No futures contract for {symbol}"}
+
+        today = date.today()
+        nearest = min(
+            futs,
+            key=lambda f: (
+                f["expiry"].date() if isinstance(f["expiry"], datetime) else f["expiry"]
+            ) if (
+                f["expiry"].date() if isinstance(f["expiry"], datetime) else f["expiry"]
+            ) >= today else date.max,
+        )
+
+        symbol_key = f"NFO:{nearest['tradingsymbol']}"
+        quotes = kite.quote([symbol_key])
+        q = quotes.get(symbol_key, {})
+
+        return {
+            "symbol": symbol,
+            "tradingsymbol": nearest["tradingsymbol"],
+            "expiry": str(nearest["expiry"]),
+            "oi": q.get("oi", 0),
+            "ltp": q.get("last_price", 0),
+            "volume": q.get("volume", 0),
+            "lot_size": nearest.get("lot_size", 0),
+            "status": STATUS_LIVE,
+        }
+    except Exception as e:
+        logger.error("Futures OI fetch failed for %s: %s", symbol, e)
+        return {"symbol": symbol, "status": STATUS_ERROR, "message": str(e)}
+
+
+def scan_oi_buildup(kite, symbols: list[str] | None = None) -> dict:
+    """
+    Scan multiple F&O symbols for OI buildup classification.
+
+    Compares today's OI vs cached prior-day snapshot and classifies each.
+    Auto-saves today's snapshot for tomorrow's comparison.
+
+    Returns: {classifications: {symbol: {...}}, summary: {...}}
+    """
+    from mcp_server.asset_registry import NFO_INDEX_UNIVERSE, NFO_STOCK_UNIVERSE
+    if symbols is None:
+        symbols = NFO_INDEX_UNIVERSE + NFO_STOCK_UNIVERSE
+
+    if kite is None:
+        return {
+            "status": STATUS_NO_KITE,
+            "message": "Kite not connected",
+            "classifications": {},
+            "summary": {},
+        }
+
+    prior = _load_oi_snapshots()
+    today = str(date.today())
+    today_snapshots: dict = {}
+    classifications: dict = {}
+
+    long_buildup = short_buildup = short_covering = long_unwinding = 0
+
+    for symbol in symbols:
+        try:
+            cur = get_futures_oi(kite, symbol)
+            if cur.get("status") != STATUS_LIVE:
+                continue
+
+            today_snapshots[symbol] = {
+                "oi": cur["oi"], "ltp": cur["ltp"], "date": today,
+            }
+
+            prior_data = prior.get(symbol)
+            if not prior_data or prior_data.get("date") == today:
+                # No prior snapshot or already today — can't classify
+                classifications[symbol] = {
+                    "classification": "NEEDS_BASELINE",
+                    "bias": "NEUTRAL",
+                    "current_oi": cur["oi"],
+                    "current_ltp": cur["ltp"],
+                }
+                continue
+
+            prior_oi = prior_data.get("oi", 0)
+            prior_ltp = prior_data.get("ltp", 0)
+            if prior_oi == 0 or prior_ltp == 0:
+                continue
+
+            price_change = ((cur["ltp"] - prior_ltp) / prior_ltp) * 100
+            oi_change = ((cur["oi"] - prior_oi) / prior_oi) * 100
+
+            cls = classify_oi_buildup(price_change, oi_change)
+            cls["current_oi"] = cur["oi"]
+            cls["current_ltp"] = cur["ltp"]
+            cls["prior_oi"] = prior_oi
+            cls["prior_ltp"] = prior_ltp
+            classifications[symbol] = cls
+
+            if cls["classification"] == "LONG_BUILDUP":
+                long_buildup += 1
+            elif cls["classification"] == "SHORT_BUILDUP":
+                short_buildup += 1
+            elif cls["classification"] == "SHORT_COVERING":
+                short_covering += 1
+            elif cls["classification"] == "LONG_UNWINDING":
+                long_unwinding += 1
+        except Exception as e:
+            logger.error("OI buildup scan failed for %s: %s", symbol, e)
+
+    # Save today's snapshots for tomorrow
+    if today_snapshots:
+        _save_oi_snapshots(today_snapshots)
+
+    summary = {
+        "total_scanned": len(classifications),
+        "long_buildup": long_buildup,
+        "short_buildup": short_buildup,
+        "short_covering": short_covering,
+        "long_unwinding": long_unwinding,
+        "net_bullish": long_buildup + short_covering,
+        "net_bearish": short_buildup + long_unwinding,
+    }
+
+    return {
+        "status": STATUS_LIVE,
+        "classifications": classifications,
+        "summary": summary,
+        "snapshot_date": today,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IV Rank / Percentile + Volatility Setup Detection
+# ═══════════════════════════════════════════════════════════════
+
+
+def _load_iv_history() -> dict:
+    """Load historical IV data: {symbol: [{date, iv}, ...]}."""
+    try:
+        if _IV_HISTORY_PATH.exists():
+            return json.loads(_IV_HISTORY_PATH.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Failed to load IV history: %s", e)
+    return {}
+
+
+def _save_iv_history(history: dict) -> None:
+    """Persist IV history (auto-prune to last 90 days)."""
+    try:
+        cutoff = (date.today() - timedelta(days=90)).isoformat()
+        pruned = {
+            sym: [e for e in entries if e.get("date", "") >= cutoff]
+            for sym, entries in history.items()
+        }
+        _IV_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _IV_HISTORY_PATH.write_text(json.dumps(pruned, indent=2))
+    except OSError as e:
+        logger.error("Failed to save IV history: %s", e)
+
+
+def get_atm_iv(kite, symbol: str = "NIFTY") -> dict:
+    """
+    Get current ATM (at-the-money) implied volatility.
+
+    Computes IV from option chain via Newton-Raphson Black-Scholes solver.
+    """
+    if kite is None:
+        return {"symbol": symbol, "iv": 0,
+                "status": STATUS_NO_KITE, "message": "Kite not connected"}
+    try:
+        from mcp_server.options_greeks import calculate_iv
+
+        instruments = _get_kite_instruments(kite, "NFO")
+        if not instruments:
+            return {"symbol": symbol, "status": STATUS_ERROR}
+
+        expiry = _find_current_expiry(instruments, symbol)
+        if not expiry:
+            return {"symbol": symbol, "status": STATUS_ERROR}
+
+        chain = _get_option_chain(kite, instruments, symbol, expiry)
+        if not chain:
+            return {"symbol": symbol, "status": STATUS_ERROR}
+
+        # Find spot via max-OI strike (ATM proxy)
+        strikes = sorted(chain.keys())
+        max_oi_strike = max(
+            strikes,
+            key=lambda s: chain[s].get("CE", {}).get("oi", 0) + chain[s].get("PE", {}).get("oi", 0),
+        )
+        spot = max_oi_strike
+
+        ce = chain[max_oi_strike].get("CE", {})
+        pe = chain[max_oi_strike].get("PE", {})
+        ce_ltp = ce.get("ltp", 0)
+        pe_ltp = pe.get("ltp", 0)
+
+        days_to_expiry = max((expiry - date.today()).days, 1)
+
+        ce_iv = calculate_iv(ce_ltp, spot, max_oi_strike, days_to_expiry, 0.065, "CE") if ce_ltp > 0 else 0
+        pe_iv = calculate_iv(pe_ltp, spot, max_oi_strike, days_to_expiry, 0.065, "PE") if pe_ltp > 0 else 0
+        atm_iv = (ce_iv + pe_iv) / 2 if (ce_iv > 0 and pe_iv > 0) else max(ce_iv, pe_iv)
+
+        return {
+            "symbol": symbol,
+            "atm_strike": max_oi_strike,
+            "spot": spot,
+            "ce_iv": round(ce_iv * 100, 2),
+            "pe_iv": round(pe_iv * 100, 2),
+            "atm_iv": round(atm_iv * 100, 2),
+            "expiry": str(expiry),
+            "days_to_expiry": days_to_expiry,
+            "status": STATUS_LIVE,
+        }
+    except Exception as e:
+        logger.error("ATM IV fetch failed for %s: %s", symbol, e)
+        return {"symbol": symbol, "status": STATUS_ERROR, "message": str(e)}
+
+
+def get_iv_rank(kite, symbol: str = "NIFTY") -> dict:
+    """
+    Calculate IV rank and percentile from historical IV.
+
+    IV Rank   = (current - low) / (high - low) * 100  (range-based)
+    IV Pctile = % of days IV was below current        (frequency-based)
+
+    Auto-records today's IV into history for future calls.
+    """
+    iv_data = get_atm_iv(kite, symbol)
+    if iv_data.get("status") != STATUS_LIVE:
+        return {"symbol": symbol, "iv_rank": 0, "iv_percentile": 0,
+                "status": iv_data.get("status", STATUS_ERROR),
+                "message": iv_data.get("message", "IV unavailable")}
+
+    current_iv = iv_data["atm_iv"]
+    today = str(date.today())
+
+    history = _load_iv_history()
+    sym_history = history.get(symbol, [])
+
+    # Record today's IV (if not already there)
+    if not sym_history or sym_history[-1].get("date") != today:
+        sym_history.append({"date": today, "iv": current_iv})
+        history[symbol] = sym_history
+        _save_iv_history(history)
+
+    # Need at least 20 data points for meaningful rank
+    ivs = [e["iv"] for e in sym_history if e.get("iv", 0) > 0]
+    if len(ivs) < 20:
+        return {
+            "symbol": symbol,
+            "current_iv": current_iv,
+            "iv_rank": 0,
+            "iv_percentile": 0,
+            "history_days": len(ivs),
+            "status": "BUILDING_HISTORY",
+            "message": f"Need 20+ days, have {len(ivs)}",
+        }
+
+    iv_min = min(ivs)
+    iv_max = max(ivs)
+    iv_rank = ((current_iv - iv_min) / (iv_max - iv_min) * 100) if iv_max > iv_min else 0
+    iv_percentile = (sum(1 for v in ivs if v < current_iv) / len(ivs)) * 100
+
+    return {
+        "symbol": symbol,
+        "current_iv": current_iv,
+        "iv_rank": round(iv_rank, 1),
+        "iv_percentile": round(iv_percentile, 1),
+        "iv_min_60d": round(iv_min, 2),
+        "iv_max_60d": round(iv_max, 2),
+        "history_days": len(ivs),
+        "atm_strike": iv_data["atm_strike"],
+        "status": STATUS_LIVE,
+    }
+
+
+def detect_volatility_setup(kite, symbol: str = "NIFTY") -> dict:
+    """
+    Detect ATM straddle/strangle volatility setups based on IV rank.
+
+    Strategy logic:
+    - IV rank < 20  → LONG_STRADDLE (cheap volatility, expecting expansion)
+    - IV rank > 80  → SHORT_STRADDLE (expensive vol, expecting mean revert)
+    - 20-80         → NO_SETUP (neutral)
+    """
+    iv_data = get_iv_rank(kite, symbol)
+    if iv_data.get("status") != STATUS_LIVE:
+        return {
+            "symbol": symbol,
+            "setup": "UNAVAILABLE",
+            "status": iv_data.get("status", STATUS_ERROR),
+            "message": iv_data.get("message", "IV data unavailable"),
+        }
+
+    iv_rank = iv_data["iv_rank"]
+    atm = iv_data["atm_strike"]
+
+    if iv_rank < 20:
+        setup = "LONG_STRADDLE"
+        bias = "LONG_VOLATILITY"
+        rationale = f"IV rank {iv_rank}% — cheap volatility, buy ATM straddle"
+    elif iv_rank > 80:
+        setup = "SHORT_STRADDLE"
+        bias = "SHORT_VOLATILITY"
+        rationale = f"IV rank {iv_rank}% — expensive vol, sell ATM straddle/iron condor"
+    else:
+        setup = "NO_SETUP"
+        bias = "NEUTRAL"
+        rationale = f"IV rank {iv_rank}% — middle range, no edge"
+
+    return {
+        "symbol": symbol,
+        "setup": setup,
+        "bias": bias,
+        "rationale": rationale,
+        "iv_rank": iv_rank,
+        "iv_percentile": iv_data["iv_percentile"],
+        "current_iv": iv_data["current_iv"],
+        "atm_strike": atm,
+        "status": STATUS_LIVE,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# Expiry-Day Awareness
+# ═══════════════════════════════════════════════════════════════
+
+
+def is_expiry_day(kite=None, symbol: str = "NIFTY") -> dict:
+    """
+    Check if today is the weekly/monthly expiry day for a given symbol.
+
+    NIFTY weekly: Thursday | BANKNIFTY: Wednesday | FINNIFTY: Tuesday
+    Falls back to Thursday for any unknown symbol.
+    """
+    today = date.today()
+    weekday = today.weekday()  # Mon=0, Sun=6
+
+    # Hardcoded expiry weekdays per symbol (NSE current schedule)
+    expiry_weekday_map = {
+        "NIFTY": 3,        # Thursday
+        "BANKNIFTY": 2,    # Wednesday
+        "FINNIFTY": 1,     # Tuesday
+        "MIDCPNIFTY": 0,   # Monday
+    }
+    expected = expiry_weekday_map.get(symbol.upper(), 3)
+    is_expiry = weekday == expected
+
+    # Try live verification via Kite if available
+    actual_expiry = None
+    if kite is not None:
+        try:
+            instruments = _get_kite_instruments(kite, "NFO")
+            actual_expiry = _find_current_expiry(instruments, symbol)
+        except Exception as e:
+            logger.debug("Live expiry check failed: %s", e)
+
+    return {
+        "symbol": symbol,
+        "today": str(today),
+        "weekday": today.strftime("%A"),
+        "is_expiry_day": is_expiry,
+        "next_expiry": str(actual_expiry) if actual_expiry else None,
+        "trading_advice": (
+            "EXPIRY DAY — avoid fresh entries, manage open positions only"
+            if is_expiry else "Normal trading day"
+        ),
+    }
+
+
+def get_stock_fo_snapshot(kite, symbol: str) -> dict:
+    """
+    One-shot F&O snapshot for any symbol (index or stock).
+
+    Combines: futures OI + option chain OI/PCR + IV rank + buildup classification.
+    """
+    snapshot = {
+        "symbol": symbol,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    # Futures OI
+    try:
+        snapshot["futures"] = get_futures_oi(kite, symbol)
+    except Exception as e:
+        snapshot["futures"] = {"status": STATUS_ERROR, "message": str(e)}
+
+    # Option chain OI
+    try:
+        snapshot["oi"] = get_oi_change(kite, symbol)
+    except Exception as e:
+        snapshot["oi"] = {"status": STATUS_ERROR, "message": str(e)}
+
+    # PCR
+    try:
+        snapshot["pcr"] = get_pcr(kite, symbol)
+    except Exception as e:
+        snapshot["pcr"] = {"status": STATUS_ERROR, "message": str(e)}
+
+    # IV rank
+    try:
+        snapshot["iv_rank"] = get_iv_rank(kite, symbol)
+    except Exception as e:
+        snapshot["iv_rank"] = {"status": STATUS_ERROR, "message": str(e)}
+
+    # Volatility setup
+    try:
+        snapshot["volatility_setup"] = detect_volatility_setup(kite, symbol)
+    except Exception as e:
+        snapshot["volatility_setup"] = {"status": STATUS_ERROR, "message": str(e)}
+
+    # Expiry day check
+    try:
+        snapshot["expiry"] = is_expiry_day(kite, symbol)
+    except Exception as e:
+        snapshot["expiry"] = {"status": STATUS_ERROR, "message": str(e)}
+
+    return snapshot
