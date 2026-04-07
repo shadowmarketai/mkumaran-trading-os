@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   TrendingUp,
@@ -18,6 +19,14 @@ import { cn } from '../lib/utils';
 import { useTrades } from '../hooks/useTrades';
 import type { ActiveTrade } from '../types';
 
+const SEGMENT_TABS = [
+  { key: 'ALL', label: 'All' },
+  { key: 'NSE', label: 'NSE' },
+  { key: 'NFO', label: 'F&O' },
+  { key: 'MCX', label: 'MCX' },
+  { key: 'CDS', label: 'CDS' },
+] as const;
+
 function getProgressValues(trade: ActiveTrade): { current: number; min: number; max: number } {
   if (trade.direction === 'LONG' || trade.direction === 'BUY') {
     return { current: trade.current_price, min: trade.stop_loss, max: trade.target };
@@ -27,6 +36,21 @@ function getProgressValues(trade: ActiveTrade): { current: number; min: number; 
 
 export default function ActiveTradesPage() {
   const { trades, loading, error } = useTrades();
+  const [activeSegment, setActiveSegment] = useState<string>('ALL');
+
+  const filteredTrades = useMemo(() => {
+    if (activeSegment === 'ALL') return trades;
+    return trades.filter((t) => (t.exchange || 'NSE') === activeSegment);
+  }, [trades, activeSegment]);
+
+  const segmentCounts = useMemo(() => {
+    const counts: Record<string, number> = { ALL: trades.length };
+    for (const t of trades) {
+      const ex = t.exchange || 'NSE';
+      counts[ex] = (counts[ex] || 0) + 1;
+    }
+    return counts;
+  }, [trades]);
 
   if (loading) {
     return (
@@ -63,9 +87,9 @@ export default function ActiveTradesPage() {
     );
   }
 
-  const totalPositions = trades.length;
-  const avgRRR = trades.reduce((sum, t) => sum + t.prrr, 0) / totalPositions;
-  const totalPnlPct = trades.reduce((sum, t) => sum + t.pnl_pct, 0);
+  const totalPositions = filteredTrades.length;
+  const avgRRR = totalPositions > 0 ? filteredTrades.reduce((sum, t) => sum + t.prrr, 0) / totalPositions : 0;
+  const totalPnlPct = filteredTrades.reduce((sum, t) => sum + t.pnl_pct, 0);
 
   return (
     <motion.div
@@ -74,6 +98,36 @@ export default function ActiveTradesPage() {
       transition={{ duration: 0.4 }}
       className="space-y-6"
     >
+      {/* Segment Filter Tabs */}
+      <div className="flex items-center gap-2">
+        {SEGMENT_TABS.map(({ key, label }) => {
+          const count = segmentCounts[key] || 0;
+          const isActive = activeSegment === key;
+          return (
+            <button
+              key={key}
+              onClick={() => setActiveSegment(key)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                isActive
+                  ? 'bg-trading-ai/20 text-trading-ai-light border border-trading-ai/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              )}
+            >
+              {label}
+              {count > 0 && (
+                <span className={cn(
+                  'text-[10px] font-mono px-1.5 py-0.5 rounded-full',
+                  isActive ? 'bg-trading-ai/30 text-trading-ai-light' : 'bg-slate-700 text-slate-500'
+                )}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <MetricCard
@@ -118,7 +172,7 @@ export default function ActiveTradesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-trading-border/50">
-              {trades.map((trade, idx) => {
+              {filteredTrades.map((trade, idx) => {
                 const isProfit = trade.pnl_pct >= 0;
                 const progressValues = getProgressValues(trade);
 
