@@ -2605,17 +2605,24 @@ async def tool_connect_kite():
     if manager.kite is not None:
         return {"kite_connected": True, "message": "Already connected"}
 
-    try:
+    def _do_connect():
         from mcp_server.kite_auth import get_authenticated_kite
-        kite = get_authenticated_kite()
-        manager.kite = kite
-        # Update capital from Kite margins
+        kite = get_authenticated_kite()  # blocking TOTP login flow
+        capital = None
         try:
             margins = kite.margins("equity")
             if margins and "available" in margins:
-                manager.capital = float(margins["available"].get("live_balance", 100000))
+                capital = float(margins["available"].get("live_balance", 100000))
         except Exception:
-            pass  # Keep default capital
+            pass
+        return kite, capital
+
+    try:
+        # TOTP login + margins fetch are blocking I/O — run in worker thread
+        kite, capital = await asyncio.to_thread(_do_connect)
+        manager.kite = kite
+        if capital is not None:
+            manager.capital = capital
         return {
             "kite_connected": True,
             "message": "Kite connected successfully",
@@ -2634,7 +2641,8 @@ async def tool_refresh_kite_token():
     """Refresh Kite access token via TOTP login (standalone, no order manager needed)."""
     try:
         from mcp_server.kite_auth import refresh_kite_token
-        access_token = refresh_kite_token()
+        # TOTP login is blocking I/O — run in worker thread
+        access_token = await asyncio.to_thread(refresh_kite_token)
         return {
             "success": True,
             "message": "Kite token refreshed",
@@ -2660,9 +2668,9 @@ async def tool_connect_angel():
     if manager.broker is not None:
         return {"angel_connected": True, "message": "Already connected"}
 
-    try:
+    def _do_connect():
         from mcp_server.angel_auth import get_authenticated_angel
-        client = get_authenticated_angel()
+        client = get_authenticated_angel()  # blocking TOTP login
 
         # Wrap in AngelSource so OrderManager gets .place_order / .cancel_order
         from mcp_server.data_provider import AngelSource
@@ -2670,17 +2678,24 @@ async def tool_connect_angel():
         angel.client = client
         angel.logged_in = True
 
-        manager.broker = angel
-
-        # Update capital from Angel RMS margins
+        # Fetch RMS margins (also blocking HTTP)
+        capital = None
         try:
             rms = client.rms()
             if rms and rms.get("data"):
                 net = rms["data"].get("net", rms["data"].get("availablecash", 0))
                 if net:
-                    manager.capital = float(net)
+                    capital = float(net)
         except Exception:
-            pass  # Keep default capital
+            pass
+        return angel, capital
+
+    try:
+        # TOTP login + RMS fetch are blocking I/O — run in worker thread
+        angel, capital = await asyncio.to_thread(_do_connect)
+        manager.broker = angel
+        if capital is not None:
+            manager.capital = capital
 
         return {
             "angel_connected": True,
@@ -2700,7 +2715,8 @@ async def tool_refresh_angel_token():
     """Refresh Angel access token via TOTP login (standalone)."""
     try:
         from mcp_server.angel_auth import refresh_angel_token
-        refresh_angel_token()
+        # TOTP login is blocking I/O — run in worker thread
+        await asyncio.to_thread(refresh_angel_token)
         return {
             "success": True,
             "message": "Angel token refreshed",
@@ -2725,31 +2741,31 @@ async def tool_angel_status():
             "message": "Angel not connected — call /tools/connect_angel first",
         }
 
-    result = {"logged_in": True}
+    def _fetch_status():
+        result = {"logged_in": True}
+        try:
+            positions = angel.get_positions()
+            pos_data = positions.get("data", []) if isinstance(positions, dict) else []
+            result["positions_count"] = len(pos_data) if pos_data else 0
+        except Exception:
+            result["positions_count"] = 0
+        try:
+            holdings = angel.get_holdings()
+            hold_data = holdings.get("data", []) if isinstance(holdings, dict) else []
+            result["holdings_count"] = len(hold_data) if hold_data else 0
+        except Exception:
+            result["holdings_count"] = 0
+        try:
+            balance = angel.get_balance()
+            if balance and balance.get("data"):
+                result["available_cash"] = balance["data"].get("availablecash", "N/A")
+                result["net"] = balance["data"].get("net", "N/A")
+        except Exception:
+            pass
+        return result
 
-    try:
-        positions = angel.get_positions()
-        pos_data = positions.get("data", []) if isinstance(positions, dict) else []
-        result["positions_count"] = len(pos_data) if pos_data else 0
-    except Exception:
-        result["positions_count"] = 0
-
-    try:
-        holdings = angel.get_holdings()
-        hold_data = holdings.get("data", []) if isinstance(holdings, dict) else []
-        result["holdings_count"] = len(hold_data) if hold_data else 0
-    except Exception:
-        result["holdings_count"] = 0
-
-    try:
-        balance = angel.get_balance()
-        if balance and balance.get("data"):
-            result["available_cash"] = balance["data"].get("availablecash", "N/A")
-            result["net"] = balance["data"].get("net", "N/A")
-    except Exception:
-        pass
-
-    return result
+    # 3 sequential SmartAPI HTTP calls — run in worker thread
+    return await asyncio.to_thread(_fetch_status)
 
 
 # ============================================================
@@ -2766,7 +2782,8 @@ async def api_kite_callback(request_token: str = Query(...)):
     """
     try:
         from mcp_server.kite_auth import handle_kite_callback
-        access_token = handle_kite_callback(request_token)
+        # generate_session is blocking HTTP — run in worker thread
+        access_token = await asyncio.to_thread(handle_kite_callback, request_token)
 
         # Connect order manager to the fresh Kite instance
         try:
@@ -2789,7 +2806,6 @@ async def api_kite_callback(request_token: str = Query(...)):
         # Send Telegram confirmation
         try:
             from mcp_server.telegram_bot import send_telegram_message
-            import asyncio
             asyncio.ensure_future(send_telegram_message(
                 "\u2705 Kite Login Successful\n"
                 f"Token cached at {_now_ist().strftime('%H:%M IST')}",
@@ -2853,17 +2869,20 @@ async def api_gwc_callback(request_token: str = Query(...)):
         raw = api_key + request_token + api_secret
         signature = hashlib.sha256(raw.encode()).hexdigest()
 
-        # Exchange request_token for access_token
-        resp = requests.post(
-            "https://api.gwcindia.in/v1/login-response",
-            json={
-                "api_key": api_key,
-                "request_token": request_token,
-                "signature": signature,
-            },
-            headers={"x-api-key": api_key},
-            timeout=15,
-        )
+        # Exchange request_token for access_token (blocking HTTP — run in thread)
+        def _gwc_token_exchange():
+            return requests.post(
+                "https://api.gwcindia.in/v1/login-response",
+                json={
+                    "api_key": api_key,
+                    "request_token": request_token,
+                    "signature": signature,
+                },
+                headers={"x-api-key": api_key},
+                timeout=15,
+            )
+
+        resp = await asyncio.to_thread(_gwc_token_exchange)
         data = resp.json()
         if data.get("status") != "success":
             raise ValueError(f"GWC login-response failed: {data.get('error_msg', data)}")
@@ -2879,7 +2898,6 @@ async def api_gwc_callback(request_token: str = Query(...)):
         # Send Telegram confirmation
         try:
             from mcp_server.telegram_bot import send_telegram_message
-            import asyncio
             asyncio.ensure_future(send_telegram_message(
                 "\u2705 GWC Login Successful\n"
                 f"Token set at {_now_ist().strftime('%H:%M IST')}\n"
