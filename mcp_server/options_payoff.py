@@ -259,3 +259,316 @@ def butterfly_spread(
         OptionLeg(strike=middle_strike, premium=middle_premium, qty=qty * 2, option_type="CE", action="SELL"),
         OptionLeg(strike=upper_strike, premium=upper_premium, qty=qty, option_type="CE", action="BUY"),
     ]
+
+
+# ── Advanced Strategy Presets ───────────────────────────────────
+
+
+def short_straddle(
+    strike: float,
+    call_premium: float,
+    put_premium: float,
+    qty: int = 1,
+) -> list[OptionLeg]:
+    """
+    Short Straddle: Sell call + sell put at same strike.
+
+    Profile  : Limited profit (net credit), unlimited loss
+    Bias     : Neutral, expect spot to stay near strike
+    Best when: IV rank > 80 (vol crush play)
+    Greeks   : Negative gamma, positive theta, negative vega
+    Risk     : UNLIMITED on both sides — use only with margin + stop loss
+    """
+    return [
+        OptionLeg(strike=strike, premium=call_premium, qty=qty, option_type="CE", action="SELL"),
+        OptionLeg(strike=strike, premium=put_premium, qty=qty, option_type="PE", action="SELL"),
+    ]
+
+
+def short_strangle(
+    call_strike: float,
+    put_strike: float,
+    call_premium: float,
+    put_premium: float,
+    qty: int = 1,
+) -> list[OptionLeg]:
+    """
+    Short Strangle: Sell OTM call + sell OTM put.
+
+    Profile  : Wider profit zone than short straddle, smaller credit
+    Bias     : Neutral, range-bound expectation
+    Best when: IV rank > 70, expecting consolidation
+    Risk     : UNLIMITED — typically used with delta-hedging or stop loss
+    """
+    return [
+        OptionLeg(strike=call_strike, premium=call_premium, qty=qty, option_type="CE", action="SELL"),
+        OptionLeg(strike=put_strike, premium=put_premium, qty=qty, option_type="PE", action="SELL"),
+    ]
+
+
+def bull_put_spread(
+    sell_strike: float,
+    buy_strike: float,
+    sell_premium: float,
+    buy_premium: float,
+    qty: int = 1,
+) -> list[OptionLeg]:
+    """
+    Bull Put Spread (credit spread): Sell higher PE + buy lower PE.
+
+    Profile  : Net credit, capped profit (the credit), capped loss
+    Bias     : Bullish to neutral
+    Best when: You expect spot to stay above sell_strike at expiry
+    Max profit: net credit received
+    Max loss : (sell_strike - buy_strike) - net_credit
+    """
+    return [
+        OptionLeg(strike=sell_strike, premium=sell_premium, qty=qty, option_type="PE", action="SELL"),
+        OptionLeg(strike=buy_strike, premium=buy_premium, qty=qty, option_type="PE", action="BUY"),
+    ]
+
+
+def bear_call_spread(
+    sell_strike: float,
+    buy_strike: float,
+    sell_premium: float,
+    buy_premium: float,
+    qty: int = 1,
+) -> list[OptionLeg]:
+    """
+    Bear Call Spread (credit spread): Sell lower CE + buy higher CE.
+
+    Profile  : Net credit, capped profit, capped loss
+    Bias     : Bearish to neutral
+    Best when: You expect spot to stay below sell_strike at expiry
+    Max profit: net credit received
+    Max loss : (buy_strike - sell_strike) - net_credit
+    """
+    return [
+        OptionLeg(strike=sell_strike, premium=sell_premium, qty=qty, option_type="CE", action="SELL"),
+        OptionLeg(strike=buy_strike, premium=buy_premium, qty=qty, option_type="CE", action="BUY"),
+    ]
+
+
+def iron_butterfly(
+    atm_strike: float,
+    wing_distance: float,
+    atm_call_premium: float,
+    atm_put_premium: float,
+    upper_call_premium: float,
+    lower_put_premium: float,
+    qty: int = 1,
+) -> list[OptionLeg]:
+    """
+    Iron Butterfly: Sell ATM straddle + buy OTM wings.
+
+    Profile  : Net credit, maximum profit at exact ATM, defined risk
+    Bias     : Neutral, very narrow profit zone (vs iron condor)
+    Best when: IV rank > 80 AND you expect spot to pin to a specific level
+    Difference from iron condor: same middle strike (not split)
+    """
+    return [
+        OptionLeg(strike=atm_strike - wing_distance, premium=lower_put_premium, qty=qty, option_type="PE", action="BUY"),
+        OptionLeg(strike=atm_strike, premium=atm_put_premium, qty=qty, option_type="PE", action="SELL"),
+        OptionLeg(strike=atm_strike, premium=atm_call_premium, qty=qty, option_type="CE", action="SELL"),
+        OptionLeg(strike=atm_strike + wing_distance, premium=upper_call_premium, qty=qty, option_type="CE", action="BUY"),
+    ]
+
+
+def jade_lizard(
+    put_sell_strike: float,
+    call_sell_strike: float,
+    call_buy_strike: float,
+    put_sell_premium: float,
+    call_sell_premium: float,
+    call_buy_premium: float,
+    qty: int = 1,
+) -> list[OptionLeg]:
+    """
+    Jade Lizard: Short put + short call spread.
+
+    Profile  : Net credit, NO upside risk if credit > call spread width
+    Bias     : Bullish to neutral
+    Best when: IV rank > 60, you're OK owning stock at put_sell_strike
+    Key rule : Total credit MUST exceed (call_buy - call_sell) for zero upside risk
+    Downside : Limited only by put strike (you may be assigned)
+    """
+    return [
+        OptionLeg(strike=put_sell_strike, premium=put_sell_premium, qty=qty, option_type="PE", action="SELL"),
+        OptionLeg(strike=call_sell_strike, premium=call_sell_premium, qty=qty, option_type="CE", action="SELL"),
+        OptionLeg(strike=call_buy_strike, premium=call_buy_premium, qty=qty, option_type="CE", action="BUY"),
+    ]
+
+
+def call_ratio_spread(
+    buy_strike: float,
+    sell_strike: float,
+    buy_premium: float,
+    sell_premium: float,
+    qty: int = 1,
+    ratio: int = 2,
+) -> list[OptionLeg]:
+    """
+    Call Ratio Spread (1xN): Buy 1 lower call, sell N higher calls.
+
+    Profile  : Small debit/credit, capped upside, UNLIMITED loss above sell strike
+    Bias     : Mildly bullish (you want spot to land NEAR sell_strike at expiry)
+    Best when: You expect a controlled move up but not a runaway rally
+    Sweet spot: spot ends exactly at sell_strike at expiry
+    Risk     : Each extra naked short call adds unlimited risk
+    """
+    return [
+        OptionLeg(strike=buy_strike, premium=buy_premium, qty=qty, option_type="CE", action="BUY"),
+        OptionLeg(strike=sell_strike, premium=sell_premium, qty=qty * ratio, option_type="CE", action="SELL"),
+    ]
+
+
+def put_ratio_spread(
+    buy_strike: float,
+    sell_strike: float,
+    buy_premium: float,
+    sell_premium: float,
+    qty: int = 1,
+    ratio: int = 2,
+) -> list[OptionLeg]:
+    """
+    Put Ratio Spread (1xN): Buy 1 higher put, sell N lower puts.
+
+    Profile  : Small credit, capped downside, UNLIMITED loss below sell strike
+    Bias     : Mildly bearish
+    Sweet spot: spot ends exactly at sell_strike at expiry
+    """
+    return [
+        OptionLeg(strike=buy_strike, premium=buy_premium, qty=qty, option_type="PE", action="BUY"),
+        OptionLeg(strike=sell_strike, premium=sell_premium, qty=qty * ratio, option_type="PE", action="SELL"),
+    ]
+
+
+def call_backspread(
+    sell_strike: float,
+    buy_strike: float,
+    sell_premium: float,
+    buy_premium: float,
+    qty: int = 1,
+    ratio: int = 2,
+) -> list[OptionLeg]:
+    """
+    Call Backspread (Nx1): Sell 1 lower call, buy N higher calls.
+
+    Profile  : Small credit/debit, UNLIMITED upside, defined risk
+    Bias     : Strongly bullish (volatility expansion play)
+    Best when: You expect a sharp move up + IV expansion
+    Loss zone : between strikes (max loss at buy_strike at expiry)
+    """
+    return [
+        OptionLeg(strike=sell_strike, premium=sell_premium, qty=qty, option_type="CE", action="SELL"),
+        OptionLeg(strike=buy_strike, premium=buy_premium, qty=qty * ratio, option_type="CE", action="BUY"),
+    ]
+
+
+def put_backspread(
+    sell_strike: float,
+    buy_strike: float,
+    sell_premium: float,
+    buy_premium: float,
+    qty: int = 1,
+    ratio: int = 2,
+) -> list[OptionLeg]:
+    """
+    Put Backspread (Nx1): Sell 1 higher put, buy N lower puts.
+
+    Profile  : Small credit/debit, large downside profit, defined risk
+    Bias     : Strongly bearish
+    Best when: Crash hedge or strong bearish conviction
+    """
+    return [
+        OptionLeg(strike=sell_strike, premium=sell_premium, qty=qty, option_type="PE", action="SELL"),
+        OptionLeg(strike=buy_strike, premium=buy_premium, qty=qty * ratio, option_type="PE", action="BUY"),
+    ]
+
+
+def synthetic_long(
+    strike: float,
+    call_premium: float,
+    put_premium: float,
+    qty: int = 1,
+) -> list[OptionLeg]:
+    """
+    Synthetic Long Stock: Buy call + sell put at same strike.
+
+    Profile  : Identical P&L to owning the underlying (delta = 1.0)
+    Use case : Replicate stock exposure with less capital + leverage
+    Risk     : Same as long stock (unlimited downside)
+    """
+    return [
+        OptionLeg(strike=strike, premium=call_premium, qty=qty, option_type="CE", action="BUY"),
+        OptionLeg(strike=strike, premium=put_premium, qty=qty, option_type="PE", action="SELL"),
+    ]
+
+
+def synthetic_short(
+    strike: float,
+    call_premium: float,
+    put_premium: float,
+    qty: int = 1,
+) -> list[OptionLeg]:
+    """
+    Synthetic Short Stock: Sell call + buy put at same strike.
+
+    Profile  : Identical to short selling the underlying (delta = -1.0)
+    Use case : Bearish bet without borrowing stock
+    Risk     : Unlimited upside risk (just like short stock)
+    """
+    return [
+        OptionLeg(strike=strike, premium=call_premium, qty=qty, option_type="CE", action="SELL"),
+        OptionLeg(strike=strike, premium=put_premium, qty=qty, option_type="PE", action="BUY"),
+    ]
+
+
+def collar(
+    stock_entry: float,
+    put_strike: float,
+    call_strike: float,
+    put_premium: float,
+    call_premium: float,
+    qty: int = 1,
+) -> list[OptionLeg]:
+    """
+    Collar: Long stock + protective long put + short call.
+
+    NOTE: This preset only returns the OPTION legs (put + call).
+    Add the stock leg manually if you want full P&L vs entry.
+
+    Profile  : Caps both upside and downside (cheap or zero-cost hedge)
+    Use case : Protect a long stock position during uncertain periods
+    Best when: Worried about a drop but want to stay long for dividends/ownership
+    """
+    _ = stock_entry  # placeholder — stock leg is implicit, P&L tracked externally
+    return [
+        OptionLeg(strike=put_strike, premium=put_premium, qty=qty, option_type="PE", action="BUY"),
+        OptionLeg(strike=call_strike, premium=call_premium, qty=qty, option_type="CE", action="SELL"),
+    ]
+
+
+def broken_wing_butterfly_call(
+    lower_strike: float,
+    middle_strike: float,
+    upper_strike: float,
+    lower_premium: float,
+    middle_premium: float,
+    upper_premium: float,
+    qty: int = 1,
+) -> list[OptionLeg]:
+    """
+    Broken Wing Butterfly (call): Asymmetric butterfly with wider upper wing.
+
+    Profile  : Often a net credit (vs debit for symmetric butterfly)
+    Bias     : Mildly bullish, no risk on the downside if structured right
+    Best when: You want the butterfly profit zone but skewed to one side
+    Construction: |middle - lower| < |upper - middle|
+    """
+    return [
+        OptionLeg(strike=lower_strike, premium=lower_premium, qty=qty, option_type="CE", action="BUY"),
+        OptionLeg(strike=middle_strike, premium=middle_premium, qty=qty * 2, option_type="CE", action="SELL"),
+        OptionLeg(strike=upper_strike, premium=upper_premium, qty=qty, option_type="CE", action="BUY"),
+    ]

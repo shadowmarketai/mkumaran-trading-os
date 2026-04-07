@@ -370,12 +370,15 @@ AUTH_PUBLIC_PATHS = {
     "/tools/run_scanner_review",
     # F&O OI buildup scanner (n8n compatible)
     "/tools/scan_oi_buildup",
+    # F&O pure-math endpoint (caller supplies all inputs, no proprietary data)
+    "/api/fno/option_greeks",
 }
 AUTH_PUBLIC_PREFIXES = (
     "/assets/", "/docs/", "/redoc/",
     "/tools/mwa_scan_status/", "/api/chart/",
     "/api/scanner-review/",
-    "/api/fno/",
+    # F&O calendar lookup only (no market data leak)
+    "/api/fno/expiry/",
 )
 
 
@@ -2540,6 +2543,85 @@ async def api_options_payoff(req: PayoffRequest):
 
     return {
         "status": "ok",
+        "points": [_asdict(p) for p in result.points],
+        "breakevens": result.breakevens,
+        "max_profit": result.max_profit,
+        "max_loss": result.max_loss,
+        "net_premium": result.net_premium,
+    }
+
+
+# ── Strategy Preset Catalog ─────────────────────────────────────
+
+
+_STRATEGY_PRESETS = {
+    # Basic
+    "long_call":             {"legs": 1, "bias": "BULLISH",      "risk": "LIMITED",   "reward": "UNLIMITED", "iv_bias": "ANY"},
+    "long_put":              {"legs": 1, "bias": "BEARISH",      "risk": "LIMITED",   "reward": "LIMITED",   "iv_bias": "ANY"},
+    "bull_call_spread":      {"legs": 2, "bias": "BULLISH",      "risk": "LIMITED",   "reward": "LIMITED",   "iv_bias": "ANY"},
+    "bear_put_spread":       {"legs": 2, "bias": "BEARISH",      "risk": "LIMITED",   "reward": "LIMITED",   "iv_bias": "ANY"},
+    "long_straddle":         {"legs": 2, "bias": "VOL_EXPAND",   "risk": "LIMITED",   "reward": "UNLIMITED", "iv_bias": "LOW_IV"},
+    "long_strangle":         {"legs": 2, "bias": "VOL_EXPAND",   "risk": "LIMITED",   "reward": "UNLIMITED", "iv_bias": "LOW_IV"},
+    "iron_condor":           {"legs": 4, "bias": "RANGE_BOUND",  "risk": "LIMITED",   "reward": "LIMITED",   "iv_bias": "HIGH_IV"},
+    "butterfly_spread":      {"legs": 3, "bias": "PIN_RISK",     "risk": "LIMITED",   "reward": "LIMITED",   "iv_bias": "HIGH_IV"},
+    # Advanced
+    "short_straddle":        {"legs": 2, "bias": "RANGE_BOUND",  "risk": "UNLIMITED", "reward": "LIMITED",   "iv_bias": "HIGH_IV"},
+    "short_strangle":        {"legs": 2, "bias": "RANGE_BOUND",  "risk": "UNLIMITED", "reward": "LIMITED",   "iv_bias": "HIGH_IV"},
+    "bull_put_spread":       {"legs": 2, "bias": "BULLISH",      "risk": "LIMITED",   "reward": "LIMITED",   "iv_bias": "HIGH_IV"},
+    "bear_call_spread":      {"legs": 2, "bias": "BEARISH",      "risk": "LIMITED",   "reward": "LIMITED",   "iv_bias": "HIGH_IV"},
+    "iron_butterfly":        {"legs": 4, "bias": "PIN_RISK",     "risk": "LIMITED",   "reward": "LIMITED",   "iv_bias": "HIGH_IV"},
+    "jade_lizard":           {"legs": 3, "bias": "BULLISH",      "risk": "LIMITED",   "reward": "LIMITED",   "iv_bias": "HIGH_IV"},
+    "call_ratio_spread":     {"legs": 2, "bias": "MILD_BULLISH", "risk": "UNLIMITED", "reward": "LIMITED",   "iv_bias": "HIGH_IV"},
+    "put_ratio_spread":      {"legs": 2, "bias": "MILD_BEARISH", "risk": "UNLIMITED", "reward": "LIMITED",   "iv_bias": "HIGH_IV"},
+    "call_backspread":       {"legs": 2, "bias": "STRONG_BULL",  "risk": "LIMITED",   "reward": "UNLIMITED", "iv_bias": "LOW_IV"},
+    "put_backspread":        {"legs": 2, "bias": "STRONG_BEAR",  "risk": "LIMITED",   "reward": "UNLIMITED", "iv_bias": "LOW_IV"},
+    "synthetic_long":        {"legs": 2, "bias": "BULLISH",      "risk": "UNLIMITED", "reward": "UNLIMITED", "iv_bias": "ANY"},
+    "synthetic_short":       {"legs": 2, "bias": "BEARISH",      "risk": "UNLIMITED", "reward": "LIMITED",   "iv_bias": "ANY"},
+    "collar":                {"legs": 2, "bias": "PROTECT_LONG", "risk": "LIMITED",   "reward": "LIMITED",   "iv_bias": "ANY"},
+    "broken_wing_butterfly": {"legs": 3, "bias": "MILD_BULLISH", "risk": "LIMITED",   "reward": "LIMITED",   "iv_bias": "HIGH_IV"},
+}
+
+
+@app.get("/api/options/strategies")
+async def api_options_strategies():
+    """List all available strategy presets with bias/risk/reward profile."""
+    return {
+        "status": "ok",
+        "count": len(_STRATEGY_PRESETS),
+        "strategies": _STRATEGY_PRESETS,
+    }
+
+
+class StrategyBuildRequest(BaseModel):
+    name: str
+    params: dict
+
+
+@app.post("/api/options/strategy/build")
+async def api_options_strategy_build(req: StrategyBuildRequest):
+    """
+    Build a preset strategy by name and compute its payoff.
+
+    Pass `name` (e.g. "iron_butterfly") and `params` (kwargs for the preset
+    function from options_payoff.py).
+    """
+    from mcp_server import options_payoff as op
+    from dataclasses import asdict as _asdict
+
+    builder = getattr(op, req.name, None)
+    if not callable(builder) or req.name.startswith("_"):
+        return {"status": "error", "error": f"unknown strategy: {req.name}"}
+
+    try:
+        legs = builder(**req.params)
+    except TypeError as e:
+        return {"status": "error", "error": f"bad params: {e}"}
+
+    result = op.calculate_payoff(legs)
+    return {
+        "status": "ok",
+        "strategy": req.name,
+        "legs": [_asdict(leg) for leg in legs],
         "points": [_asdict(p) for p in result.points],
         "breakevens": result.breakevens,
         "max_profit": result.max_profit,

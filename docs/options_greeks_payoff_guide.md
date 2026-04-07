@@ -367,6 +367,265 @@ Use when IV rank > 80 and spot expected to stay in 22 400–22 600 range.
 
 ---
 
+## 6b. Advanced Strategy Library (16 presets)
+
+All presets are exposed via `POST /api/options/strategy/build`. Pass `{name, params}` and you get back legs + payoff curve in one call.
+
+### Strategy Picker by Market View
+
+| You think NIFTY will... | IV rank low (<30) | IV rank mid (30–70) | IV rank high (>70) |
+|--------------------------|-------------------|---------------------|---------------------|
+| Move up sharply | `long_call`, `call_backspread` | `bull_call_spread` | `bull_put_spread` (credit) |
+| Drift up | `bull_call_spread` | `bull_call_spread` | `jade_lizard`, `bull_put_spread` |
+| Stay in range | `long_strangle` (NO!) | `iron_condor` | `short_strangle`, `iron_condor`, `iron_butterfly` |
+| Pin to a level | — | `butterfly_spread` | `iron_butterfly`, `short_straddle` |
+| Drift down | `bear_put_spread` | `bear_put_spread` | `bear_call_spread` (credit) |
+| Crash hard | `long_put`, `put_backspread` | `bear_put_spread` | `bear_call_spread` |
+| Big move (either way) | `long_straddle`, `long_strangle` | `long_strangle` | (avoid — vol crush risk) |
+
+### Advanced Strategies (the 11 new ones)
+
+#### 1. Short Straddle — `short_straddle`
+**Sell ATM call + sell ATM put.**
+- Bias: range-bound around strike
+- IV: high IV rank (>80)
+- Risk: **UNLIMITED both sides**
+- Reward: net credit (max profit at exact strike)
+- Best for: post-event vol crush (after RBI/Fed/results)
+
+```json
+{
+  "name": "short_straddle",
+  "params": { "strike": 22500, "call_premium": 120, "put_premium": 100, "qty": 50 }
+}
+```
+
+#### 2. Short Strangle — `short_strangle`
+**Sell OTM call + sell OTM put.** Wider profit zone than straddle.
+- Bias: range-bound
+- IV: >70
+- Risk: **UNLIMITED both sides**
+- Best for: weekly theta harvesting on indices
+
+```json
+{
+  "name": "short_strangle",
+  "params": { "call_strike": 22700, "put_strike": 22300, "call_premium": 60, "put_premium": 50, "qty": 50 }
+}
+```
+
+#### 3. Bull Put Spread (Credit) — `bull_put_spread`
+**Sell higher PE + buy lower PE.** Net credit, defined risk.
+- Bias: bullish to neutral
+- IV: prefer high IV (collect more premium)
+- Max profit: net credit
+- Max loss: spread width − credit
+- **Most popular income strategy** for retail option sellers
+
+```json
+{
+  "name": "bull_put_spread",
+  "params": { "sell_strike": 22400, "buy_strike": 22300, "sell_premium": 60, "buy_premium": 30, "qty": 50 }
+}
+```
+
+#### 4. Bear Call Spread (Credit) — `bear_call_spread`
+**Sell lower CE + buy higher CE.** Mirror of bull put spread.
+- Bias: bearish to neutral
+- Use case: monthly resistance fade
+
+```json
+{
+  "name": "bear_call_spread",
+  "params": { "sell_strike": 22600, "buy_strike": 22700, "sell_premium": 60, "buy_premium": 30, "qty": 50 }
+}
+```
+
+#### 5. Iron Butterfly — `iron_butterfly`
+**Sell ATM straddle + buy OTM wings.** Like iron condor but with same middle strikes.
+- Bias: pin to a specific level
+- Profit zone: very narrow
+- Vs iron condor: bigger credit, smaller win zone
+
+```json
+{
+  "name": "iron_butterfly",
+  "params": {
+    "atm_strike": 22500, "wing_distance": 200,
+    "atm_call_premium": 120, "atm_put_premium": 100,
+    "upper_call_premium": 30, "lower_put_premium": 25,
+    "qty": 50
+  }
+}
+```
+
+#### 6. Jade Lizard — `jade_lizard`
+**Short put + bear call spread.** Zero upside risk if total credit > call spread width.
+- Bias: bullish to neutral
+- IV: high (collect premium on both sides)
+- Downside: only the put strike (you may get assigned)
+- **Tom Sosnoff favourite** — used when willing to own the stock
+
+```json
+{
+  "name": "jade_lizard",
+  "params": {
+    "put_sell_strike": 22300, "call_sell_strike": 22600, "call_buy_strike": 22700,
+    "put_sell_premium": 50, "call_sell_premium": 60, "call_buy_premium": 30,
+    "qty": 50
+  }
+}
+```
+
+#### 7. Call Ratio Spread — `call_ratio_spread`
+**Buy 1 lower call + sell 2 higher calls.** Sweet spot at sell strike.
+- Bias: mildly bullish (controlled move up)
+- Risk: **UNLIMITED above sell strike**
+- Best for: monthly expiries when you expect a measured rally
+
+```json
+{
+  "name": "call_ratio_spread",
+  "params": { "buy_strike": 22500, "sell_strike": 22700, "buy_premium": 120, "sell_premium": 60, "qty": 50, "ratio": 2 }
+}
+```
+
+#### 8. Put Ratio Spread — `put_ratio_spread`
+Mirror of #7. Buy 1 higher put + sell 2 lower puts.
+
+```json
+{
+  "name": "put_ratio_spread",
+  "params": { "buy_strike": 22500, "sell_strike": 22300, "buy_premium": 100, "sell_premium": 50, "qty": 50, "ratio": 2 }
+}
+```
+
+#### 9. Call Backspread — `call_backspread`
+**Sell 1 lower call + buy 2 higher calls.** UNLIMITED upside, defined risk.
+- Bias: strongly bullish + vol expansion
+- IV: low IV rank (<30)
+- Loss zone: between strikes
+- Best for: pre-event positioning when expecting a sharp breakout
+
+```json
+{
+  "name": "call_backspread",
+  "params": { "sell_strike": 22500, "buy_strike": 22700, "sell_premium": 120, "buy_premium": 60, "qty": 50, "ratio": 2 }
+}
+```
+
+#### 10. Put Backspread — `put_backspread`
+Mirror of #9. Crash hedge / strong bearish conviction with vol expansion.
+
+```json
+{
+  "name": "put_backspread",
+  "params": { "sell_strike": 22500, "buy_strike": 22300, "sell_premium": 100, "buy_premium": 50, "qty": 50, "ratio": 2 }
+}
+```
+
+#### 11. Synthetic Long / Short — `synthetic_long`, `synthetic_short`
+Replicates stock exposure with options.
+- Synthetic long = buy CE + sell PE (delta = +1.0)
+- Synthetic short = sell CE + buy PE (delta = -1.0)
+- Use case: leverage the underlying without buying it; bypass stock borrowing
+
+```json
+{
+  "name": "synthetic_long",
+  "params": { "strike": 22500, "call_premium": 120, "put_premium": 100, "qty": 50 }
+}
+```
+
+#### 12. Collar — `collar`
+**Long stock + protective put + short call.** Covered call with downside floor.
+- Use case: protect a long stock position; cap upside to fund the put
+- Cost: often near zero (call premium funds put premium)
+- Note: preset returns only the option legs — track stock P&L separately
+
+```json
+{
+  "name": "collar",
+  "params": { "stock_entry": 22500, "put_strike": 22300, "call_strike": 22700, "put_premium": 50, "call_premium": 60, "qty": 50 }
+}
+```
+
+#### 13. Broken Wing Butterfly — `broken_wing_butterfly_call`
+Asymmetric butterfly — wider on one side. Often a net credit.
+- Bias: mildly bullish/bearish depending on skew
+- Profit zone: skewed in your favour direction
+
+```json
+{
+  "name": "broken_wing_butterfly_call",
+  "params": {
+    "lower_strike": 22500, "middle_strike": 22600, "upper_strike": 22800,
+    "lower_premium": 120, "middle_premium": 60, "upper_premium": 20,
+    "qty": 50
+  }
+}
+```
+
+### List all available strategies
+
+```bash
+curl https://money.shadowmarket.ai/api/options/strategies
+```
+
+Returns:
+```json
+{
+  "count": 22,
+  "strategies": {
+    "short_straddle": { "legs": 2, "bias": "RANGE_BOUND", "risk": "UNLIMITED", "reward": "LIMITED", "iv_bias": "HIGH_IV" },
+    "jade_lizard":    { "legs": 3, "bias": "BULLISH",     "risk": "LIMITED",   "reward": "LIMITED", "iv_bias": "HIGH_IV" },
+    ...
+  }
+}
+```
+
+### Build any strategy in one call
+
+```bash
+curl -X POST https://money.shadowmarket.ai/api/options/strategy/build \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "name": "iron_butterfly",
+    "params": {
+      "atm_strike": 22500,
+      "wing_distance": 200,
+      "atm_call_premium": 120,
+      "atm_put_premium": 100,
+      "upper_call_premium": 30,
+      "lower_put_premium": 25,
+      "qty": 50
+    }
+  }'
+```
+
+Returns full payoff: legs, points, breakevens, max_profit, max_loss, net_premium.
+
+### Greek profile by strategy type
+
+| Strategy class | Net Delta | Net Gamma | Net Theta | Net Vega |
+|----------------|-----------|-----------|-----------|----------|
+| Long single (call/put) | ±1 | + | – | + |
+| Long straddle/strangle | ~0 | + | – – | + + |
+| Short straddle/strangle | ~0 | – – | + + | – – |
+| Credit spread (bull put / bear call) | small | small – | small + | small – |
+| Iron condor / butterfly | ~0 | – | + | – |
+| Backspread (long ratio) | small | + | – | + |
+| Front ratio (short ratio) | small | – | + | – |
+
+**Rule of thumb**:
+- Want **theta** (decay collection) → sell premium → high IV rank, defined-risk credit spreads
+- Want **vega** (vol expansion) → buy premium → low IV rank, straddles/backspreads
+- Want **directional gamma** → naked long calls/puts or backspreads
+- Want **delta-neutral income** → short strangle / iron condor with daily delta hedging
+
+---
+
 ## 7. Worked Example: NIFTY Iron Condor
 
 **Setup**: NIFTY at 22 500, 7 DTE, IV rank = 85 (expensive vol). You expect NIFTY to stay in 22 400–22 600 until expiry.
@@ -454,13 +713,17 @@ If net delta drifts > ±50, consider adjusting (rolling a leg).
 | `/api/options/greeks` | POST | yes | Greeks for one option (you supply IV) |
 | `/api/options/chain` | GET | yes | Greeks for all strikes |
 | `/api/options/payoff` | POST | yes | Multi-leg P&L curve |
-| `/api/fno/option_greeks` | GET | no | IV solver + Greeks (you supply market price) |
-| `/api/fno/iv_rank/{symbol}` | GET | no | Current IV rank/percentile |
-| `/api/fno/volatility_setup/{symbol}` | GET | no | Auto-suggest long/short straddle |
-| `/api/fno/snapshot/{symbol}` | GET | no | OI + chain + IV + buildup combined |
-| `/api/fno/expiry/{symbol}` | GET | no | Is today an expiry day? |
-| `/api/fno/oi_buildup` | GET | no | OI buildup scan across F&O universe |
-| `/tools/scan_oi_buildup` | POST | no | Same scan, n8n compatible |
+| `/api/options/strategies` | GET | yes | List all 22 strategy presets with bias/risk |
+| `/api/options/strategy/build` | POST | yes | Build a preset strategy by name + params |
+| `/api/fno/option_greeks` | GET | **no** | IV solver + Greeks (pure math, no proprietary data) |
+| `/api/fno/expiry/{symbol}` | GET | **no** | Calendar lookup (no market data) |
+| `/api/fno/iv_rank/{symbol}` | GET | yes | Current IV rank/percentile |
+| `/api/fno/volatility_setup/{symbol}` | GET | yes | Auto-suggest long/short straddle |
+| `/api/fno/snapshot/{symbol}` | GET | yes | OI + chain + IV + buildup combined |
+| `/api/fno/oi_buildup` | GET | yes | OI buildup scan across F&O universe |
+| `/tools/scan_oi_buildup` | POST | **no** | Same scan, n8n compatible (heavy op) |
+
+**Auth policy**: Public endpoints expose either pure-math computation (caller provides all inputs) or n8n integration paths. Everything that returns Kite-fetched market data or proprietary signals requires login.
 
 ---
 
