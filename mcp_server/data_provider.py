@@ -638,20 +638,36 @@ class AngelSource:
         # whitelist is rejecting our server.
         self._consecutive_failures = 0
         self._failure_threshold = 5
+        # Sticky flag: once True, stays True for the lifetime of the process.
+        # The auto-scan loop calls force_refresh_angel_token() and resets
+        # logged_in=True before each cycle — this flag survives that so the
+        # source remains disabled even after the JWT is refreshed (the JWT is
+        # cosmetically valid but the upstream IP whitelist still rejects it).
+        self._session_disabled = False
+
+    def is_disabled(self) -> bool:
+        """True once the session-level circuit breaker has tripped."""
+        return self._session_disabled
 
     def _note_failure(self, reason: str) -> None:
         """Record a token failure; disable the source if threshold exceeded."""
         self._consecutive_failures += 1
-        if self._consecutive_failures >= self._failure_threshold and self.logged_in:
+        if self._consecutive_failures >= self._failure_threshold and not self._session_disabled:
             logger.error(
                 "AngelSource: %d consecutive AG8001/token failures — "
                 "disabling for session (last: %s)",
                 self._consecutive_failures, reason,
             )
+            self._session_disabled = True
             self.logged_in = False
 
     def _note_success(self) -> None:
-        """Reset the failure counter after a successful call."""
+        """Reset the failure counter after a successful call.
+
+        Note: a success cannot un-trip the session-level breaker. Once Angel
+        has been deemed unusable for the session it stays unusable until the
+        process restarts (Angel IP whitelist is environmental, not transient).
+        """
         if self._consecutive_failures:
             self._consecutive_failures = 0
 
@@ -772,7 +788,7 @@ class AngelSource:
         trigger a mid-day force refresh. Also bumps the session-level
         failure counter so a fully rejected source auto-disables.
         """
-        if not self.logged_in:
+        if self._session_disabled or not self.logged_in:
             return None
         key = f"{exchange}:{symbol}"
         if key in self._token_cache:
@@ -808,7 +824,7 @@ class AngelSource:
         Raises AngelTokenInvalid when the JWT is expired, so the caller can
         trigger a mid-day force refresh via force_refresh_angel_token().
         """
-        if not self.logged_in:
+        if self._session_disabled or not self.logged_in:
             return pd.DataFrame()
 
         token = self._get_token(symbol, exchange)
@@ -853,7 +869,7 @@ class AngelSource:
 
     @retry(max_attempts=2, delay=1.0, no_retry=(AngelTokenInvalid,))
     def get_quote(self, symbol: str, exchange: str = "NSE") -> dict:
-        if not self.logged_in:
+        if self._session_disabled or not self.logged_in:
             return {}
         try:
             token = self._get_token(symbol, exchange)

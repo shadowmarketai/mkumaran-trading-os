@@ -69,17 +69,31 @@ async def _auto_scan_loop():
                 # cycle guarantees a healthy token.
                 def _run_scan_sync(segs: list[str]) -> None:
                     try:
-                        from mcp_server.angel_auth import force_refresh_angel_token
                         from mcp_server.data_provider import get_provider
-                        new_client = force_refresh_angel_token()
                         provider = get_provider()
-                        if hasattr(provider, "angel") and provider.angel:
-                            provider.angel.client = new_client
-                            provider.angel.logged_in = True
-                            if hasattr(provider.angel, "_token_cache"):
-                                provider.angel._token_cache.clear()
-                            provider._sources["angel"] = True
-                        logger.info("Auto-scan: Angel token pre-refreshed")
+                        # Skip the proactive Angel refresh if the session-level
+                        # circuit breaker has tripped — Angel's IP whitelist is
+                        # rejecting us, so a fresh JWT will not help and we will
+                        # just burn ~30s per cycle on TOTP login.
+                        if (
+                            hasattr(provider, "angel")
+                            and provider.angel
+                            and getattr(provider.angel, "is_disabled", lambda: False)()
+                        ):
+                            logger.info(
+                                "Auto-scan: Angel session-disabled — "
+                                "skipping pre-refresh"
+                            )
+                        else:
+                            from mcp_server.angel_auth import force_refresh_angel_token
+                            new_client = force_refresh_angel_token()
+                            if hasattr(provider, "angel") and provider.angel:
+                                provider.angel.client = new_client
+                                provider.angel.logged_in = True
+                                if hasattr(provider.angel, "_token_cache"):
+                                    provider.angel._token_cache.clear()
+                                provider._sources["angel"] = True
+                            logger.info("Auto-scan: Angel token pre-refreshed")
                     except Exception as refresh_err:
                         logger.warning(
                             "Auto-scan: Angel pre-refresh failed (%s) — "
@@ -2696,6 +2710,24 @@ async def tool_connect_angel():
         manager.broker = angel
         if capital is not None:
             manager.capital = capital
+
+        # Manual reconnect should clear the session-level circuit breaker on
+        # the data provider's Angel (only the user can confirm IP whitelist
+        # has been updated upstream).
+        try:
+            from mcp_server.data_provider import get_provider
+            provider = get_provider()
+            if hasattr(provider, "angel") and provider.angel:
+                provider.angel.client = angel.client
+                provider.angel.logged_in = True
+                provider.angel._session_disabled = False
+                provider.angel._consecutive_failures = 0
+                if hasattr(provider.angel, "_token_cache"):
+                    provider.angel._token_cache.clear()
+                provider._sources["angel"] = True
+                logger.info("Angel circuit breaker reset by manual connect")
+        except Exception as reset_err:
+            logger.warning("Could not reset provider Angel: %s", reset_err)
 
         return {
             "angel_connected": True,
