@@ -3431,10 +3431,23 @@ async def tool_refresh_kite_token():
         from mcp_server.kite_auth import refresh_kite_token
         # TOTP login is blocking I/O — run in worker thread
         access_token = await asyncio.to_thread(refresh_kite_token)
+
+        # Clear the sticky "_kite_failed_today" flag + force-reload the
+        # instrument cache. Without this, an earlier morning failure leaves
+        # MCX/NFO/CDS resolution broken for the rest of the day even after
+        # a successful token refresh.
+        cache_tokens = 0
+        try:
+            from mcp_server.data_provider import force_reload_instrument_cache
+            cache_tokens = await asyncio.to_thread(force_reload_instrument_cache)
+        except Exception as exc:
+            logger.warning("Instrument cache reload after TOTP refresh failed: %s", exc)
+
         return {
             "success": True,
             "message": "Kite token refreshed",
             "token_prefix": access_token[:8] + "..." if access_token else None,
+            "instrument_cache_tokens": cache_tokens,
         }
     except Exception as e:
         logger.error("Kite token refresh failed: %s", e)

@@ -276,6 +276,8 @@ def handle_kite_callback(request_token: str) -> str:
     user logs in via browser → Kite redirects with request_token → this fn
     generates a session and caches the access_token via _save_token().
     """
+    global _last_refresh_failure_ts
+
     from kiteconnect import KiteConnect
     kite = KiteConnect(api_key=settings.KITE_API_KEY)
     session_data = kite.generate_session(
@@ -284,6 +286,25 @@ def handle_kite_callback(request_token: str) -> str:
     access_token = session_data["access_token"]
     _save_token(access_token, request_token)
     logger.info("Kite manual login successful — token cached")
+
+    # A manual login wipes out any prior TOTP refresh failure — clear the
+    # sticky circuit breaker so subsequent refresh_kite_token() calls hit
+    # the fresh cached token instead of raising "circuit-broken".
+    _last_refresh_failure_ts = 0.0
+
+    # Clear the instrument-cache "failed today" flag + force a reload
+    # using the fresh token. Without this, a morning race between the
+    # scanner's TOTP flow and the user's /kitelogin flow leaves the
+    # scanner with `_kite_failed_today=today` for the rest of the day,
+    # and MCX/NFO/CDS resolution returns empty DataFrames because the
+    # base-symbol alias table never gets built.
+    try:
+        from mcp_server.data_provider import force_reload_instrument_cache
+        count = force_reload_instrument_cache()
+        logger.info("Instrument cache reloaded after manual login: %d tokens", count)
+    except Exception as exc:
+        logger.warning("Instrument cache reload after manual login failed: %s", exc)
+
     return access_token
 
 

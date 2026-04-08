@@ -1772,6 +1772,35 @@ def _resolve_instrument_token(ticker: str) -> int | None:
     return None
 
 
+def reset_kite_failure_flag() -> None:
+    """Clear the sticky "_kite_failed_today" flag so the next instrument
+    cache load retries. Call this after a successful manual Kite login
+    (handle_kite_callback) — otherwise a morning race between the scanner's
+    TOTP flow and the user's /kitelogin flow leaves the process with a
+    broken instrument cache for the rest of the day, and MCX/NFO/CDS
+    resolution silently falls through to yfinance proxies (or, post-fix,
+    returns empty DataFrames).
+    """
+    global _kite_failed_today, _cache_loaded_date
+    _kite_failed_today = None
+    _cache_loaded_date = None
+    logger.info("Kite failure flag cleared — instrument cache will reload on next lookup")
+
+
+def force_reload_instrument_cache() -> int:
+    """Force an immediate reload of the Kite instrument cache. Returns
+    the number of tokens loaded. Used by admin endpoints and by the
+    manual-login callback path to prime the cache right after a fresh
+    token becomes available.
+    """
+    global _cache_loaded_date, _kite_failed_today
+    _cache_loaded_date = None
+    _kite_failed_today = None
+    _instrument_cache.clear()
+    _load_instrument_cache()
+    return len(_instrument_cache)
+
+
 # ── yfinance Rate Limiter (kept as last-resort fallback) ─────────
 
 _YF_MIN_DELAY = 0.5
