@@ -369,6 +369,164 @@ class SheetsTracker:
             logger.error("Failed to update signal %s: %s", signal_id, e)
             return False
 
+    def _update_open_row_on_ws(
+        self,
+        ws,
+        ticker: str,
+        signal_date: str,
+        direction: str,
+        status: str,
+        exit_price: float,
+        notes: str,
+    ) -> bool:
+        """Find an OPEN row on `ws` matching ticker+date+direction and patch
+        columns M:S (Status through Notes). Returns True if a row was updated.
+
+        Uses a single get_all_values() API call then finds the most recent
+        matching OPEN row (searches bottom-up so re-opened signals work).
+        """
+        try:
+            all_rows = ws.get_all_values()
+            if not all_rows or len(all_rows) < 2:
+                return False
+
+            ticker_u = (ticker or "").strip().upper()
+            direction_u = (direction or "").strip().upper()
+            # Treat BUY/LONG and SELL/SHORT as aliases
+            if direction_u in ("BUY", "LONG"):
+                dir_aliases = {"BUY", "LONG"}
+            elif direction_u in ("SELL", "SHORT"):
+                dir_aliases = {"SELL", "SHORT"}
+            else:
+                dir_aliases = {direction_u}
+            date_str = str(signal_date).strip()
+
+            row_idx = None
+            # Search from bottom (most recent first), skip header row 0
+            for i in range(len(all_rows) - 1, 0, -1):
+                row = all_rows[i]
+                if len(row) < 13:
+                    continue
+                row_ticker = (row[2] or "").strip().upper()        # col C
+                row_date = (row[1] or "").strip()                  # col B
+                row_dir = (row[5] or "").strip().upper()           # col F
+                row_status = (row[12] or "").strip().upper()       # col M
+                if (
+                    row_ticker == ticker_u
+                    and row_date == date_str
+                    and row_dir in dir_aliases
+                    and row_status == "OPEN"
+                ):
+                    row_idx = i + 1  # gspread rows are 1-indexed
+                    break
+
+            if row_idx is None:
+                return False
+
+            # Entry price is col G (index 6 in 0-based list)
+            try:
+                entry_price = float((all_rows[row_idx - 1][6] or "0").replace(",", ""))
+            except (ValueError, IndexError):
+                entry_price = 0.0
+
+            # Calculate P&L
+            if exit_price > 0 and entry_price > 0:
+                if direction_u in ("BUY", "LONG"):
+                    pnl_pct = (exit_price - entry_price) / entry_price * 100
+                    pnl_rs = exit_price - entry_price
+                else:
+                    pnl_pct = (entry_price - exit_price) / entry_price * 100
+                    pnl_rs = entry_price - exit_price
+            else:
+                pnl_pct = 0.0
+                pnl_rs = 0.0
+
+            # Determine result
+            if status == "TARGET_HIT":
+                result = "WIN"
+            elif status == "SL_HIT":
+                result = "LOSS"
+            elif pnl_pct > 0:
+                result = "WIN"
+            elif pnl_pct < 0:
+                result = "LOSS"
+            else:
+                result = "BREAKEVEN"
+
+            updates = [[
+                status,
+                exit_price,
+                date.today().isoformat(),
+                round(pnl_pct, 2),
+                round(pnl_rs, 2),
+                result,
+                notes,
+            ]]
+            ws.update(f"M{row_idx}:S{row_idx}", updates, value_input_option="USER_ENTERED")
+            return True
+
+        except Exception as e:
+            logger.debug("_update_open_row_on_ws failed for %s: %s", ticker, e)
+            return False
+
+    def update_signal_status_by_match(
+        self,
+        ticker: str,
+        signal_date: str,
+        direction: str,
+        exchange: str,
+        status: str,
+        exit_price: float = 0,
+        notes: str = "",
+    ) -> bool:
+        """Update an OPEN signal by matching ticker + date + direction.
+
+        This is the correct lookup path for DB-originated signals where the
+        integer DB id does not correspond to the ``SIG-YYYYMMDDHHMMSS`` string
+        ID stored in column A of the Google Sheet. Updates both the master
+        ``Signals`` tab and the segment-specific tab (SIGNALS_EQUITY, etc.).
+
+        Returns True if at least one tab was updated.
+        """
+        self._connect()
+        if self._worksheet is None:
+            return False
+
+        # Master Signals tab
+        updated_master = self._update_open_row_on_ws(
+            self._worksheet, ticker, signal_date, direction, status, exit_price, notes
+        )
+
+        # Segment-specific tab (same row schema since written via record_signal)
+        updated_segment = False
+        try:
+            if self._sheet is not None:
+                tab_name = EXCHANGE_TO_SEGMENT_TAB.get(
+                    (exchange or "NSE").upper(), "SIGNALS_EQUITY"
+                )
+                try:
+                    seg_ws = self._sheet.worksheet(tab_name)
+                    updated_segment = self._update_open_row_on_ws(
+                        seg_ws, ticker, signal_date, direction, status, exit_price, notes
+                    )
+                except Exception as ws_err:
+                    logger.debug("Segment tab %s not accessible: %s", tab_name, ws_err)
+        except Exception as seg_err:
+            logger.debug("Segment tab lookup failed for %s: %s", exchange, seg_err)
+
+        if updated_master or updated_segment:
+            logger.info(
+                "Sheets closed %s %s %s (master=%s, segment=%s)",
+                ticker, direction, status, updated_master, updated_segment,
+            )
+            return True
+
+        logger.warning(
+            "No OPEN row found in Sheets for %s %s %s (date=%s)",
+            ticker, direction, exchange, signal_date,
+        )
+        return False
+
     def get_accuracy_stats(self) -> dict:
         """Calculate accuracy statistics from the sheet."""
         self._connect()

@@ -157,14 +157,22 @@ def monitor_open_signals() -> list[dict]:
                 if active:
                     session.delete(active)
 
-                # 4) Update Google Sheets
+                # 4) Update Google Sheets — match by ticker+date+direction
+                # (DB integer `id` does not match sheet's "SIG-YYYYMMDDHHMMSS"
+                # string id written by record_signal_to_sheets).
                 try:
                     from mcp_server.telegram_receiver import get_sheets_tracker
                     tracker = get_sheets_tracker()
-                    sheet_signal_id = f"SIG-{sig.signal_date.strftime('%Y%m%d') if sig.signal_date else ''}*"
-                    # Use the signal_id pattern or the actual ID
-                    tracker.update_signal_status(
-                        signal_id=sheet_signal_id,
+                    signal_date_str = (
+                        sig.signal_date.isoformat()
+                        if sig.signal_date
+                        else date.today().isoformat()
+                    )
+                    tracker.update_signal_status_by_match(
+                        ticker=sig.ticker,
+                        signal_date=signal_date_str,
+                        direction=direction,
+                        exchange=sig.exchange or "NSE",
                         status=hit,
                         exit_price=current_price,
                         notes=f"Auto-closed by monitor | P&L: {pnl_pct}%",

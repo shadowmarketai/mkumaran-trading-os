@@ -176,25 +176,53 @@ def log_signal(signal_data: dict) -> bool:
 
 def update_accuracy(outcomes: list[dict]) -> bool:
     """
-    Update the ACCURACY TRACKER tab.
-    Tab 3 of 5.
+    Append new outcomes to the ACCURACY TRACKER tab (upsert by Signal ID).
+
+    IMPORTANT: this function is called once per SL/TP hit with a single
+    outcome. The previous implementation called ``ws.clear()`` on every call
+    which wiped the entire history. It now appends only new rows and skips
+    outcomes whose Signal ID already exists in the tab.
     """
     _, sheet = _get_sheets_client()
     if not sheet:
         return False
 
-    try:
-        ws = sheet.worksheet("ACCURACY")
-        ws.clear()
+    if not outcomes:
+        return True
 
+    try:
         headers = ["Signal ID", "Ticker", "Exchange", "Asset Class",
                     "Direction", "Entry", "Exit", "Outcome", "P&L",
-                    "Days Held", "Exit Reason"]
-        ws.append_row(headers)
+                    "Days Held", "Exit Reason", "Exit Date"]
 
+        ws = _get_or_create_worksheet(
+            sheet, "ACCURACY", cols=len(headers), header=headers,
+        )
+
+        # Read existing rows to dedupe by Signal ID (col A)
+        existing = ws.get_all_values() or []
+        existing_ids: set[str] = set()
+        if len(existing) > 1:
+            # Ensure the header row exists — backfill if the tab was empty
+            first_row = [c.strip() for c in existing[0]] if existing[0] else []
+            if not first_row or first_row[0] != "Signal ID":
+                ws.update("A1:L1", [headers], value_input_option="USER_ENTERED")
+            for row in existing[1:]:
+                if row and row[0]:
+                    existing_ids.add(str(row[0]).strip())
+        elif not existing:
+            # Fresh worksheet — header wasn't written by _get_or_create
+            ws.append_row(headers, value_input_option="USER_ENTERED")
+
+        appended = 0
+        skipped = 0
         for outcome in outcomes:
+            sig_id = str(outcome.get("signal_id", "")).strip()
+            if sig_id and sig_id in existing_ids:
+                skipped += 1
+                continue
             row = [
-                outcome.get("signal_id", ""),
+                sig_id,
                 outcome.get("ticker", ""),
                 outcome.get("exchange", "NSE"),
                 outcome.get("asset_class", "EQUITY"),
@@ -205,10 +233,17 @@ def update_accuracy(outcomes: list[dict]) -> bool:
                 outcome.get("pnl_amount", 0),
                 outcome.get("days_held", 0),
                 outcome.get("exit_reason", ""),
+                outcome.get("exit_date", str(date.today())),
             ]
-            ws.append_row(row)
+            ws.append_row(row, value_input_option="USER_ENTERED")
+            appended += 1
+            if sig_id:
+                existing_ids.add(sig_id)
 
-        logger.info("Updated accuracy tracker with %d outcomes", len(outcomes))
+        logger.info(
+            "ACCURACY tab: appended %d new, skipped %d dupes",
+            appended, skipped,
+        )
         return True
 
     except Exception as e:

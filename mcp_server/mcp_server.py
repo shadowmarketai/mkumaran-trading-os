@@ -399,6 +399,8 @@ AUTH_PUBLIC_PATHS = {
     "/tools/run_fno_analytics",
     # F&O pure-math endpoint (caller supplies all inputs, no proprietary data)
     "/api/fno/option_greeks",
+    # Sheets reconciliation (n8n compatible, idempotent)
+    "/tools/backfill_sheets_outcomes",
 }
 AUTH_PUBLIC_PREFIXES = (
     "/assets/", "/docs/", "/redoc/",
@@ -3513,6 +3515,138 @@ async def tool_check_signals():
         "checked": True,
         "closed_count": len(closed),
         "closed_signals": closed,
+    }
+
+
+@app.post("/tools/backfill_sheets_outcomes")
+async def tool_backfill_sheets_outcomes(
+    days: int = Query(7, ge=1, le=90),
+    db: Session = Depends(get_db),
+):
+    """
+    Reconcile Google Sheets for already-closed trades.
+
+    Walks Outcome records from the last `days` days, joins Signal, and:
+      1. Calls update_signal_status_by_match() to patch the SIGNALS + segment tabs
+         (fixes rows left in OPEN state by the old broken wildcard lookup).
+      2. Calls update_accuracy() with the full outcome list to populate the
+         ACCURACY tab (dedupe-safe so repeat runs are harmless).
+
+    Safe to call repeatedly — idempotent via match-based update + signal_id dedupe.
+    """
+    from datetime import timedelta
+    from mcp_server.models import Signal, Outcome
+    from mcp_server.telegram_receiver import get_sheets_tracker
+    from mcp_server.sheets_sync import update_accuracy
+
+    cutoff = date.today() - timedelta(days=days)
+
+    # Join Outcome -> Signal so we have direction/exchange/entry/asset_class
+    rows = (
+        db.query(Outcome, Signal)
+        .join(Signal, Outcome.signal_id == Signal.id)
+        .filter(Outcome.exit_date >= cutoff)
+        .order_by(Outcome.exit_date.asc(), Outcome.id.asc())
+        .all()
+    )
+
+    tracker = get_sheets_tracker()
+
+    patched_master = 0
+    patched_none = 0
+    errors: list[dict] = []
+    accuracy_rows: list[dict] = []
+
+    for outcome, sig in rows:
+        direction = sig.direction or "BUY"
+        entry_price = float(sig.entry_price or 0)
+        exit_price = float(outcome.exit_price or 0)
+
+        if entry_price > 0 and exit_price > 0:
+            if direction in ("BUY", "LONG"):
+                pnl_pct = (exit_price - entry_price) / entry_price * 100
+                pnl_rs = exit_price - entry_price
+            else:
+                pnl_pct = (entry_price - exit_price) / entry_price * 100
+                pnl_rs = entry_price - exit_price
+        else:
+            pnl_pct = 0.0
+            pnl_rs = 0.0
+
+        # Map outcome string to sheet status
+        outcome_str = (outcome.outcome or "").upper()
+        if outcome_str == "WIN":
+            sheet_status = "TARGET_HIT"
+        elif outcome_str == "LOSS":
+            sheet_status = "SL_HIT"
+        else:
+            sheet_status = "CLOSED"
+
+        signal_date_str = (
+            sig.signal_date.isoformat()
+            if sig.signal_date
+            else date.today().isoformat()
+        )
+
+        try:
+            ok = tracker.update_signal_status_by_match(
+                ticker=sig.ticker,
+                signal_date=signal_date_str,
+                direction=direction,
+                exchange=sig.exchange or "NSE",
+                status=sheet_status,
+                exit_price=exit_price,
+                notes=f"Backfilled | P&L: {round(pnl_pct, 2)}%",
+            )
+            if ok:
+                patched_master += 1
+            else:
+                patched_none += 1
+        except Exception as e:
+            errors.append({
+                "signal_id": sig.id,
+                "ticker": sig.ticker,
+                "error": str(e),
+            })
+
+        # Build ACCURACY tab row (update_accuracy dedupes by signal_id)
+        accuracy_rows.append({
+            "signal_id": sig.id,
+            "ticker": sig.ticker,
+            "exchange": sig.exchange or "NSE",
+            "asset_class": sig.asset_class or "EQUITY",
+            "direction": direction,
+            "entry_price": entry_price,
+            "exit_price": exit_price,
+            "outcome": outcome_str or "WIN",
+            "pnl_amount": round(pnl_rs * (sig.qty or 1), 2),
+            "days_held": outcome.days_held or 0,
+            "exit_reason": outcome.exit_reason or "",
+            "exit_date": (
+                outcome.exit_date.isoformat()
+                if outcome.exit_date
+                else str(date.today())
+            ),
+        })
+
+    # Push all outcomes to ACCURACY tab in one batch (idempotent)
+    accuracy_ok = False
+    if accuracy_rows:
+        try:
+            accuracy_ok = update_accuracy(accuracy_rows)
+        except Exception as e:
+            errors.append({"accuracy_update_error": str(e)})
+
+    return {
+        "status": "ok",
+        "days_scanned": days,
+        "cutoff_date": cutoff.isoformat(),
+        "outcomes_found": len(rows),
+        "patched_in_sheet": patched_master,
+        "not_found_in_sheet": patched_none,
+        "accuracy_tab_updated": accuracy_ok,
+        "accuracy_rows_sent": len(accuracy_rows),
+        "errors": errors,
     }
 
 
