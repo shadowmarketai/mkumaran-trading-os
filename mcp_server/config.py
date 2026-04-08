@@ -137,5 +137,13 @@ class Settings:
     # F&O Analytics Auto-Monitor (IV rank / PCR / OI / expiry alerts)
     FNO_ANALYTICS_ENABLED: bool = os.getenv("FNO_ANALYTICS_ENABLED", "true").lower() == "true"
 
+    # Self-Development System (postmortem RCA + predictive gate + rules engine)
+    SELF_DEV_ENABLED: bool = os.getenv("SELF_DEV_ENABLED", "true").lower() == "true"
+    PREDICTOR_BLOCK_THRESHOLD: float = float(os.getenv("PREDICTOR_BLOCK_THRESHOLD", "0.75"))
+    PREDICTOR_RETRAIN_HOUR: int = int(os.getenv("PREDICTOR_RETRAIN_HOUR", "16"))  # 4 PM IST, after signal monitor closes last trades
+    RULES_ENGINE_ENABLED: bool = os.getenv("RULES_ENGINE_ENABLED", "true").lower() == "true"
+    RULES_MINE_ON_RETRAIN: bool = os.getenv("RULES_MINE_ON_RETRAIN", "true").lower() == "true"
+    POSTMORTEM_LOOKBACK_DAYS: int = int(os.getenv("POSTMORTEM_LOOKBACK_DAYS", "14"))
+
 
 settings = Settings()

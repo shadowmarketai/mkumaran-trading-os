@@ -34,6 +34,11 @@ def get_db():
 def _add_missing_columns():
     """Add columns that exist in models but not in the database."""
     insp = inspect(engine)
+
+    # Postgres supports JSONB, sqlite falls back to TEXT
+    is_pg = engine.dialect.name in ("postgresql", "postgres")
+    jsonb = "JSONB" if is_pg else "TEXT"
+
     migrations = {
         "signals": {
             "timeframe": "VARCHAR(10) DEFAULT '1D'",
@@ -41,6 +46,32 @@ def _add_missing_columns():
             "source": "VARCHAR(20)",
             "exchange": "VARCHAR(10) DEFAULT 'NSE'",
             "asset_class": "VARCHAR(15) DEFAULT 'EQUITY'",
+            # Phase 1: self-development / RCA fields
+            "entry_rsi": "NUMERIC(6,2)",
+            "entry_adx": "NUMERIC(6,2)",
+            "entry_atr_pct": "NUMERIC(6,3)",
+            "entry_volume_ratio": "NUMERIC(7,3)",
+            "entry_vwap_dev": "NUMERIC(7,3)",
+            "entry_momentum": "NUMERIC(7,3)",
+            "entry_macd_hist": "NUMERIC(10,4)",
+            "entry_bb_width": "NUMERIC(7,3)",
+            "entry_regime": "VARCHAR(20)",
+            "entry_mwa_bull_pct": "NUMERIC(5,1)",
+            "entry_mwa_bear_pct": "NUMERIC(5,1)",
+            "scanner_list": jsonb,
+            "feature_vector": jsonb,
+            "loss_probability": "NUMERIC(5,3)",
+            "predictor_version": "VARCHAR(20)",
+            "suppressed": "BOOLEAN DEFAULT FALSE",
+            "suppression_reason": "TEXT",
+            "rca_json": jsonb,
+        },
+        "outcomes": {
+            "exit_reason_detail": "TEXT",
+            "pattern_invalidated": "BOOLEAN",
+            "invalidation_reason": "VARCHAR(100)",
+            "max_adverse_excursion": "NUMERIC(7,3)",
+            "max_favorable_excursion": "NUMERIC(7,3)",
         },
         "active_trades": {
             "timeframe": "VARCHAR(10) DEFAULT '1D'",

@@ -75,6 +75,16 @@ def _count_bull_bear(ticker: str, scanner_results: dict) -> tuple[int, int]:
     return bull, bear
 
 
+def _scanners_flagging(ticker: str, scanner_results: dict) -> list[str]:
+    """Return the list of scanner keys that flagged this ticker."""
+    flagged: list[str] = []
+    for key, result in scanner_results.items():
+        stocks = result if isinstance(result, list) else []
+        if ticker in stocks:
+            flagged.append(key)
+    return flagged
+
+
 def generate_mwa_signals(
     promoted: list[str],
     stock_data: dict[str, pd.DataFrame],
@@ -124,6 +134,7 @@ def generate_mwa_signals(
         entry = float(df["close"].iloc[-1])
         bull_count, bear_count = _count_bull_bear(ticker, scanner_results)
         scanner_count = bull_count + bear_count
+        scanner_list = _scanners_flagging(ticker, scanner_results)
 
         # Direction: more bull scanners → LONG, more bear → SHORT
         if bull_count > bear_count:
@@ -174,6 +185,8 @@ def generate_mwa_signals(
             "scanner_count": scanner_count,
             "bull_count": bull_count,
             "bear_count": bear_count,
+            "scanner_list": scanner_list,
+            "ohlcv_df": df,  # pass through for downstream feature extraction
             "exchange": exchange,
             "asset_class": asset_class,
             "timeframe": "day",

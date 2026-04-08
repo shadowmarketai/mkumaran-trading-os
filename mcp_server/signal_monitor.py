@@ -211,6 +211,24 @@ def monitor_open_signals() -> list[dict]:
                 except Exception as mem_err:
                     logger.debug("Trade memory update skipped: %s", mem_err)
 
+                # 7) Self-development: run postmortem RCA automatically
+                try:
+                    from mcp_server.signal_postmortem import run_postmortem
+                    pm_result = run_postmortem(sig.id)
+                    logger.info(
+                        "Postmortem %s for %s: %s",
+                        pm_result.get("status"), sig.ticker, pm_result.get("root_cause", "")[:80],
+                    )
+                except Exception as pm_err:
+                    logger.debug("Postmortem skipped for %s: %s", sig.ticker, pm_err)
+
+                # 8) Invalidate similarity cache so the new trade appears
+                try:
+                    from mcp_server.signal_similarity import invalidate_cache
+                    invalidate_cache()
+                except Exception:
+                    pass
+
                 results.append({
                     "signal_id": sig.id,
                     "ticker": sig.ticker,
@@ -239,7 +257,7 @@ def monitor_open_signals() -> list[dict]:
 
 
 async def _send_close_alert(closed: dict) -> None:
-    """Send Telegram alert for a closed signal."""
+    """Send Telegram alert for a closed signal, with postmortem RCA if available."""
     from mcp_server.telegram_bot import send_telegram_message
 
     emoji = "\U0001f7e2" if closed["outcome"] == "WIN" else "\U0001f534"
@@ -255,6 +273,31 @@ async def _send_close_alert(closed: dict) -> None:
         f"Days Held: {closed['days_held']}\n"
         f"Result: {closed['outcome']}"
     )
+
+    # Attach postmortem RCA if available (always for LOSS, opportunistic for WIN)
+    try:
+        from mcp_server.db import SessionLocal
+        from mcp_server.models import Postmortem
+        session = SessionLocal()
+        try:
+            pm = (
+                session.query(Postmortem)
+                .filter(Postmortem.signal_id == closed["signal_id"])
+                .first()
+            )
+            if pm and pm.root_cause:
+                msg += (
+                    f"\n\U0001f50d RCA: {pm.root_cause}"
+                )
+                if pm.suggested_filter:
+                    msg += f"\n\U0001f4a1 Filter: {pm.suggested_filter}"
+                if pm.claude_narrative:
+                    msg += f"\n\U0001f4dd {pm.claude_narrative[:280]}"
+        finally:
+            session.close()
+    except Exception as e:
+        logger.debug("RCA attach skipped: %s", e)
+
     await send_telegram_message(msg, force=True)
 
 

@@ -80,6 +80,28 @@ class Signal(Base):
     timeframe = Column(String(10), default="1D")
     status = Column(String(20), default="OPEN")
 
+    # ── Entry context (captured at signal creation for RCA + ML) ──
+    entry_rsi = Column(Numeric(6, 2), nullable=True)
+    entry_adx = Column(Numeric(6, 2), nullable=True)
+    entry_atr_pct = Column(Numeric(6, 3), nullable=True)
+    entry_volume_ratio = Column(Numeric(7, 3), nullable=True)
+    entry_vwap_dev = Column(Numeric(7, 3), nullable=True)
+    entry_momentum = Column(Numeric(7, 3), nullable=True)
+    entry_macd_hist = Column(Numeric(10, 4), nullable=True)
+    entry_bb_width = Column(Numeric(7, 3), nullable=True)
+    entry_regime = Column(String(20), nullable=True)  # TRENDING_UP/DOWN/RANGING/VOLATILE
+    entry_mwa_bull_pct = Column(Numeric(5, 1), nullable=True)
+    entry_mwa_bear_pct = Column(Numeric(5, 1), nullable=True)
+
+    # Scanner attribution + ML output
+    scanner_list = Column(JSONB().with_variant(JSON, "sqlite"), nullable=True)
+    feature_vector = Column(JSONB().with_variant(JSON, "sqlite"), nullable=True)
+    loss_probability = Column(Numeric(5, 3), nullable=True)  # 0.0-1.0 from predictor
+    predictor_version = Column(String(20), nullable=True)
+    suppressed = Column(Boolean, default=False)  # blocked by predictor
+    suppression_reason = Column(Text, nullable=True)
+    rca_json = Column(JSONB().with_variant(JSON, "sqlite"), nullable=True)  # postmortem
+
     def __repr__(self) -> str:
         return (
             f"<Signal(id={self.id}, ticker='{self.ticker}', "
@@ -98,6 +120,13 @@ class Outcome(Base):
     pnl_amount = Column(Numeric(10, 2))
     days_held = Column(Integer)
     exit_reason = Column(String(20))  # TARGET / STOPLOSS / MANUAL
+
+    # Extended exit context for postmortem RCA
+    exit_reason_detail = Column(Text, nullable=True)
+    pattern_invalidated = Column(Boolean, nullable=True)
+    invalidation_reason = Column(String(100), nullable=True)
+    max_adverse_excursion = Column(Numeric(7, 3), nullable=True)  # worst drawdown %
+    max_favorable_excursion = Column(Numeric(7, 3), nullable=True)  # best run-up %
 
     signal = relationship("Signal", backref="outcome")
 
@@ -188,6 +217,64 @@ class OHLCVCache(Base):
         return (
             f"<OHLCVCache(ticker='{self.ticker}', interval='{self.interval}', "
             f"bar_date={self.bar_date}, close={self.close})>"
+        )
+
+
+class Postmortem(Base):
+    """Root-cause analysis for each closed losing (or winning) signal."""
+    __tablename__ = "postmortems"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    signal_id = Column(Integer, ForeignKey("signals.id"), unique=True, index=True)
+    created_at = Column(DateTime, server_default=func.now())
+    outcome = Column(String(10))  # WIN / LOSS / BREAKEVEN
+    root_cause = Column(Text)
+    contributing_factors = Column(JSONB().with_variant(JSON, "sqlite"))
+    rule_checks = Column(JSONB().with_variant(JSON, "sqlite"))  # list of rule -> pass/fail
+    suggested_filter = Column(Text)
+    similar_signals = Column(JSONB().with_variant(JSON, "sqlite"))  # top-k similar past trades
+    claude_narrative = Column(Text)  # LLM-generated explanation
+    confidence_score = Column(Numeric(5, 2))  # how confident the RCA is
+
+    signal = relationship("Signal")
+
+    def __repr__(self) -> str:
+        return (
+            f"<Postmortem(id={self.id}, signal_id={self.signal_id}, "
+            f"outcome='{self.outcome}')>"
+        )
+
+
+class AdaptiveRule(Base):
+    """Learned filter rules from rules-learning engine, applied at signal time."""
+    __tablename__ = "adaptive_rules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    rule_key = Column(String(100), unique=True, index=True)  # e.g. "skip_short_when_adx_lt_15"
+    description = Column(Text)
+    condition_json = Column(JSONB().with_variant(JSON, "sqlite"))  # structured condition
+    action = Column(String(30))  # block / reduce_size / reduce_confidence
+    action_params = Column(JSONB().with_variant(JSON, "sqlite"))
+
+    # Back-test metrics
+    sample_size = Column(Integer, default=0)
+    historical_hit_rate_before = Column(Numeric(5, 2))
+    historical_hit_rate_after = Column(Numeric(5, 2))
+    estimated_losses_prevented = Column(Integer, default=0)
+    estimated_wins_lost = Column(Integer, default=0)
+
+    # Deployment state
+    active = Column(Boolean, default=False)
+    auto_generated = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+    activated_at = Column(DateTime, nullable=True)
+    last_fired_at = Column(DateTime, nullable=True)
+    fire_count = Column(Integer, default=0)
+
+    def __repr__(self) -> str:
+        return (
+            f"<AdaptiveRule(key='{self.rule_key}', active={self.active}, "
+            f"sample={self.sample_size})>"
         )
 
 

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +23,16 @@ from starlette.responses import JSONResponse
 
 from mcp_server.config import settings
 from mcp_server.db import get_db, init_db, SessionLocal
-from mcp_server.models import Watchlist, Signal, Outcome, MWAScore, ActiveTrade, ScannerReview
+from mcp_server.models import (
+    ActiveTrade,
+    AdaptiveRule,
+    MWAScore,
+    Outcome,
+    Postmortem,
+    ScannerReview,
+    Signal,
+    Watchlist,
+)
 from mcp_server.asset_registry import (
     parse_ticker, get_asset_class, get_exchange,
     get_supported_exchanges,
@@ -116,6 +126,174 @@ async def _auto_scan_loop():
         except Exception as e:
             logger.error("Auto-scan loop error: %s", e)
             await asyncio.sleep(900)
+
+
+# Self-development loop state — keyed by date so we only run once per day
+_self_dev_cache: dict[str, Any] = {}
+
+
+async def _self_dev_loop():
+    """
+    Daily self-development pipeline that runs once at PREDICTOR_RETRAIN_HOUR IST
+    (default 16:00 — after all intraday SL/TP checks are complete for the day).
+
+    Steps:
+      1. Batch-run postmortems for any recently-closed signals missing one
+      2. Retrain the loss predictor on all labeled data
+      3. Update Bayesian scanner stats
+      4. Mine new adaptive rules (dry-run by default — operator must activate)
+      5. Send a Telegram summary with the key numbers
+
+    Idempotent — `_self_dev_cache[date]` prevents re-running.
+    """
+    logger.info("Self-development loop started (runs at %d:00 IST daily)", settings.PREDICTOR_RETRAIN_HOUR)
+
+    while True:
+        try:
+            await asyncio.sleep(60)
+
+            now = _now_ist()
+            if now.hour != settings.PREDICTOR_RETRAIN_HOUR or now.minute > 5:
+                continue
+
+            today_key = now.date().isoformat()
+            if _self_dev_cache.get(today_key) == "done":
+                continue
+
+            # Skip weekends
+            if now.weekday() >= 5:
+                _self_dev_cache[today_key] = "skipped_weekend"
+                continue
+
+            logger.info("Self-dev pipeline starting for %s", today_key)
+            _self_dev_cache[today_key] = "running"
+
+            summary = await asyncio.to_thread(_run_self_dev_pipeline_sync)
+
+            _self_dev_cache[today_key] = "done"
+            logger.info("Self-dev pipeline complete: %s", summary)
+
+            # Optional: Telegram summary
+            try:
+                from mcp_server.telegram_bot import send_telegram_message
+                msg = _format_self_dev_telegram(summary)
+                if msg:
+                    await send_telegram_message(msg, force=True)
+            except Exception as tg_err:
+                logger.debug("Self-dev Telegram send skipped: %s", tg_err)
+
+        except asyncio.CancelledError:
+            logger.info("Self-development loop stopped")
+            break
+        except Exception as e:
+            logger.error("Self-dev loop error: %s", e)
+            await asyncio.sleep(60)
+
+
+def _run_self_dev_pipeline_sync() -> dict[str, Any]:
+    """Synchronous worker for the self-development pipeline. Safe to call from
+    a worker thread or API endpoint."""
+    summary: dict[str, Any] = {"steps": {}, "status": "ok"}
+
+    # Step 1: Batch postmortems
+    try:
+        from mcp_server.signal_postmortem import run_batch_postmortems
+        pm = run_batch_postmortems(lookback_days=settings.POSTMORTEM_LOOKBACK_DAYS)
+        summary["steps"]["postmortems"] = pm
+    except Exception as e:
+        summary["steps"]["postmortems"] = {"status": "error", "reason": str(e)}
+
+    # Step 2: Retrain predictor
+    try:
+        from mcp_server.signal_predictor import retrain_predictor
+        pred = retrain_predictor()
+        summary["steps"]["predictor"] = pred
+    except Exception as e:
+        summary["steps"]["predictor"] = {"status": "error", "reason": str(e)}
+
+    # Step 3: Bayesian scanner stats
+    try:
+        from mcp_server.scanner_bayesian import update_bayesian_stats
+        bayes = update_bayesian_stats()
+        summary["steps"]["bayesian"] = bayes
+    except Exception as e:
+        summary["steps"]["bayesian"] = {"status": "error", "reason": str(e)}
+
+    # Step 4: Mine adaptive rules (dry-run)
+    if getattr(settings, "RULES_MINE_ON_RETRAIN", True):
+        try:
+            from mcp_server.rules_engine import mine_rules
+            rules = mine_rules(dry_run=True)
+            # Strip the verbose `evaluated` list to keep summary compact
+            if isinstance(rules, dict) and "evaluated" in rules:
+                rules = {k: v for k, v in rules.items() if k != "evaluated"}
+            summary["steps"]["rules"] = rules
+        except Exception as e:
+            summary["steps"]["rules"] = {"status": "error", "reason": str(e)}
+
+    return summary
+
+
+def _format_self_dev_telegram(summary: dict[str, Any]) -> str | None:
+    """Format a compact Telegram digest of the daily self-dev run."""
+    try:
+        steps = summary.get("steps", {})
+        pm = steps.get("postmortems", {}) or {}
+        pred = steps.get("predictor", {}) or {}
+        bayes = steps.get("bayesian", {}) or {}
+        rules = steps.get("rules", {}) or {}
+
+        lines = [
+            "\U0001f9e0 Self-Development Daily Run",
+            "\u2501" * 24,
+        ]
+
+        # Postmortems
+        lines.append(
+            f"\U0001f50d Postmortems: {pm.get('processed', 0)} processed"
+            f" / {pm.get('total_candidates', 0)} candidates"
+        )
+
+        # Predictor
+        pstatus = pred.get("status", "n/a")
+        if pstatus == "ok":
+            auc = pred.get("cv_auc")
+            auc_str = f"{auc:.3f}" if auc is not None else "n/a"
+            lines.append(
+                f"\U0001f9ee Predictor: v={pred.get('version', 'n/a')}"
+                f" samples={pred.get('samples', 0)}"
+                f" loss_rate={pred.get('loss_rate', 0):.0%} AUC={auc_str}"
+            )
+        else:
+            lines.append(f"\U0001f9ee Predictor: {pstatus} ({pred.get('reason', '')[:60]})")
+
+        # Bayesian
+        if bayes.get("status") == "ok":
+            lines.append(
+                f"\U0001f4ca Scanners: {bayes.get('scanners_tracked', 0)} tracked,"
+                f" {bayes.get('underperforming_count', 0)} underperforming"
+            )
+        else:
+            lines.append(f"\U0001f4ca Scanners: {bayes.get('status', 'n/a')}")
+
+        # Rules
+        if rules.get("status") == "ok":
+            promoted = rules.get("promoted", [])
+            lines.append(
+                f"\u2696\ufe0f Rules: {len(promoted)} new candidates"
+                f" ({rules.get('candidates', 0)} evaluated)"
+            )
+            for r in promoted[:3]:
+                lines.append(
+                    f"  \u2022 {r['key']} lift={r['lift']:+.2f} (-{r['losses_prevented']}L/-{r['wins_lost']}W)"
+                )
+        else:
+            lines.append(f"\u2696\ufe0f Rules: {rules.get('status', 'n/a')}")
+
+        return "\n".join(lines)
+    except Exception as e:
+        logger.debug("format_self_dev_telegram failed: %s", e)
+        return None
 
 
 def _price_refresh_once_sync() -> None:
@@ -233,6 +411,15 @@ async def lifespan(app: FastAPI):
         from mcp_server.scanner_review import scanner_review_loop
         scanner_review_task = asyncio.create_task(scanner_review_loop())
         logger.info("Scanner review background task started (15:45 IST daily)")
+
+    # Start self-development background task (postmortem + retrain + rules mining at 16:00 IST)
+    self_dev_task = None
+    if getattr(settings, "SELF_DEV_ENABLED", True):
+        try:
+            self_dev_task = asyncio.create_task(_self_dev_loop())
+            logger.info("Self-development background task started (16:00 IST daily)")
+        except Exception as e:
+            logger.warning("Self-development loop startup skipped: %s", e)
 
     # Start F&O analytics auto-monitor (every 5 min during NFO hours)
     fno_analytics_task = None
@@ -352,6 +539,14 @@ async def lifespan(app: FastAPI):
             await fno_analytics_task
         except asyncio.CancelledError:
             pass
+
+    # Shutdown — cancel self-development loop
+    if self_dev_task and not self_dev_task.done():
+        self_dev_task.cancel()
+        try:
+            await self_dev_task
+        except asyncio.CancelledError:
+            pass
     logger.info("MCP Server shutting down")
 
 
@@ -401,11 +596,18 @@ AUTH_PUBLIC_PATHS = {
     "/api/fno/option_greeks",
     # Sheets reconciliation (n8n compatible, idempotent)
     "/tools/backfill_sheets_outcomes",
+    # Self-development system (n8n compatible)
+    "/tools/run_self_development",
+    "/tools/run_postmortems",
+    "/tools/retrain_predictor",
+    "/tools/update_bayesian_stats",
+    "/tools/mine_rules",
 }
 AUTH_PUBLIC_PREFIXES = (
     "/assets/", "/docs/", "/redoc/",
     "/tools/mwa_scan_status/", "/api/chart/",
     "/api/scanner-review/",
+    "/api/selfdev/",
     # F&O calendar lookup only (no market data leak)
     "/api/fno/expiry/",
 )
@@ -1354,6 +1556,52 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                     timeframe="1D",
                     status="OPEN",
                 )
+
+                # ── Self-development: capture entry context features ──
+                try:
+                    from mcp_server.signal_features import (
+                        extract_entry_features,
+                        apply_features_to_signal,
+                    )
+                    feat = extract_entry_features(
+                        sig.get("ohlcv_df"),
+                        mwa_bull_pct=float(score.get("bull_pct") or 0),
+                        mwa_bear_pct=float(score.get("bear_pct") or 0),
+                        scanner_count=sig.get("scanner_count", 0),
+                        bull_scanner_count=sig.get("bull_count", 0),
+                        bear_scanner_count=sig.get("bear_count", 0),
+                        scanner_list=sig.get("scanner_list", []),
+                        ai_confidence=confidence,
+                        rrr=sig.get("rrr", 0),
+                        direction=sig.get("direction", "LONG"),
+                        exchange=sig.get("exchange", "NSE"),
+                    )
+                    apply_features_to_signal(db_signal, feat)
+                except Exception as feat_err:
+                    logger.debug("Feature extraction skipped for %s: %s", sig["ticker"], feat_err)
+
+                # ── Self-development: predictive loss probability gate ──
+                try:
+                    from mcp_server.signal_predictor import get_predictor
+                    predictor = get_predictor()
+                    if predictor.is_ready():
+                        loss_prob, top_features = predictor.predict(db_signal.feature_vector or [])
+                        db_signal.loss_probability = round(loss_prob, 3)
+                        db_signal.predictor_version = predictor.version
+                        threshold = getattr(settings, "PREDICTOR_BLOCK_THRESHOLD", 0.75)
+                        if loss_prob >= threshold:
+                            db_signal.suppressed = True
+                            db_signal.suppression_reason = (
+                                f"Predictor: P(loss)={loss_prob:.2f} ≥ {threshold:.2f}. "
+                                f"Top risk factors: {', '.join(top_features[:3])}"
+                            )
+                            logger.info(
+                                "Signal SUPPRESSED %s: P(loss)=%.2f reason=%s",
+                                sig["ticker"], loss_prob, db_signal.suppression_reason,
+                            )
+                except Exception as pred_err:
+                    logger.debug("Predictor skipped for %s: %s", sig["ticker"], pred_err)
+
                 db.add(db_signal)
                 db.flush()  # Get db_signal.id
 
@@ -1368,7 +1616,13 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                 entry_price = sig["entry"]
                 deviation_pct = abs(live_price - entry_price) / entry_price * 100 if entry_price else 0
 
-                if deviation_pct <= 2.0:
+                # Self-development guard: suppressed signals do NOT create ActiveTrade
+                if db_signal.suppressed:
+                    logger.info(
+                        "ActiveTrade skipped for %s: signal suppressed by predictor (%s)",
+                        sig["ticker"], db_signal.suppression_reason,
+                    )
+                elif deviation_pct <= 2.0:
                     db_active = ActiveTrade(
                         signal_id=db_signal.id,
                         ticker=sig["ticker"],
@@ -1403,29 +1657,47 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                 except Exception:
                     pass
 
-            # Send detailed Telegram card
+            # Send detailed Telegram card (suppressed → send a blocked notice instead)
             emoji_map = {"ALERT": "\U0001f7e2", "WATCHLIST": "\U0001f7e1"}
             emoji = emoji_map.get(recommendation, "\U0001f7e1")
             segment_map = {"NSE": "NSE Equity", "MCX": "Commodity", "CDS": "Forex"}
             segment = segment_map.get(sig["exchange"], sig["exchange"])
 
-            msg = (
-                f"{emoji} MWA Signal\n"
-                f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
-                f"Ticker: {sig['ticker']}\n"
-                f"Segment: {segment} | {sig['asset_class']}\n"
-                f"Timeframe: Daily (Swing)\n"
-                f"Direction: {sig['direction']}\n"
-                f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
-                f"Entry: \u20b9{sig['entry']:.1f} | SL: \u20b9{sig['sl']:.1f} | TGT: \u20b9{sig['target']:.1f}\n"
-                f"RRR: {sig['rrr']:.1f} | Qty: {sig['qty']}\n"
-                f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
-                f"Scanners: {sig['scanner_count']} fired\n"
-                f"AI Confidence: {confidence}% ({recommendation})\n"
-                f"Signal ID: {record_result.get('signal_id', 'N/A')}"
-            )
-            if smc_card_text:
-                msg += "\n" + smc_card_text
+            is_suppressed = bool(getattr(db_signal, "suppressed", False))
+            if is_suppressed:
+                loss_prob = float(getattr(db_signal, "loss_probability", 0) or 0)
+                msg = (
+                    "\U0001f6ab MWA Signal SUPPRESSED\n"
+                    f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                    f"Ticker: {sig['ticker']}\n"
+                    f"Segment: {segment} | {sig['asset_class']}\n"
+                    f"Direction: {sig['direction']}\n"
+                    f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                    f"Entry: \u20b9{sig['entry']:.1f} | SL: \u20b9{sig['sl']:.1f} | TGT: \u20b9{sig['target']:.1f}\n"
+                    f"RRR: {sig['rrr']:.1f}\n"
+                    f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                    f"P(loss): {loss_prob:.0%}\n"
+                    f"Reason: {getattr(db_signal, 'suppression_reason', 'predictor block')}\n"
+                    f"Signal ID: {record_result.get('signal_id', 'N/A')} (not traded)"
+                )
+            else:
+                msg = (
+                    f"{emoji} MWA Signal\n"
+                    f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                    f"Ticker: {sig['ticker']}\n"
+                    f"Segment: {segment} | {sig['asset_class']}\n"
+                    f"Timeframe: Daily (Swing)\n"
+                    f"Direction: {sig['direction']}\n"
+                    f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                    f"Entry: \u20b9{sig['entry']:.1f} | SL: \u20b9{sig['sl']:.1f} | TGT: \u20b9{sig['target']:.1f}\n"
+                    f"RRR: {sig['rrr']:.1f} | Qty: {sig['qty']}\n"
+                    f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                    f"Scanners: {sig['scanner_count']} fired\n"
+                    f"AI Confidence: {confidence}% ({recommendation})\n"
+                    f"Signal ID: {record_result.get('signal_id', 'N/A')}"
+                )
+                if smc_card_text:
+                    msg += "\n" + smc_card_text
             _fire_and_forget(send_telegram_message(msg, exchange=sig["exchange"], force=True))
             mwa_signal_cards.append({
                 "ticker": sig["ticker"], "direction": sig["direction"],
@@ -1433,8 +1705,14 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                 "rrr": sig["rrr"], "qty": sig["qty"],
                 "confidence": confidence, "recommendation": recommendation,
                 "signal_id": record_result.get("signal_id", "N/A"),
+                "suppressed": is_suppressed,
+                "suppression_reason": getattr(db_signal, "suppression_reason", None) if is_suppressed else None,
+                "loss_probability": float(getattr(db_signal, "loss_probability", 0) or 0),
             })
-            logger.info("MWA signal card sent: %s %s conf=%d", sig["ticker"], sig["direction"], confidence)
+            logger.info(
+                "MWA signal card sent: %s %s conf=%d suppressed=%s",
+                sig["ticker"], sig["direction"], confidence, is_suppressed,
+            )
 
     except Exception as e:
         logger.error("MWA signal generation failed: %s", e)
@@ -4526,6 +4804,189 @@ async def api_scanner_review_leaderboard(
         "entries": stats.get("entries", 0),
         "leaderboard": board,
     }
+
+
+# ============================================================
+# Self-Development System — API endpoints
+# ============================================================
+
+
+@app.get("/api/selfdev/status")
+async def api_selfdev_status():
+    """Overall health + state of the self-development system."""
+    from mcp_server.scanner_bayesian import get_all_stats
+    from mcp_server.signal_predictor import get_predictor
+    from mcp_server.signal_similarity import similarity_stats
+
+    session = SessionLocal()
+    try:
+        postmortem_count = session.query(Postmortem).count()
+        rule_count = session.query(AdaptiveRule).count()
+        active_rules = session.query(AdaptiveRule).filter(AdaptiveRule.active.is_(True)).count()
+        signals_with_features = (
+            session.query(Signal).filter(Signal.feature_vector.isnot(None)).count()
+        )
+        suppressed = session.query(Signal).filter(Signal.suppressed.is_(True)).count()
+        sim_stats = similarity_stats(session)
+    finally:
+        session.close()
+
+    predictor = get_predictor()
+    bayes = get_all_stats()
+
+    return {
+        "enabled": settings.SELF_DEV_ENABLED,
+        "predictor": predictor.meta(),
+        "predictor_block_threshold": settings.PREDICTOR_BLOCK_THRESHOLD,
+        "rules": {"total": rule_count, "active": active_rules},
+        "postmortems": postmortem_count,
+        "signals_with_features": signals_with_features,
+        "signals_suppressed": suppressed,
+        "similarity": sim_stats,
+        "bayesian": {
+            "scanners_tracked": len((bayes.get("scanners") or {})),
+            "updated_at": bayes.get("updated_at"),
+        },
+    }
+
+
+@app.post("/tools/run_self_development")
+async def tool_run_self_development():
+    """Manual trigger for the full self-development pipeline (n8n compatible)."""
+    result = await asyncio.to_thread(_run_self_dev_pipeline_sync)
+    return result
+
+
+@app.get("/api/selfdev/postmortem/{signal_id}")
+async def api_selfdev_postmortem(signal_id: int):
+    """Return the postmortem for a specific signal, running it on-demand if missing."""
+    session = SessionLocal()
+    try:
+        pm = session.query(Postmortem).filter(Postmortem.signal_id == signal_id).first()
+        if not pm:
+            # Run it on demand
+            from mcp_server.signal_postmortem import run_postmortem
+            result = run_postmortem(signal_id)
+            if result.get("status") != "ok":
+                return result
+            pm = session.query(Postmortem).filter(Postmortem.signal_id == signal_id).first()
+
+        if not pm:
+            return {"status": "error", "reason": "postmortem not available"}
+
+        return {
+            "status": "ok",
+            "signal_id": signal_id,
+            "outcome": pm.outcome,
+            "root_cause": pm.root_cause,
+            "contributing_factors": pm.contributing_factors,
+            "rule_checks": pm.rule_checks,
+            "suggested_filter": pm.suggested_filter,
+            "similar_signals": pm.similar_signals,
+            "claude_narrative": pm.claude_narrative,
+            "confidence_score": float(pm.confidence_score or 0),
+            "created_at": pm.created_at.isoformat() if pm.created_at else None,
+        }
+    finally:
+        session.close()
+
+
+@app.post("/tools/run_postmortems")
+async def tool_run_postmortems(lookback_days: int = Query(default=14, ge=1, le=180)):
+    """Batch postmortem for recently-closed signals (n8n compatible)."""
+    from mcp_server.signal_postmortem import run_batch_postmortems
+    return await asyncio.to_thread(run_batch_postmortems, lookback_days)
+
+
+@app.post("/tools/retrain_predictor")
+async def tool_retrain_predictor():
+    """Manually retrain the loss predictor (n8n compatible)."""
+    from mcp_server.signal_predictor import retrain_predictor
+    return await asyncio.to_thread(retrain_predictor)
+
+
+@app.get("/api/selfdev/predictor")
+async def api_selfdev_predictor():
+    """Return current predictor metadata + configured block threshold."""
+    from mcp_server.signal_predictor import get_predictor
+    predictor = get_predictor()
+    return {
+        **predictor.meta(),
+        "block_threshold": settings.PREDICTOR_BLOCK_THRESHOLD,
+    }
+
+
+@app.get("/api/selfdev/bayesian")
+async def api_selfdev_bayesian():
+    """Return the full Bayesian scanner stats JSON."""
+    from mcp_server.scanner_bayesian import get_all_stats
+    return get_all_stats()
+
+
+@app.get("/api/selfdev/bayesian/underperforming")
+async def api_selfdev_bayesian_under():
+    """Return scanners whose 90% credible interval upper bound falls below the retirement threshold."""
+    from mcp_server.scanner_bayesian import get_underperforming_scanners
+    return {"scanners": get_underperforming_scanners()}
+
+
+@app.post("/tools/update_bayesian_stats")
+async def tool_update_bayesian_stats():
+    """Recompute Bayesian posteriors from current DB state."""
+    from mcp_server.scanner_bayesian import update_bayesian_stats
+    return await asyncio.to_thread(update_bayesian_stats)
+
+
+@app.get("/api/selfdev/rules")
+async def api_selfdev_rules():
+    """List all mined adaptive rules (active and inactive)."""
+    from mcp_server.rules_engine import list_active_rules
+    return {"rules": list_active_rules()}
+
+
+@app.post("/tools/mine_rules")
+async def tool_mine_rules(dry_run: bool = Query(default=True)):
+    """Run the rule mining pipeline. Default dry_run=True (rules inactive by default)."""
+    from mcp_server.rules_engine import mine_rules
+    result = await asyncio.to_thread(mine_rules, dry_run)
+    # Strip verbose evaluated list from the API response
+    if isinstance(result, dict) and "evaluated" in result:
+        result = {k: v for k, v in result.items() if k != "evaluated"}
+    return result
+
+
+@app.post("/api/selfdev/rules/{rule_key}/activate")
+async def api_selfdev_activate_rule(rule_key: str):
+    """Manually activate a mined rule."""
+    from mcp_server.rules_engine import set_rule_active
+    return set_rule_active(rule_key, True)
+
+
+@app.post("/api/selfdev/rules/{rule_key}/deactivate")
+async def api_selfdev_deactivate_rule(rule_key: str):
+    """Manually deactivate a rule."""
+    from mcp_server.rules_engine import set_rule_active
+    return set_rule_active(rule_key, False)
+
+
+@app.get("/api/selfdev/similar/{signal_id}")
+async def api_selfdev_similar(signal_id: int, top_k: int = Query(default=5, ge=1, le=20)):
+    """Return the top-K historical signals most similar to a given signal."""
+    from mcp_server.signal_similarity import find_similar_signals
+    session = SessionLocal()
+    try:
+        sig = session.query(Signal).filter(Signal.id == signal_id).first()
+        if not sig:
+            return {"status": "error", "reason": f"signal {signal_id} not found"}
+        similar = find_similar_signals(sig, session, top_k=top_k, exclude_id=signal_id)
+        return {
+            "status": "ok",
+            "signal_id": signal_id,
+            "ticker": sig.ticker,
+            "similar": similar,
+        }
+    finally:
+        session.close()
 
 
 # ============================================================
