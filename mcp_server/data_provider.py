@@ -79,8 +79,13 @@ SEGMENT_ROUTING: dict[str, list[str]] = {
     "NSE": ["angel", "nse", "yfinance"],
     "BSE": ["angel", "nse", "yfinance"],
     "NFO": ["angel", "kite", "yfinance"],
-    "MCX": ["gwc", "angel", "yfinance"],
-    "CDS": ["yfinance", "angel"],
+    # MCX: ONLY real MCX FUTCOM contracts (via gwc/angel/kite). yfinance is
+    # deliberately excluded — it maps CRUDEOIL→CL=F (NYMEX WTI), GOLD→GC=F
+    # (COMEX), etc., which are global proxies, NOT MCX FUTCOM prices. Signals
+    # built off NYMEX/COMEX prices would diverge from the MCX market the user
+    # actually trades. Better to have no data than wrong data.
+    "MCX": ["gwc", "angel", "kite"],
+    "CDS": ["angel", "kite", "yfinance"],
 }
 
 # Apply env-var overrides (e.g. DATA_ROUTE_MCX=angel,yfinance)
@@ -832,11 +837,93 @@ class AngelSource:
                 f"{data.get('message') or data}"
             )
         if data and data.get("data"):
-            token = data["data"][0]["symboltoken"]
+            candidates = data["data"]
+            chosen = self._pick_instrument(candidates, symbol, exchange)
+            if chosen is None:
+                logger.debug(
+                    "Angel: no matching instrument for %s on %s (searchScrip returned %d rows)",
+                    symbol, exchange, len(candidates),
+                )
+                return None
+            token = chosen.get("symboltoken")
+            if not token:
+                return None
             self._token_cache[key] = token
             self._note_success()
             return token
         return None
+
+    # Allowed Angel instrumenttype per exchange. For derivatives we only want
+    # the *futures* contracts (not options on the same underlying) so MCX
+    # crude resolves to FUTCOM, not OPTFUT, NFO stock/index to FUTSTK/FUTIDX,
+    # CDS currency to FUTCUR.
+    _INSTRUMENT_TYPE_BY_EXCHANGE = {
+        "MCX": ("FUTCOM",),
+        "NFO": ("FUTSTK", "FUTIDX"),
+        "BFO": ("FUTSTK", "FUTIDX"),
+        "CDS": ("FUTCUR",),
+    }
+
+    @staticmethod
+    def _parse_angel_expiry(exp: str) -> date:
+        """Parse Angel expiry strings. Returns date.max on failure (sort last)."""
+        if not exp:
+            return date.max
+        for fmt in ("%d%b%Y", "%d-%b-%Y", "%Y-%m-%d", "%d%b%y"):
+            try:
+                return datetime.strptime(exp.upper(), fmt).date()
+            except Exception:
+                continue
+        return date.max
+
+    def _pick_instrument(
+        self, candidates: list, symbol: str, exchange: str
+    ) -> Optional[dict]:
+        """
+        Filter searchScrip results to the correct contract.
+
+        For MCX/NFO/CDS we require:
+          1. instrumenttype in the allowed set for that exchange (FUTCOM for
+             MCX, FUTSTK/FUTIDX for NFO, FUTCUR for CDS) so we never pick an
+             option (OPTFUT/OPTSTK/OPTIDX/OPTCUR) when the caller asked for
+             the underlying.
+          2. name exactly matches the requested symbol (case-insensitive) to
+             prevent partial matches ("CRUDEOILM" when asking "CRUDEOIL").
+          3. Nearest non-expired expiry wins (current-month contract).
+
+        For equity exchanges (NSE/BSE) we just take the first match as before.
+        """
+        if not candidates:
+            return None
+
+        allowed_types = self._INSTRUMENT_TYPE_BY_EXCHANGE.get(exchange)
+        if not allowed_types:
+            # Equity or unknown exchange — preserve old behaviour
+            return candidates[0]
+
+        sym_u = symbol.upper()
+
+        # Primary: exact name + allowed instrumenttype
+        exact = [
+            c for c in candidates
+            if c.get("instrumenttype") in allowed_types
+            and (c.get("name") or "").upper() == sym_u
+        ]
+        pool = exact
+        if not pool:
+            # Fall back to instrumenttype filter only (name may differ slightly)
+            pool = [
+                c for c in candidates
+                if c.get("instrumenttype") in allowed_types
+            ]
+        if not pool:
+            return None
+
+        today_d = date.today()
+        future = [c for c in pool if self._parse_angel_expiry(c.get("expiry", "")) >= today_d]
+        final = future or pool
+        final.sort(key=lambda c: self._parse_angel_expiry(c.get("expiry", "")))
+        return final[0]
 
     @retry(max_attempts=3, delay=1.0, no_retry=(AngelTokenInvalid,))
     def get_historical(self, symbol: str,
@@ -1596,15 +1683,74 @@ def _load_instrument_cache() -> None:
         kite = get_authenticated_kite()
 
         _instrument_cache.clear()
+
+        # Secondary index: for MCX/NFO/CDS we also want to resolve *base*
+        # symbols (e.g. "CRUDEOIL") to the nearest-expiry *futures* token.
+        # Kite's instruments dump keys by full tradingsymbol
+        # ("CRUDEOIL26APRFUT"), so a plain "MCX:CRUDEOIL" lookup would miss.
+        # Without this alias, MCX/CDS scanners fall through to yfinance and
+        # pick up NYMEX/COMEX proxies instead of real MCX FUTCOM prices.
+        # Map: (exchange, base_name) -> (expiry_date, instrument_token)
+        base_symbol_best: dict[tuple[str, str], tuple[date, int]] = {}
+        today_d = date.today()
+
+        def _inst_expiry_date(inst: dict) -> date | None:
+            exp = inst.get("expiry")
+            if exp is None or exp == "":
+                return None
+            if isinstance(exp, date):
+                return exp
+            if hasattr(exp, "date"):
+                try:
+                    return exp.date()
+                except Exception:
+                    return None
+            try:
+                return datetime.strptime(str(exp), "%Y-%m-%d").date()
+            except Exception:
+                return None
+
         for exch in ["NSE", "BSE", "MCX", "CDS", "NFO"]:
             try:
                 instruments = kite.instruments(exch)
+                fut_count = 0
                 for inst in instruments:
                     key = f"{exch}:{inst['tradingsymbol']}"
                     _instrument_cache[key] = inst["instrument_token"]
-                logger.info("Loaded %d instruments for %s", len(instruments), exch)
+
+                    # Only build base-symbol aliases for derivatives futures
+                    # (MCX FUTCOM, NFO FUTSTK/FUTIDX, CDS FUTCUR).
+                    if exch not in ("MCX", "NFO", "CDS"):
+                        continue
+                    itype = inst.get("instrument_type", "")
+                    if itype != "FUT":
+                        continue  # skip CE/PE options
+                    base = (inst.get("name") or "").strip()
+                    if not base:
+                        continue
+                    exp_d = _inst_expiry_date(inst)
+                    if exp_d is None or exp_d < today_d:
+                        continue  # skip expired / undated
+                    bkey = (exch, base.upper())
+                    existing = base_symbol_best.get(bkey)
+                    if existing is None or exp_d < existing[0]:
+                        base_symbol_best[bkey] = (exp_d, inst["instrument_token"])
+                        fut_count += 1
+                logger.info(
+                    "Loaded %d instruments for %s (futures aliases so far: %d)",
+                    len(instruments), exch, fut_count if exch in ("MCX", "NFO", "CDS") else 0,
+                )
             except Exception as e:
                 logger.warning("Failed to load instruments for %s: %s", exch, e)
+
+        # Alias each base symbol to its nearest-expiry futures token so
+        # "MCX:CRUDEOIL" resolves to "CRUDEOIL<nearest>FUT" transparently.
+        for (exch, base), (_exp, token) in base_symbol_best.items():
+            _instrument_cache[f"{exch}:{base}"] = token
+        logger.info(
+            "Kite base-symbol aliases: %d (MCX/NFO/CDS nearest-expiry futures)",
+            len(base_symbol_best),
+        )
 
         _cache_loaded_date = today
         _kite_failed_today = None  # Clear failure flag on success
