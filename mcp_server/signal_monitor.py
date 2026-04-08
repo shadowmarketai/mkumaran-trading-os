@@ -150,6 +150,38 @@ def monitor_open_signals() -> list[dict]:
                 )
                 session.add(outcome_rec)
 
+                # 2b) For option-enriched signals, re-fetch option LTP for exit P&L
+                if getattr(sig, "option_tradingsymbol", None):
+                    try:
+                        from mcp_server.mcp_server import _get_kite_for_fo
+                        kite_client = _get_kite_for_fo()
+                        if kite_client:
+                            ts = sig.option_tradingsymbol
+                            key = f"NFO:{ts}"
+                            quote = kite_client.quote([key])
+                            exit_premium = float(
+                                quote.get(key, {}).get("last_price", 0) or 0
+                            )
+                            if exit_premium > 0:
+                                outcome_rec.option_exit_premium = exit_premium
+                                entry_prem = float(sig.option_premium or 0)
+                                lot = int(sig.option_lot_size or 1)
+                                if entry_prem > 0:
+                                    pnl_per_lot = (exit_premium - entry_prem) * lot
+                                    # Credit spreads / SHORT direction = inverted
+                                    if getattr(sig, "option_is_spread", False):
+                                        pnl_per_lot = -pnl_per_lot
+                                    elif direction in ("SELL", "SHORT"):
+                                        pnl_per_lot = -pnl_per_lot
+                                    outcome_rec.option_pnl_per_lot = round(pnl_per_lot, 2)
+                                    outcome_rec.option_pnl_pct = round(
+                                        (exit_premium - entry_prem) / entry_prem * 100, 2
+                                    )
+                    except Exception as opt_err:
+                        logger.debug(
+                            "Option exit fetch failed for %s: %s", sig.ticker, opt_err
+                        )
+
                 # 3) Remove from ActiveTrade
                 active = session.query(ActiveTrade).filter(
                     ActiveTrade.signal_id == sig.id
@@ -274,12 +306,37 @@ async def _send_close_alert(closed: dict) -> None:
         f"Result: {closed['outcome']}"
     )
 
-    # Attach postmortem RCA if available (always for LOSS, opportunistic for WIN)
+    # Attach option P&L + postmortem RCA if available
     try:
         from mcp_server.db import SessionLocal
-        from mcp_server.models import Postmortem
+        from mcp_server.models import Postmortem, Signal, Outcome
         session = SessionLocal()
         try:
+            # Option P&L block — only if this signal was option-enriched
+            sig_row = (
+                session.query(Signal)
+                .filter(Signal.id == closed["signal_id"])
+                .first()
+            )
+            if sig_row and getattr(sig_row, "option_tradingsymbol", None):
+                outcome_row = (
+                    session.query(Outcome)
+                    .filter(Outcome.signal_id == closed["signal_id"])
+                    .first()
+                )
+                if outcome_row and outcome_row.option_exit_premium is not None:
+                    entry_prem = float(sig_row.option_premium or 0)
+                    exit_prem = float(outcome_row.option_exit_premium or 0)
+                    opt_pnl_pct = float(outcome_row.option_pnl_pct or 0)
+                    opt_pnl_lot = float(outcome_row.option_pnl_per_lot or 0)
+                    pnl_sign = "+" if opt_pnl_pct >= 0 else ""
+                    msg += (
+                        f"\n\U0001f3af Option: {sig_row.option_tradingsymbol}\n"
+                        f"   Entry: \u20b9{entry_prem:.1f} \u2192 Exit: \u20b9{exit_prem:.1f}\n"
+                        f"   Option P&L: {pnl_sign}{opt_pnl_pct:.1f}% "
+                        f"(\u20b9{opt_pnl_lot:,.0f}/lot)"
+                    )
+
             pm = (
                 session.query(Postmortem)
                 .filter(Postmortem.signal_id == closed["signal_id"])
@@ -296,7 +353,7 @@ async def _send_close_alert(closed: dict) -> None:
         finally:
             session.close()
     except Exception as e:
-        logger.debug("RCA attach skipped: %s", e)
+        logger.debug("RCA/option attach skipped: %s", e)
 
     await send_telegram_message(msg, force=True)
 

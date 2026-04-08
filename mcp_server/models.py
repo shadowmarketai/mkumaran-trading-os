@@ -102,6 +102,27 @@ class Signal(Base):
     suppression_reason = Column(Text, nullable=True)
     rca_json = Column(JSONB().with_variant(JSON, "sqlite"), nullable=True)  # postmortem
 
+    # ── Option contract fields (for FNO signals) ──
+    option_strategy = Column(String(30), nullable=True)       # LONG_CALL_ITM, BULL_PUT_SPREAD, ...
+    option_tradingsymbol = Column(String(50), nullable=True)  # NIFTY25APR21450CE
+    option_strike = Column(Numeric(12, 2), nullable=True)
+    option_expiry = Column(Date, nullable=True)
+    option_type = Column(String(2), nullable=True)            # CE / PE
+    option_premium = Column(Numeric(10, 2), nullable=True)    # entry premium per unit
+    option_premium_sl = Column(Numeric(10, 2), nullable=True)
+    option_premium_target = Column(Numeric(10, 2), nullable=True)
+    option_lot_size = Column(Integer, nullable=True)
+    option_contracts = Column(Integer, default=1, nullable=True)
+    option_iv_rank = Column(Numeric(5, 1), nullable=True)
+    option_delta = Column(Numeric(6, 4), nullable=True)
+    option_gamma = Column(Numeric(8, 6), nullable=True)
+    option_theta = Column(Numeric(8, 2), nullable=True)
+    option_vega = Column(Numeric(8, 2), nullable=True)
+    option_iv = Column(Numeric(6, 4), nullable=True)
+    option_is_spread = Column(Boolean, default=False, nullable=True)
+    option_net_premium = Column(Numeric(10, 2), nullable=True)
+    option_legs = Column(JSONB().with_variant(JSON, "sqlite"), nullable=True)
+
     def __repr__(self) -> str:
         return (
             f"<Signal(id={self.id}, ticker='{self.ticker}', "
@@ -127,6 +148,11 @@ class Outcome(Base):
     invalidation_reason = Column(String(100), nullable=True)
     max_adverse_excursion = Column(Numeric(7, 3), nullable=True)  # worst drawdown %
     max_favorable_excursion = Column(Numeric(7, 3), nullable=True)  # best run-up %
+
+    # ── Option exit tracking (populated at close time for option-enriched signals) ──
+    option_exit_premium = Column(Numeric(10, 2), nullable=True)
+    option_pnl_per_lot = Column(Numeric(12, 2), nullable=True)
+    option_pnl_pct = Column(Numeric(7, 2), nullable=True)
 
     signal = relationship("Signal", backref="outcome")
 

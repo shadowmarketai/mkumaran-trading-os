@@ -610,6 +610,9 @@ AUTH_PUBLIC_PREFIXES = (
     "/api/selfdev/",
     # F&O calendar lookup only (no market data leak)
     "/api/fno/expiry/",
+    # Options enrichment — universe list + per-symbol picker
+    "/api/fno/option_recommendation/",
+    "/api/fno/option_universe",
 )
 
 
@@ -1555,6 +1558,26 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                     source="mwa_scan",
                     timeframe="1D",
                     status="OPEN",
+                    # Option fields — None-safe, only set if the signal was enriched
+                    option_strategy=sig.get("option_strategy"),
+                    option_tradingsymbol=sig.get("option_tradingsymbol"),
+                    option_strike=sig.get("option_strike"),
+                    option_expiry=sig.get("option_expiry"),
+                    option_type=sig.get("option_type"),
+                    option_premium=sig.get("option_premium"),
+                    option_premium_sl=sig.get("option_premium_sl"),
+                    option_premium_target=sig.get("option_premium_target"),
+                    option_lot_size=sig.get("option_lot_size"),
+                    option_contracts=sig.get("option_contracts"),
+                    option_iv_rank=sig.get("option_iv_rank"),
+                    option_delta=sig.get("option_delta"),
+                    option_gamma=sig.get("option_gamma"),
+                    option_theta=sig.get("option_theta"),
+                    option_vega=sig.get("option_vega"),
+                    option_iv=sig.get("option_iv"),
+                    option_is_spread=sig.get("option_is_spread", False),
+                    option_net_premium=sig.get("option_net_premium"),
+                    option_legs=sig.get("option_legs"),
                 )
 
                 # ── Self-development: capture entry context features ──
@@ -1698,6 +1721,36 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                 )
                 if smc_card_text:
                     msg += "\n" + smc_card_text
+
+                # ── Options recommendation block (only if signal was enriched) ──
+                if sig.get("option_tradingsymbol"):
+                    try:
+                        _exp = sig.get("option_expiry")
+                        expiry_str = _exp.strftime("%d%b").upper() if hasattr(_exp, "strftime") else ""
+                        spread_note = " (SPREAD)" if sig.get("option_is_spread") else ""
+                        _prem = float(sig.get("option_premium") or 0)
+                        _sl = float(sig.get("option_premium_sl") or 0)
+                        _tgt = float(sig.get("option_premium_target") or 0)
+                        _lot = int(sig.get("option_lot_size") or 1)
+                        _contracts = int(sig.get("option_contracts") or 1)
+                        _risk_per_lot = max((_prem - _sl) * _lot, 0.0)
+                        _ivr = float(sig.get("option_iv_rank") or 0)
+                        _delta = float(sig.get("option_delta") or 0)
+                        _gamma = float(sig.get("option_gamma") or 0)
+                        _theta = float(sig.get("option_theta") or 0)
+                        msg += (
+                            f"\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                            f"\U0001f3af OPTION RECOMMENDATION{spread_note}\n"
+                            f"Contract: {sig['option_tradingsymbol']}"
+                            + (f" ({expiry_str})" if expiry_str else "")
+                            + "\n"
+                            f"Strategy: {sig.get('option_strategy', 'N/A')} | IV Rank: {_ivr:.0f}%\n"
+                            f"Entry: \u20b9{_prem:.1f} | SL: \u20b9{_sl:.1f} | TGT: \u20b9{_tgt:.1f}\n"
+                            f"Lot: {_lot} | Contracts: {_contracts} | Risk: \u20b9{_risk_per_lot:,.0f}\n"
+                            f"Greeks: \u0394 {_delta:+.2f} | \u0393 {_gamma:+.4f} | \u0398 {_theta:+.1f}"
+                        )
+                    except Exception as opt_msg_err:  # noqa: BLE001
+                        logger.debug("Option message block skipped: %s", opt_msg_err)
             _fire_and_forget(send_telegram_message(msg, exchange=sig["exchange"], force=True))
             mwa_signal_cards.append({
                 "ticker": sig["ticker"], "direction": sig["direction"],
@@ -2038,6 +2091,123 @@ async def api_option_greeks(
         "vega": greeks.vega,
         "rho": greeks.rho,
         "fair_price": greeks.price,
+    }
+
+
+@app.get("/api/fno/option_universe")
+async def api_option_universe():
+    """Return the list of symbols eligible for option enrichment (4 indices + 20 stocks)."""
+    from mcp_server.options_selector import (
+        OPTION_INDEX_UNIVERSE,
+        OPTION_STOCK_UNIVERSE,
+        OPTION_UNIVERSE,
+    )
+    return {
+        "count": len(OPTION_UNIVERSE),
+        "indices": OPTION_INDEX_UNIVERSE,
+        "stocks": OPTION_STOCK_UNIVERSE,
+        "enabled": bool(getattr(settings, "OPTION_SIGNALS_ENABLED", True)),
+    }
+
+
+@app.get("/api/fno/option_recommendation/{symbol}")
+async def api_option_recommendation(symbol: str, direction: str = "LONG"):
+    """
+    Standalone option picker for any eligible symbol.
+
+    Fetches live spot + computes ATR-based SL/TGT, then returns the full
+    option recommendation dict (same shape attached to MWA signals).
+    """
+    from mcp_server.mwa_signal_generator import _compute_atr
+    from mcp_server.options_selector import (
+        build_option_recommendation,
+        is_eligible,
+    )
+    from mcp_server.nse_scanner import get_stock_data
+
+    symbol_u = (symbol or "").upper()
+    direction_u = (direction or "LONG").upper()
+
+    if not is_eligible(symbol_u):
+        return {
+            "status": "skipped",
+            "symbol": symbol_u,
+            "message": f"{symbol_u} not in OPTION_UNIVERSE (or feature disabled)",
+        }
+
+    kite = _get_kite_for_fo()
+    if not kite:
+        return {
+            "status": "error",
+            "symbol": symbol_u,
+            "message": "Kite not connected — option recommendation requires live F&O session",
+        }
+
+    # Fetch recent daily OHLCV to compute spot + ATR
+    try:
+        df = await asyncio.to_thread(get_stock_data, symbol_u, "3mo", "1d")
+    except Exception as e:  # noqa: BLE001
+        return {"status": "error", "symbol": symbol_u, "message": f"OHLCV fetch failed: {e}"}
+
+    if df is None or df.empty or len(df) < 15:
+        return {
+            "status": "error",
+            "symbol": symbol_u,
+            "message": "Insufficient OHLCV data for ATR computation",
+        }
+
+    spot = float(df["close"].iloc[-1])
+    atr = _compute_atr(df, period=14)
+    if atr <= 0 or spot <= 0:
+        return {
+            "status": "error",
+            "symbol": symbol_u,
+            "message": "ATR / spot computation failed",
+        }
+
+    atr_mult = 1.5
+    rrr_mult = settings.RRMS_MIN_RRR
+    if direction_u == "LONG":
+        sl = spot - (atr_mult * atr)
+        risk = spot - sl
+        target = spot + (rrr_mult * risk)
+    else:
+        sl = spot + (atr_mult * atr)
+        risk = sl - spot
+        target = spot - (rrr_mult * risk)
+
+    rec = await asyncio.to_thread(
+        build_option_recommendation,
+        symbol=symbol_u,
+        direction=direction_u,
+        spot=spot,
+        underlying_sl=sl,
+        underlying_target=target,
+        kite=kite,
+    )
+    if not rec:
+        return {
+            "status": "no_recommendation",
+            "symbol": symbol_u,
+            "spot": round(spot, 2),
+            "underlying_sl": round(sl, 2),
+            "underlying_target": round(target, 2),
+            "message": "Could not build option recommendation (see server logs)",
+        }
+
+    # Normalize date / any non-JSON-safe fields
+    if hasattr(rec.get("option_expiry"), "isoformat"):
+        rec["option_expiry"] = rec["option_expiry"].isoformat()
+
+    return {
+        "status": "ok",
+        "symbol": symbol_u,
+        "direction": direction_u,
+        "spot": round(spot, 2),
+        "underlying_sl": round(sl, 2),
+        "underlying_target": round(target, 2),
+        "atr": round(atr, 2),
+        **rec,
     }
 
 

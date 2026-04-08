@@ -174,6 +174,34 @@ def generate_mwa_signals(
         exchange = _resolve_exchange(ticker)
         asset_class = _resolve_asset_class(exchange)
 
+        # ── Options Enrichment for eligible F&O signals ──
+        # Attach concrete option contract recommendation (strike, expiry,
+        # premium, Greeks, option-level SL/TGT) so users can act directly.
+        # Fails open: any error leaves the signal as futures-only.
+        option_fields: dict = {}
+        if asset_class == AssetClass.FNO.value:
+            try:
+                from mcp_server.options_selector import (
+                    build_option_recommendation,
+                    is_eligible,
+                )
+                if is_eligible(ticker):
+                    # Late-binding import to avoid circular dep with mcp_server
+                    from mcp_server.mcp_server import _get_kite_for_fo
+                    kite = _get_kite_for_fo()
+                    rec = build_option_recommendation(
+                        symbol=ticker,
+                        direction=direction,
+                        spot=entry,
+                        underlying_sl=sl,
+                        underlying_target=target,
+                        kite=kite,
+                    )
+                    if rec:
+                        option_fields = rec
+            except Exception as opt_err:  # noqa: BLE001
+                logger.debug("Option enrichment failed for %s: %s", ticker, opt_err)
+
         signals.append({
             "ticker": ticker,
             "direction": direction,
@@ -190,6 +218,7 @@ def generate_mwa_signals(
             "exchange": exchange,
             "asset_class": asset_class,
             "timeframe": "day",
+            **option_fields,  # merges option_* keys (empty dict if no enrichment)
         })
 
     logger.info("Generated %d MWA signals from %d promoted stocks", len(signals), len(promoted))

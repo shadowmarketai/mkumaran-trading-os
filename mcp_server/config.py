@@ -145,5 +145,11 @@ class Settings:
     RULES_MINE_ON_RETRAIN: bool = os.getenv("RULES_MINE_ON_RETRAIN", "true").lower() == "true"
     POSTMORTEM_LOOKBACK_DAYS: int = int(os.getenv("POSTMORTEM_LOOKBACK_DAYS", "14"))
 
+    # Options Enrichment (attach concrete option contracts to FNO futures signals)
+    OPTION_SIGNALS_ENABLED: bool = os.getenv("OPTION_SIGNALS_ENABLED", "true").lower() == "true"
+    OPTION_IV_DEBIT_MAX: float = float(os.getenv("OPTION_IV_DEBIT_MAX", "40"))
+    OPTION_IV_CREDIT_MIN: float = float(os.getenv("OPTION_IV_CREDIT_MIN", "60"))
+    OPTION_MIN_DAYS_TO_EXPIRY: int = int(os.getenv("OPTION_MIN_DAYS_TO_EXPIRY", "2"))
+
 
 settings = Settings()
