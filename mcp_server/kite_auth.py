@@ -1,6 +1,8 @@
 import json
 import logging
 import re
+import threading
+import time
 from datetime import datetime, date
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -12,12 +14,32 @@ from mcp_server.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Cross-thread coordination: only ONE thread may attempt a Kite TOTP
+# refresh at a time. Without this, the MWA scanner thread and the
+# signal-monitor thread can BOTH trigger refresh_kite_token() in
+# parallel, each opening its own hanging requests.Session and pinning
+# a worker thread indefinitely.
+_kite_refresh_lock = threading.Lock()
+
+# Sticky circuit breaker: after a failed refresh, block further
+# refresh attempts for this many seconds. Prevents the scanner loop
+# from melting the event loop by retrying the same failing flow
+# hundreds of times in a single scan.
+_REFRESH_BACKOFF_SECONDS = 300  # 5 min
+_last_refresh_failure_ts: float = 0.0
+
 TOKEN_CACHE_PATH = Path("data/kite_token.json")
 
 # Kite Connect endpoints
 LOGIN_URL = "https://kite.zerodha.com/api/login"
 TWOFA_URL = "https://kite.zerodha.com/api/twofa"
 LOGIN_REFERER = "https://kite.trade/connect/login?v=3&api_key="
+
+# HTTP timeout for every step of the TOTP login flow — without this,
+# a hung Kite endpoint blocks the worker thread forever and eventually
+# starves the event loop (observed symptom: Traefik returns 503 "no
+# available server" because every healthcheck times out).
+HTTP_TIMEOUT = (5.0, 15.0)  # (connect, read)
 
 
 def get_totp() -> str:
@@ -63,12 +85,48 @@ def refresh_kite_token() -> str:
     5. kite.generate_session(request_token) → access_token
     Returns access_token.
     """
-    # Check cache first
+    global _last_refresh_failure_ts
+
+    # Check cache first (fast path, no lock needed)
     cached = _load_cached_token()
     if cached:
         logger.info("Using cached Kite token from %s", cached["date"])
         return cached["access_token"]
 
+    # Circuit breaker: don't hammer a broken flow
+    if _last_refresh_failure_ts > 0:
+        age = time.time() - _last_refresh_failure_ts
+        if age < _REFRESH_BACKOFF_SECONDS:
+            remaining = int(_REFRESH_BACKOFF_SECONDS - age)
+            raise RuntimeError(
+                f"Kite token refresh circuit-broken "
+                f"({remaining}s until next attempt)"
+            )
+
+    # Serialize concurrent callers — if another thread is already
+    # refreshing, wait briefly then re-check the cache instead of
+    # starting a second login flow.
+    if not _kite_refresh_lock.acquire(timeout=30):
+        raise RuntimeError("Kite refresh lock timeout (another refresh in progress)")
+
+    try:
+        # Re-check cache under lock (the other thread may have just finished)
+        cached = _load_cached_token()
+        if cached:
+            logger.info("Using cached Kite token (refreshed by sibling thread)")
+            return cached["access_token"]
+
+        try:
+            return _do_refresh()
+        except Exception:
+            _last_refresh_failure_ts = time.time()
+            raise
+    finally:
+        _kite_refresh_lock.release()
+
+
+def _do_refresh() -> str:
+    """Actual TOTP login flow — called only from inside refresh_kite_token()."""
     logger.info("Refreshing Kite token via TOTP login...")
 
     from kiteconnect import KiteConnect
@@ -84,7 +142,7 @@ def refresh_kite_token() -> str:
     # Step 1: Visit login page to establish session cookies
     login_page_url = kite.login_url()
     logger.info("Step 1: Visiting login page...")
-    page_resp = session.get(login_page_url)
+    page_resp = session.get(login_page_url, timeout=HTTP_TIMEOUT)
     ref_url = page_resp.url  # May redirect, save final URL
     logger.info("Login page loaded, ref_url: %s", ref_url.split("?")[0])
 
@@ -93,7 +151,7 @@ def refresh_kite_token() -> str:
     login_resp = session.post(LOGIN_URL, data={
         "user_id": settings.KITE_USER_ID,
         "password": settings.KITE_PASSWORD,
-    })
+    }, timeout=HTTP_TIMEOUT)
     login_data = login_resp.json()
     logger.info("Login response status: %s", login_data.get("status"))
 
@@ -122,7 +180,7 @@ def refresh_kite_token() -> str:
         "twofa_value": totp_value,
         "twofa_type": "totp",
         "skip_session": "true",
-    })
+    }, timeout=HTTP_TIMEOUT)
     twofa_data = twofa_resp.json()
     logger.info("TOTP response status: %s", twofa_data.get("status"))
 
@@ -143,7 +201,9 @@ def refresh_kite_token() -> str:
         redirect_url = ref_url
         if "skip_session" not in redirect_url:
             redirect_url += "&skip_session=true"
-        redir_resp = session.get(redirect_url, allow_redirects=False)
+        redir_resp = session.get(
+            redirect_url, allow_redirects=False, timeout=HTTP_TIMEOUT
+        )
 
         if redir_resp.status_code in (301, 302, 303):
             location = redir_resp.headers.get("Location", "")
@@ -165,13 +225,22 @@ def refresh_kite_token() -> str:
             if "request_token" in params:
                 request_token = params["request_token"][0]
 
-    # Method C: Try following redirects and check final URL
+    # Method C: Try following redirects (capped) and check final URL.
+    # IMPORTANT: this step previously hung forever when Zerodha's flow
+    # returned a redirect loop. Cap redirects + timeout to prevent the
+    # worker thread from blocking the event loop.
     if not request_token:
-        redir_resp2 = session.get(ref_url, allow_redirects=True)
-        parsed = urlparse(str(redir_resp2.url))
-        params = parse_qs(parsed.query)
-        if "request_token" in params:
-            request_token = params["request_token"][0]
+        session.max_redirects = 5
+        try:
+            redir_resp2 = session.get(
+                ref_url, allow_redirects=True, timeout=HTTP_TIMEOUT
+            )
+            parsed = urlparse(str(redir_resp2.url))
+            params = parse_qs(parsed.query)
+            if "request_token" in params:
+                request_token = params["request_token"][0]
+        except requests.exceptions.RequestException as exc:
+            logger.warning("Method C redirect fetch failed: %s", exc)
 
     if not request_token:
         raise RuntimeError(
