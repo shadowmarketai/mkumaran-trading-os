@@ -68,16 +68,23 @@ def check_cache(
     cutoff = datetime.now() - timedelta(days=days)
     exchange = ticker.split(":")[0] if ":" in ticker else "NSE"
 
-    rows = (
-        session.query(OHLCVCache)
-        .filter(
-            OHLCVCache.ticker == ticker,
-            OHLCVCache.interval == interval,
-            OHLCVCache.bar_date >= cutoff,
-        )
-        .order_by(OHLCVCache.bar_date)
-        .all()
+    # MCX/NFO must NEVER be served from yfinance cache — those rows were
+    # stored back when resolve_yf_symbol() mapped CRUDEOIL→CL=F (NYMEX WTI,
+    # USD/barrel) etc., and the prices are globally-denominated garbage
+    # for MCX FUTCOM lookups. Reject them here so a re-fetch hits real
+    # broker sources.
+    source_filter = None
+    if exchange in ("MCX", "NFO"):
+        source_filter = OHLCVCache.source != "yfinance"
+
+    query = session.query(OHLCVCache).filter(
+        OHLCVCache.ticker == ticker,
+        OHLCVCache.interval == interval,
+        OHLCVCache.bar_date >= cutoff,
     )
+    if source_filter is not None:
+        query = query.filter(source_filter)
+    rows = query.order_by(OHLCVCache.bar_date).all()
 
     if not rows:
         _cache_misses += 1
@@ -334,6 +341,29 @@ def invalidate_ticker(
     session.commit()
     count = result.rowcount
     logger.info("Cache INVALIDATE: %s %s — %d rows deleted", ticker, interval or "*", count)
+    return count
+
+
+def purge_yfinance_mcx_nfo(session: Session) -> int:
+    """One-shot cleanup: drop all yfinance-sourced MCX/NFO rows.
+
+    These rows hold global proxy prices (CL=F for CRUDEOIL, GC=F for GOLD,
+    etc.) instead of real MCX FUTCOM INR prices. After this purge, the
+    next data fetch will hit broker sources (gwc/angel/kite) and store
+    correct values. Safe to call repeatedly on startup.
+    """
+    result = session.execute(
+        delete(OHLCVCache).where(
+            OHLCVCache.exchange.in_(["MCX", "NFO"]),
+            OHLCVCache.source == "yfinance",
+        )
+    )
+    session.commit()
+    count = result.rowcount or 0
+    if count:
+        logger.info(
+            "Cache PURGE yfinance MCX/NFO: deleted %d stale rows", count,
+        )
     return count
 
 

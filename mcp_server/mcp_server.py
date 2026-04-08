@@ -388,6 +388,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Database init skipped (not available): %s", e)
 
+    # One-shot purge of stale yfinance MCX/NFO rows. They map CRUDEOIL→CL=F
+    # (NYMEX WTI USD) etc., which is wrong currency + wrong contract for
+    # MCX FUTCOM lookups. After purge, next fetch hits gwc/angel/kite.
+    try:
+        from mcp_server.ohlcv_cache import purge_yfinance_mcx_nfo
+        from mcp_server.db import SessionLocal
+        _purge_session = SessionLocal()
+        try:
+            purged = purge_yfinance_mcx_nfo(_purge_session)
+            if purged:
+                logger.info("Startup: purged %d stale yfinance MCX/NFO cache rows", purged)
+        finally:
+            _purge_session.close()
+    except Exception as e:
+        logger.debug("Startup yfinance MCX/NFO purge skipped: %s", e)
+
     # Start signal auto-monitor background task
     monitor_task = None
     try:

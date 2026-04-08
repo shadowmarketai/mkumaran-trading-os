@@ -2030,9 +2030,23 @@ def get_stock_data(
                 _store_to_cache(ticker, interval, df, "kite")
                 return df
         except Exception as e:
-            logger.warning("Kite failed for %s: %s — falling back to yfinance", ticker, e)
+            logger.warning("Kite failed for %s: %s", ticker, e)
 
-    # Step 4: yfinance last resort
+    # Step 4: yfinance last resort — DELIBERATELY BLOCKED FOR MCX.
+    # resolve_yf_symbol() maps MCX:CRUDEOIL → CL=F (NYMEX WTI, USD/barrel),
+    # MCX:GOLD → GC=F (COMEX, USD/oz), etc. These are global proxies, NOT
+    # real MCX FUTCOM prices in INR. If broker sources failed, better to
+    # return an empty DF and let the caller skip the signal than to emit
+    # wrong numbers. Same logic applies to NFO options which yfinance
+    # cannot represent at all.
+    if exchange_part in ("MCX", "NFO"):
+        logger.warning(
+            "get_stock_data: all broker sources failed for %s — "
+            "yfinance blocked for MCX/NFO (would return wrong proxy).",
+            ticker,
+        )
+        return pd.DataFrame()
+
     df = _yfinance_fetch(ticker, period=period, interval=interval)
     if not df.empty:
         _store_to_cache(ticker, interval, df, "yfinance")
