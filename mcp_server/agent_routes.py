@@ -5,12 +5,10 @@ Mount via: app.include_router(agent_router, prefix="/api/agents")
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 
 from mcp_server.agents import (
     accept_reply,
@@ -32,7 +30,6 @@ from mcp_server.agents import (
 )
 from mcp_server.subscriptions import (
     cancel_subscription,
-    check_and_record_usage,
     create_subscription,
     get_plans,
     get_user_subscription,

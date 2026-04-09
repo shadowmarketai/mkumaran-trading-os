@@ -1,7 +1,7 @@
 """India market utilities — IST timezone, NSE/MCX hours, holidays, INR formatting."""
 
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)

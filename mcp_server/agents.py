@@ -11,20 +11,14 @@ Adapted from AI-Trader's agent architecture, hardened for Indian markets:
 
 import hashlib
 import logging
-import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
 from mcp_server.india_market import (
-    IST,
     SEBI_DISCLAIMER,
-    VALID_EXCHANGES,
-    format_inr,
-    now_ist,
     validate_exchange,
-    validate_trading_hours,
 )
 
 logger = logging.getLogger(__name__)
@@ -590,7 +584,7 @@ async def agent_heartbeat(db, agent_id: int) -> dict:
         if messages:
             ids = [m["id"] for m in messages]
             await db.execute(
-                f"UPDATE agent_messages SET read = true WHERE id = ANY($1::int[])",
+                "UPDATE agent_messages SET read = true WHERE id = ANY($1::int[])",
                 ids,
             )
 

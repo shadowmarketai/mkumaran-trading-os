@@ -10,10 +10,10 @@ Adopted from AI-Trader's task patterns:
 import asyncio
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
-from mcp_server.india_market import IST, is_market_open, now_ist
+from mcp_server.india_market import is_market_open, now_ist
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ async def prune_profit_history(db):
 
             # 1. Delete records older than compact window
             cutoff = now - timedelta(days=COMPACT_WINDOW_DAYS)
-            result = await db.execute(
+            await db.execute(
                 "DELETE FROM agent_profit_history WHERE recorded_at < $1",
                 cutoff,
             )
