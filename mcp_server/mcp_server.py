@@ -37,6 +37,7 @@ from mcp_server.asset_registry import (
     parse_ticker, get_asset_class, get_exchange,
     get_supported_exchanges,
 )
+from mcp_server.agent_routes import agent_router
 
 logger = logging.getLogger(__name__)
 
@@ -688,7 +689,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(AuthMiddleware)
 
 # ── Mount Agent Social Trading Router ─────────────────────────
-from mcp_server.agent_routes import agent_router
 app.include_router(agent_router, prefix="/api/agents")
 
 
