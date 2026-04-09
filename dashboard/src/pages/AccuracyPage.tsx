@@ -92,7 +92,7 @@ function DonutChart({ wins, losses, open }: DonutChartProps) {
         )}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-3xl font-mono font-bold text-white">{winRate}%</span>
+        <span className="text-3xl font-mono font-bold text-white tabular-nums">{winRate}%</span>
         <span className="text-xs text-slate-500 uppercase">Win Rate</span>
       </div>
     </div>
@@ -108,24 +108,24 @@ function PatternRow({ pattern, index }: { pattern: PatternAccuracy; index: numbe
     <motion.tr
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.05 }}
-      className="hover:bg-slate-800/30 transition-colors"
+      transition={{ delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
+      className="hover:bg-white/[0.015] transition-colors"
     >
-      <td className="py-2.5 px-3 font-medium text-slate-200">{pattern.pattern}</td>
-      <td className="py-2.5 px-3 text-center font-mono text-slate-400">{pattern.total}</td>
-      <td className="py-2.5 px-3 text-center font-mono text-trading-bull">{pattern.wins}</td>
-      <td className="py-2.5 px-3">
+      <td className="py-2.5 px-3 font-medium text-slate-200 border-b border-trading-border/15">{pattern.pattern}</td>
+      <td className="py-2.5 px-3 text-center font-mono font-medium text-slate-400 tabular-nums border-b border-trading-border/15">{pattern.total}</td>
+      <td className="py-2.5 px-3 text-center font-mono font-medium text-trading-bull tabular-nums border-b border-trading-border/15">{pattern.wins}</td>
+      <td className="py-2.5 px-3 border-b border-trading-border/15">
         <div className="flex items-center gap-2">
-          <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
+          <div className="flex-1 h-2 bg-trading-bg-secondary rounded-full overflow-hidden">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${barWidth}%` }}
-              transition={{ duration: 0.6, delay: index * 0.05 }}
+              transition={{ duration: 0.6, delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
               className={cn('h-full rounded-full', barColor)}
             />
           </div>
           <span className={cn(
-            'text-xs font-mono font-bold w-12 text-right',
+            'text-xs font-mono font-bold w-12 text-right tabular-nums',
             pattern.win_rate >= 70 ? 'text-trading-bull' : pattern.win_rate >= 50 ? 'text-trading-alert' : 'text-trading-bear'
           )}>
             {pattern.win_rate.toFixed(1)}%
@@ -142,21 +142,21 @@ function DirectionComparison({ directions }: { directions: DirectionAccuracy[] }
   const shortDir = directions.find((d) => d.direction === 'SHORT');
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-2 gap-3">
       {longDir && (
-        <div className="p-4 rounded-xl bg-trading-bull/5 border border-trading-bull/10 text-center space-y-2">
+        <div className="p-4 rounded-xl bg-trading-bull/[0.04] border border-trading-bull/15 text-center space-y-2">
           <TrendingUp size={24} className="text-trading-bull mx-auto" />
-          <p className="text-xs text-slate-500 uppercase">Long</p>
-          <p className="text-2xl font-mono font-bold text-trading-bull">{longDir.win_rate.toFixed(1)}%</p>
-          <p className="text-xs text-slate-400">{longDir.wins}/{longDir.total} trades</p>
+          <p className="stat-label">Long</p>
+          <p className="text-2xl font-mono font-bold text-trading-bull tabular-nums">{longDir.win_rate.toFixed(1)}%</p>
+          <p className="text-xs text-slate-400 font-mono tabular-nums">{longDir.wins}/{longDir.total} trades</p>
         </div>
       )}
       {shortDir && (
-        <div className="p-4 rounded-xl bg-trading-bear/5 border border-trading-bear/10 text-center space-y-2">
+        <div className="p-4 rounded-xl bg-trading-bear/[0.04] border border-trading-bear/15 text-center space-y-2">
           <TrendingDown size={24} className="text-trading-bear mx-auto" />
-          <p className="text-xs text-slate-500 uppercase">Short</p>
-          <p className="text-2xl font-mono font-bold text-trading-bear">{shortDir.win_rate.toFixed(1)}%</p>
-          <p className="text-xs text-slate-400">{shortDir.wins}/{shortDir.total} trades</p>
+          <p className="stat-label">Short</p>
+          <p className="text-2xl font-mono font-bold text-trading-bear tabular-nums">{shortDir.win_rate.toFixed(1)}%</p>
+          <p className="text-xs text-slate-400 font-mono tabular-nums">{shortDir.wins}/{shortDir.total} trades</p>
         </div>
       )}
       {!longDir && !shortDir && (
@@ -175,17 +175,17 @@ function MonthlyPnLBar({ month, index, maxPnl }: { month: MonthlyPnL; index: num
     <motion.div
       initial={{ opacity: 0, scaleY: 0 }}
       animate={{ opacity: 1, scaleY: 1 }}
-      transition={{ delay: index * 0.1, duration: 0.4 }}
+      transition={{ delay: index * 0.1, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
       style={{ transformOrigin: 'bottom' }}
       className="flex flex-col items-center gap-1"
     >
       <span className={cn(
-        'text-[10px] font-mono font-bold',
+        'text-[10px] font-mono font-bold tabular-nums',
         isPositive ? 'text-trading-bull' : 'text-trading-bear'
       )}>
         {isPositive ? '+' : ''}{(month.pnl / 1000).toFixed(1)}K
       </span>
-      <div className="w-8 h-24 bg-slate-800 rounded-t relative flex items-end">
+      <div className="w-8 h-24 bg-trading-bg-secondary rounded-t relative flex items-end">
         <div
           className={cn(
             'w-full rounded-t transition-all',
@@ -195,7 +195,7 @@ function MonthlyPnLBar({ month, index, maxPnl }: { month: MonthlyPnL; index: num
         />
       </div>
       <span className="text-[9px] text-slate-500 whitespace-nowrap">{month.month.split(' ')[0]}</span>
-      <span className="text-[9px] text-slate-600">{month.win_rate.toFixed(0)}%</span>
+      <span className="text-[9px] text-slate-600 font-mono tabular-nums">{month.win_rate.toFixed(0)}%</span>
     </motion.div>
   );
 }
@@ -207,8 +207,10 @@ export default function AccuracyPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <Loader2 size={48} className="text-trading-ai animate-spin mb-4" />
-        <p className="text-slate-400 text-sm">Loading accuracy metrics...</p>
+        <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+          <Loader2 size={24} className="text-trading-ai animate-spin" />
+        </div>
+        <p className="text-slate-400 text-sm mt-4">Loading accuracy metrics...</p>
       </div>
     );
   }
@@ -216,8 +218,10 @@ export default function AccuracyPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <AlertCircle size={48} className="text-trading-alert mb-4" />
-        <p className="text-slate-400 text-sm">Failed to load metrics: {error}</p>
+        <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center">
+          <AlertCircle size={24} className="text-trading-alert" />
+        </div>
+        <p className="text-slate-400 text-sm mt-4">Failed to load metrics: {error}</p>
       </div>
     );
   }
@@ -225,7 +229,9 @@ export default function AccuracyPage() {
   if (!metrics) {
     return (
       <GlassCard className="flex flex-col items-center justify-center py-16">
-        <Target size={48} className="text-slate-600 mb-4" />
+        <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mb-4">
+          <Target size={24} className="text-slate-600" />
+        </div>
         <p className="text-slate-500 text-sm">No accuracy data available yet</p>
       </GlassCard>
     );
@@ -239,11 +245,11 @@ export default function AccuracyPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-6"
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className="space-y-5"
     >
       {/* Top Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         <MetricCard title="Total Signals" value={metrics.total_signals} icon={BarChart3} color="info" />
         <MetricCard title="Win Rate" value={metrics.win_rate > 0 ? `${metrics.win_rate}%` : '--'} icon={Target} color="bull" />
         <MetricCard
@@ -256,29 +262,29 @@ export default function AccuracyPage() {
       </div>
 
       {/* Donut + Direction */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Donut Chart */}
         <GlassCard className="flex flex-col items-center justify-center">
           <DonutChart wins={metrics.wins} losses={metrics.losses} open={metrics.open} />
           <div className="flex items-center gap-6 mt-4">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-trading-bull" />
-              <span className="text-xs text-slate-400">Wins ({metrics.wins})</span>
+              <span className="text-xs text-slate-400 font-mono tabular-nums">Wins ({metrics.wins})</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-trading-bear" />
-              <span className="text-xs text-slate-400">Losses ({metrics.losses})</span>
+              <span className="text-xs text-slate-400 font-mono tabular-nums">Losses ({metrics.losses})</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-trading-alert" />
-              <span className="text-xs text-slate-400">Open ({metrics.open})</span>
+              <span className="text-xs text-slate-400 font-mono tabular-nums">Open ({metrics.open})</span>
             </div>
           </div>
         </GlassCard>
 
         {/* Direction Comparison */}
         <GlassCard>
-          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
+          <h3 className="stat-label mb-4">
             Direction Accuracy
           </h3>
           <DirectionComparison directions={metrics.by_direction} />
@@ -287,21 +293,23 @@ export default function AccuracyPage() {
 
       {/* Pattern Accuracy Table */}
       {metrics.by_pattern.length > 0 && (
-        <GlassCard>
-          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
-            Pattern Accuracy
-          </h3>
+        <GlassCard className="!p-0">
+          <div className="p-6">
+            <h3 className="stat-label mb-4">
+              Pattern Accuracy
+            </h3>
+          </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-[9px]">
               <thead>
-                <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-trading-border">
+                <tr className="text-[9px] text-slate-600 uppercase tracking-[0.12em] font-medium border-b border-trading-border/15">
                   <th className="text-left py-2.5 px-3">Pattern</th>
                   <th className="text-center py-2.5 px-3">Total</th>
                   <th className="text-center py-2.5 px-3">Wins</th>
                   <th className="text-left py-2.5 px-3 w-1/3">Win Rate</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-trading-border/50">
+              <tbody>
                 {metrics.by_pattern.map((pattern, idx) => (
                   <PatternRow key={pattern.pattern} pattern={pattern} index={idx} />
                 ))}
@@ -314,10 +322,10 @@ export default function AccuracyPage() {
       {/* Monthly PnL */}
       {metrics.monthly_pnl.length > 0 && (
         <GlassCard>
-          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
+          <h3 className="stat-label mb-4">
             Monthly P&L
           </h3>
-          <div className="flex items-end justify-around gap-2 pt-2 overflow-x-auto">
+          <div className="flex items-end justify-around gap-3 pt-2 overflow-x-auto">
             {metrics.monthly_pnl.map((month, idx) => (
               <MonthlyPnLBar key={month.month} month={month} index={idx} maxPnl={maxMonthlyPnl} />
             ))}

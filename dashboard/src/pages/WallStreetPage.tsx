@@ -191,10 +191,10 @@ function ToolCard({ tool }: ToolCardProps) {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
-            <div className="pt-4 mt-4 border-t border-trading-border space-y-4">
+            <div className="pt-4 mt-4 border-t border-trading-border/20 space-y-5">
               <p className="text-sm text-slate-400">{tool.description}</p>
 
               {/* Input Fields */}
@@ -202,7 +202,7 @@ function ToolCard({ tool }: ToolCardProps) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {tool.fields.map((field) => (
                     <div key={field.name} className={field.type === 'textarea' ? 'md:col-span-2' : ''}>
-                      <label className="text-xs text-slate-500 uppercase tracking-wider block mb-1">
+                      <label className="stat-label block mb-1">
                         {field.label} {field.required && <span className="text-trading-bear">*</span>}
                       </label>
                       {field.type === 'textarea' ? (
@@ -211,7 +211,7 @@ function ToolCard({ tool }: ToolCardProps) {
                           onChange={(e) => setFormValues({ ...formValues, [field.name]: e.target.value })}
                           placeholder={field.placeholder}
                           rows={3}
-                          className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai resize-none"
+                          className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono tabular-nums text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40 resize-none"
                         />
                       ) : (
                         <input
@@ -219,7 +219,7 @@ function ToolCard({ tool }: ToolCardProps) {
                           value={formValues[field.name] || ''}
                           onChange={(e) => setFormValues({ ...formValues, [field.name]: e.target.value })}
                           placeholder={field.placeholder}
-                          className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai"
+                          className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono tabular-nums text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40"
                         />
                       )}
                     </div>
@@ -232,8 +232,8 @@ function ToolCard({ tool }: ToolCardProps) {
                 onClick={handleRun}
                 disabled={loading}
                 className={cn(
-                  'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                  loading ? 'bg-slate-700 text-slate-400 cursor-wait' : 'gradient-ai text-white hover:opacity-90'
+                  'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all',
+                  loading ? 'bg-trading-ai/8 text-slate-400 cursor-wait border border-trading-ai/15' : 'gradient-ai text-white hover:opacity-90'
                 )}
               >
                 {loading ? (
@@ -262,10 +262,10 @@ function ToolCard({ tool }: ToolCardProps) {
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="p-4 rounded-lg bg-slate-800/80 border border-trading-border"
+                  className="p-4 rounded-lg bg-trading-bg-secondary border border-trading-border/20"
                 >
-                  <h4 className="text-xs text-slate-500 uppercase tracking-wider mb-2">Result</h4>
-                  <pre className="text-xs font-mono text-slate-300 whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
+                  <h4 className="stat-label mb-2">Result</h4>
+                  <pre className="text-xs font-mono tabular-nums text-slate-300 whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
                     {JSON.stringify(result, null, 2)}
                   </pre>
                 </motion.div>
@@ -283,8 +283,8 @@ export default function WallStreetPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-6"
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className="space-y-5"
     >
       {/* Header */}
       <div>

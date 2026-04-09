@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { TrendingUp, TrendingDown, Wifi, WifiOff, LogOut, Menu } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wifi, WifiOff, LogOut, Menu, Bell } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { MarketDirection } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -16,6 +16,15 @@ const pageNames: Record<string, string> = {
   '/wallstreet': 'Wall Street AI',
   '/news': 'News & Macro',
   '/momentum': 'Momentum Ranking',
+  '/options': 'Options Greeks',
+  '/payoff': 'Payoff Calculator',
+  '/paper': 'Paper Trading',
+  '/monitor': 'Signal Monitor',
+  '/market-movers': 'Market Movers',
+  '/agent-hub': 'Agent Hub',
+  '/signal-feed': 'Signal Feed',
+  '/copy-trading': 'Copy Trading',
+  '/subscription': 'Subscription',
 };
 
 interface IndexPriceProps {
@@ -28,15 +37,19 @@ interface IndexPriceProps {
 function IndexPrice({ name, price, change, changePct }: IndexPriceProps) {
   const isPositive = change >= 0;
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-slate-400 font-medium">{name}</span>
-      <span className="text-sm font-mono font-semibold text-white">
+    <div className="flex items-center gap-2.5">
+      <span className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase">{name}</span>
+      <span className="text-sm font-mono font-bold text-white tabular-nums">
         {price.toLocaleString('en-IN', { minimumFractionDigits: 1 })}
       </span>
-      <div className={cn('flex items-center gap-0.5 text-xs font-mono', isPositive ? 'text-trading-bull' : 'text-trading-bear')}>
-        {isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-        <span>{isPositive ? '+' : ''}{change.toFixed(1)}</span>
-        <span className="text-slate-500">({isPositive ? '+' : ''}{changePct.toFixed(2)}%)</span>
+      <div className={cn(
+        'flex items-center gap-0.5 text-xs font-mono tabular-nums px-1.5 py-0.5 rounded-md',
+        isPositive
+          ? 'text-trading-bull bg-trading-bull/8'
+          : 'text-trading-bear bg-trading-bear/8'
+      )}>
+        {isPositive ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+        <span className="font-semibold">{isPositive ? '+' : ''}{changePct.toFixed(2)}%</span>
       </div>
     </div>
   );
@@ -48,21 +61,19 @@ interface DirectionBadgeProps {
 
 function DirectionBadge({ direction }: DirectionBadgeProps) {
   const colorMap: Record<MarketDirection, string> = {
-    BULL: 'bg-trading-bull/20 text-trading-bull border-trading-bull/30',
-    BEAR: 'bg-trading-bear/20 text-trading-bear border-trading-bear/30',
-    SIDEWAYS: 'bg-trading-info/20 text-trading-info border-trading-info/30',
-    MILD_BULL: 'bg-trading-bull-light/20 text-trading-bull-light border-trading-bull-light/30',
-    MILD_BEAR: 'bg-trading-bear/15 text-rose-400 border-rose-400/30',
+    BULL: 'bg-trading-bull/10 text-trading-bull border-trading-bull/20',
+    BEAR: 'bg-trading-bear/10 text-trading-bear border-trading-bear/20',
+    SIDEWAYS: 'bg-trading-info/10 text-trading-info border-trading-info/20',
+    MILD_BULL: 'bg-trading-bull/8 text-trading-bull-light border-trading-bull-light/15',
+    MILD_BEAR: 'bg-trading-bear/8 text-trading-bear-light border-trading-bear-light/15',
   };
 
   return (
-    <span
-      className={cn(
-        'px-2.5 py-1 rounded-md text-xs font-mono font-semibold border',
-        colorMap[direction]
-      )}
-    >
-      MWA: {direction.replace('_', ' ')}
+    <span className={cn(
+      'px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border tracking-wider',
+      colorMap[direction]
+    )}>
+      MWA {direction.replace('_', ' ')}
     </span>
   );
 }
@@ -76,16 +87,17 @@ function MarketStatusLabel({ status }: MarketStatusLabelProps) {
   return (
     <div className="flex items-center gap-1.5">
       {isLive ? (
-        <Wifi size={14} className="text-trading-bull" />
+        <div className="relative">
+          <Wifi size={12} className="text-trading-bull" />
+          <span className="absolute -top-0.5 -right-0.5 w-1 h-1 bg-trading-bull rounded-full animate-pulse-live" />
+        </div>
       ) : (
-        <WifiOff size={14} className="text-slate-500" />
+        <WifiOff size={12} className="text-slate-600" />
       )}
-      <span
-        className={cn(
-          'text-xs font-medium',
-          status === 'LIVE' ? 'text-trading-bull' : status === 'PRE' ? 'text-trading-alert' : 'text-slate-500'
-        )}
-      >
+      <span className={cn(
+        'text-[10px] font-mono font-semibold tracking-wider',
+        status === 'LIVE' ? 'text-trading-bull' : status === 'PRE' ? 'text-trading-alert' : 'text-slate-600'
+      )}>
         {status}
       </span>
     </div>
@@ -108,39 +120,43 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
 
   return (
     <div className="sticky top-0 z-30">
-      <header className="h-14 min-h-[56px] glass-card rounded-none border-x-0 border-t-0 flex items-center justify-between px-3 md:px-6">
-        {/* Left: Hamburger + Breadcrumb */}
-        <div className="flex items-center gap-2">
+      <header className="h-14 min-h-[56px] bg-trading-bg/80 backdrop-blur-xl border-b border-trading-border/40 flex items-center justify-between px-3 md:px-6">
+        {/* Left: Hamburger + Page Title */}
+        <div className="flex items-center gap-3">
           <button
             onClick={onMenuClick}
-            className="md:hidden p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
+            className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
           >
             <Menu size={20} />
           </button>
-          <span className="text-slate-500 text-sm hidden sm:inline">Dashboard</span>
-          <span className="text-slate-600 hidden sm:inline">/</span>
-          <span className="text-white text-sm font-medium">{currentPage}</span>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-white">{currentPage}</h2>
+          </div>
         </div>
 
         {/* Center: Index Prices (hidden on mobile) */}
-        <div className="hidden md:flex items-center gap-6">
+        <div className="hidden lg:flex items-center gap-6 px-4 py-1.5 rounded-xl bg-trading-card/50 border border-trading-border/30">
           <IndexPrice name="NIFTY" price={market.nifty_price} change={market.nifty_change} changePct={market.nifty_change_pct} />
-          <div className="w-px h-5 bg-trading-border" />
+          <div className="w-px h-5 bg-trading-border/40" />
           <IndexPrice name="BANKNIFTY" price={market.banknifty_price} change={market.banknifty_change} changePct={market.banknifty_change_pct} />
         </div>
 
-        {/* Right: MWA + Market Status + Sign Out */}
-        <div className="flex items-center gap-2 sm:gap-4">
+        {/* Right: Controls */}
+        <div className="flex items-center gap-2 sm:gap-3">
           <div className="hidden sm:block">
             <DirectionBadge direction={mwaDir} />
           </div>
           <MarketStatusLabel status={market.market_status} />
+          <div className="w-px h-5 bg-trading-border/30 hidden sm:block" />
+          <button className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors relative hidden sm:block">
+            <Bell size={15} />
+          </button>
           <button
             onClick={logout}
             title={email ? `Sign out (${email})` : 'Sign out'}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
           >
-            <LogOut size={14} />
+            <LogOut size={13} />
             <span className="hidden lg:inline">Sign Out</span>
           </button>
         </div>

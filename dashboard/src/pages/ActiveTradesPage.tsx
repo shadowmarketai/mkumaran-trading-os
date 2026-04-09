@@ -55,8 +55,10 @@ export default function ActiveTradesPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <Loader2 size={48} className="text-trading-ai animate-spin mb-4" />
-        <p className="text-slate-400 text-sm">Loading active trades...</p>
+        <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+          <Loader2 size={24} className="text-trading-ai animate-spin" />
+        </div>
+        <p className="text-slate-500 text-xs mt-4 font-mono">Loading active trades...</p>
       </div>
     );
   }
@@ -64,24 +66,28 @@ export default function ActiveTradesPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <AlertCircle size={48} className="text-trading-alert mb-4" />
-        <p className="text-slate-400 text-sm">Failed to load trades: {error}</p>
+        <div className="w-12 h-12 rounded-2xl bg-trading-alert/10 flex items-center justify-center mb-4">
+          <AlertCircle size={24} className="text-trading-alert" />
+        </div>
+        <p className="text-slate-500 text-xs">{error}</p>
       </div>
     );
   }
 
   if (trades.length === 0) {
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <MetricCard title="Total Positions" value={0} icon={Layers} color="info" />
           <MetricCard title="Avg RRR" value="--" icon={BarChart3} color="ai" />
           <MetricCard title="Unrealized P&L" value="--" icon={DollarSign} color="info" />
         </div>
         <GlassCard className="flex flex-col items-center justify-center py-16">
-          <Layers size={48} className="text-slate-600 mb-4" />
-          <p className="text-slate-500 text-sm">No active trades</p>
-          <p className="text-slate-600 text-xs mt-1">Trades will appear here when signals are executed</p>
+          <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mb-4">
+            <Layers size={24} className="text-slate-600" />
+          </div>
+          <p className="text-slate-500 text-xs">No active trades</p>
+          <p className="text-slate-700 text-[10px] mt-1">Trades will appear here when signals are executed</p>
         </GlassCard>
       </motion.div>
     );
@@ -96,10 +102,10 @@ export default function ActiveTradesPage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
-      className="space-y-6"
+      className="space-y-5"
     >
-      {/* Segment Filter Tabs */}
-      <div className="flex items-center gap-2">
+      {/* Segment Filter */}
+      <div className="flex items-center gap-1.5">
         {SEGMENT_TABS.map(({ key, label }) => {
           const count = segmentCounts[key] || 0;
           const isActive = activeSegment === key;
@@ -108,17 +114,17 @@ export default function ActiveTradesPage() {
               key={key}
               onClick={() => setActiveSegment(key)}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-trading-ai/20 text-trading-ai-light border border-trading-ai/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  ? 'bg-trading-ai/10 text-trading-ai-light border border-trading-ai/20'
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
               )}
             >
               {label}
               {count > 0 && (
                 <span className={cn(
-                  'text-[10px] font-mono px-1.5 py-0.5 rounded-full',
-                  isActive ? 'bg-trading-ai/30 text-trading-ai-light' : 'bg-slate-700 text-slate-500'
+                  'text-[9px] font-mono px-1.5 py-0.5 rounded-md',
+                  isActive ? 'bg-trading-ai/15 text-trading-ai-light' : 'bg-trading-bg-secondary text-slate-600'
                 )}>
                   {count}
                 </span>
@@ -129,19 +135,9 @@ export default function ActiveTradesPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <MetricCard
-          title="Total Positions"
-          value={totalPositions}
-          icon={Layers}
-          color="info"
-        />
-        <MetricCard
-          title="Avg RRR"
-          value={avgRRR.toFixed(2)}
-          icon={BarChart3}
-          color="ai"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <MetricCard title="Total Positions" value={totalPositions} icon={Layers} color="info" />
+        <MetricCard title="Avg RRR" value={avgRRR.toFixed(2)} icon={BarChart3} color="ai" />
         <MetricCard
           title="Unrealized P&L"
           value={`${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(2)}%`}
@@ -152,26 +148,26 @@ export default function ActiveTradesPage() {
       </div>
 
       {/* Trades Table */}
-      <GlassCard>
+      <GlassCard className="!p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-trading-border">
-                <th className="text-left py-3 px-2 md:px-3">Ticker</th>
-                <th className="text-center py-3 px-2 hidden md:table-cell">Exch</th>
-                <th className="text-center py-3 px-2 hidden lg:table-cell">TF</th>
-                <th className="text-center py-3 px-2">Dir</th>
-                <th className="text-right py-3 px-2 font-mono">Entry</th>
-                <th className="text-right py-3 px-2 font-mono hidden lg:table-cell">SL</th>
-                <th className="text-right py-3 px-2 font-mono hidden lg:table-cell">Target</th>
-                <th className="text-center py-3 px-2 font-mono hidden lg:table-cell">PRRR</th>
-                <th className="text-right py-3 px-2 font-mono hidden md:table-cell">Current</th>
-                <th className="text-center py-3 px-2 font-mono hidden lg:table-cell">CRRR</th>
-                <th className="text-right py-3 px-2 font-mono">P&L%</th>
-                <th className="text-center py-3 px-2 w-32 hidden md:table-cell">Progress</th>
+              <tr className="text-[9px] text-slate-600 uppercase tracking-[0.12em] border-b border-trading-border/30">
+                <th className="text-left py-3.5 px-3 md:px-4">Ticker</th>
+                <th className="text-center py-3.5 px-2 hidden md:table-cell">Exch</th>
+                <th className="text-center py-3.5 px-2 hidden lg:table-cell">TF</th>
+                <th className="text-center py-3.5 px-2">Dir</th>
+                <th className="text-right py-3.5 px-2 font-mono">Entry</th>
+                <th className="text-right py-3.5 px-2 font-mono hidden lg:table-cell">SL</th>
+                <th className="text-right py-3.5 px-2 font-mono hidden lg:table-cell">Target</th>
+                <th className="text-center py-3.5 px-2 font-mono hidden lg:table-cell">PRRR</th>
+                <th className="text-right py-3.5 px-2 font-mono hidden md:table-cell">Current</th>
+                <th className="text-center py-3.5 px-2 font-mono hidden lg:table-cell">CRRR</th>
+                <th className="text-right py-3.5 px-2 font-mono">P&L%</th>
+                <th className="text-center py-3.5 px-2 w-32 hidden md:table-cell">Progress</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-trading-border/50">
+            <tbody>
               {filteredTrades.map((trade, idx) => {
                 const isProfit = trade.pnl_pct >= 0;
                 const progressValues = getProgressValues(trade);
@@ -179,71 +175,56 @@ export default function ActiveTradesPage() {
                 return (
                   <motion.tr
                     key={trade.id}
-                    initial={{ opacity: 0, x: -10 }}
+                    initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.2, delay: idx * 0.05 }}
+                    transition={{ duration: 0.25, delay: idx * 0.03 }}
                     className={cn(
-                      'hover:bg-slate-800/30 transition-colors',
-                      trade.alert_sent && 'bg-trading-alert/5'
+                      'border-b border-trading-border/15 hover:bg-white/[0.015] transition-colors',
+                      trade.alert_sent && 'bg-trading-alert/[0.03]'
                     )}
                   >
-                    <td className="py-3 px-2 md:px-3">
+                    <td className="py-3 px-3 md:px-4">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-white">{trade.ticker}</span>
+                        <span className="font-mono font-bold text-white text-sm">{trade.ticker}</span>
                         {trade.alert_sent && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-trading-alert animate-pulse" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-trading-alert animate-pulse-live" />
                         )}
                       </div>
                     </td>
                     <td className="py-3 px-2 text-center hidden md:table-cell">
                       <span className={cn(
-                        'text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border',
-                        trade.exchange === 'MCX' ? 'bg-amber-500/15 text-amber-400 border-amber-500/20' :
-                        trade.exchange === 'NFO' ? 'bg-purple-500/15 text-purple-400 border-purple-500/20' :
-                        trade.exchange === 'CDS' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' :
-                        'bg-blue-500/15 text-blue-400 border-blue-500/20'
+                        'text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md border',
+                        trade.exchange === 'MCX' ? 'bg-amber-500/8 text-amber-400 border-amber-500/15' :
+                        trade.exchange === 'NFO' ? 'bg-purple-500/8 text-purple-400 border-purple-500/15' :
+                        trade.exchange === 'CDS' ? 'bg-emerald-500/8 text-emerald-400 border-emerald-500/15' :
+                        'bg-blue-500/8 text-blue-400 border-blue-500/15'
                       )}>
                         {trade.exchange || 'NSE'}
                       </span>
                     </td>
                     <td className="py-3 px-2 text-center hidden lg:table-cell">
-                      <span className="text-[10px] font-mono text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">
+                      <span className="text-[9px] font-mono text-slate-600 bg-trading-bg-secondary px-1.5 py-0.5 rounded-md border border-trading-border/20">
                         {trade.timeframe || '1D'}
                       </span>
                     </td>
                     <td className="py-3 px-2 text-center">
                       <div className={cn(
-                        'inline-flex items-center gap-0.5 text-xs font-bold',
+                        'inline-flex items-center gap-0.5 text-[10px] font-bold',
                         (trade.direction === 'LONG' || trade.direction === 'BUY') ? 'text-trading-bull' : 'text-trading-bear'
                       )}>
-                        {(trade.direction === 'LONG' || trade.direction === 'BUY') ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                        {(trade.direction === 'LONG' || trade.direction === 'BUY') ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
                         {(trade.direction === 'LONG' || trade.direction === 'BUY') ? 'L' : 'S'}
                       </div>
                     </td>
-                    <td className="py-3 px-2 text-right font-mono text-slate-300">
-                      {trade.entry_price.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-2 text-right font-mono text-trading-bear hidden lg:table-cell">
-                      {trade.stop_loss.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-2 text-right font-mono text-trading-bull hidden lg:table-cell">
-                      {trade.target.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-2 text-center font-mono text-trading-info hidden lg:table-cell">
-                      {trade.prrr.toFixed(1)}
-                    </td>
-                    <td className="py-3 px-2 text-right font-mono font-semibold text-white hidden md:table-cell">
-                      {trade.current_price.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-2 text-center font-mono text-trading-ai hidden lg:table-cell">
-                      {trade.crrr.toFixed(2)}
-                    </td>
-                    <td className={cn(
-                      'py-3 px-2 text-right font-mono font-bold',
-                      isProfit ? 'text-trading-bull' : 'text-trading-bear'
-                    )}>
+                    <td className="py-3 px-2 text-right font-mono text-slate-300 text-xs tabular-nums">{trade.entry_price.toFixed(2)}</td>
+                    <td className="py-3 px-2 text-right font-mono text-trading-bear/70 text-xs tabular-nums hidden lg:table-cell">{trade.stop_loss.toFixed(2)}</td>
+                    <td className="py-3 px-2 text-right font-mono text-trading-bull/70 text-xs tabular-nums hidden lg:table-cell">{trade.target.toFixed(2)}</td>
+                    <td className="py-3 px-2 text-center font-mono text-trading-info text-xs tabular-nums hidden lg:table-cell">{trade.prrr.toFixed(1)}</td>
+                    <td className="py-3 px-2 text-right font-mono font-semibold text-white text-xs tabular-nums hidden md:table-cell">{trade.current_price.toFixed(2)}</td>
+                    <td className="py-3 px-2 text-center font-mono text-trading-ai text-xs tabular-nums hidden lg:table-cell">{trade.crrr.toFixed(2)}</td>
+                    <td className={cn('py-3 px-2 text-right font-mono font-bold text-xs tabular-nums', isProfit ? 'text-trading-bull' : 'text-trading-bear')}>
                       <div className="flex items-center justify-end gap-1">
-                        {isProfit ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                        {isProfit ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
                         {isProfit ? '+' : ''}{trade.pnl_pct.toFixed(2)}%
                       </div>
                     </td>
@@ -264,44 +245,35 @@ export default function ActiveTradesPage() {
         </div>
 
         {/* Summary Row */}
-        <div className="flex items-center justify-between pt-4 mt-4 border-t border-trading-border px-3">
+        <div className="flex items-center justify-between py-4 px-4 border-t border-trading-border/20 bg-trading-bg-secondary/20">
           <div className="flex items-center gap-6">
             <div>
-              <span className="text-xs text-slate-500">Positions: </span>
-              <span className="text-sm font-mono font-bold text-white">{totalPositions}</span>
+              <span className="text-[9px] text-slate-600 uppercase tracking-wider">Positions </span>
+              <span className="text-xs font-mono font-bold text-white">{totalPositions}</span>
             </div>
             <div>
-              <span className="text-xs text-slate-500">Avg RRR: </span>
-              <span className="text-sm font-mono font-bold text-trading-info">{avgRRR.toFixed(2)}</span>
+              <span className="text-[9px] text-slate-600 uppercase tracking-wider">Avg RRR </span>
+              <span className="text-xs font-mono font-bold text-trading-info">{avgRRR.toFixed(2)}</span>
             </div>
           </div>
           <div>
-            <span className="text-xs text-slate-500">Total Unrealized: </span>
-            <span className={cn(
-              'text-sm font-mono font-bold',
-              totalPnlPct >= 0 ? 'text-trading-bull' : 'text-trading-bear'
-            )}>
+            <span className="text-[9px] text-slate-600 uppercase tracking-wider">Total Unrealized </span>
+            <span className={cn('text-xs font-mono font-bold', totalPnlPct >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
               {totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%
             </span>
           </div>
         </div>
       </GlassCard>
 
-      {/* Trade Status Legend */}
-      <div className="flex items-center gap-4 text-xs text-slate-500">
+      {/* Legend */}
+      <div className="flex items-center gap-4 text-[10px] text-slate-600">
         <div className="flex items-center gap-1.5">
           <StatusBadge status="OPEN" size="sm" />
           <span>Active</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-trading-alert animate-pulse" />
+          <span className="w-1.5 h-1.5 rounded-full bg-trading-alert animate-pulse-live" />
           <span>Alert Triggered</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-trading-bull">Green = Profit</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-trading-bear">Red = Loss</span>
         </div>
       </div>
     </motion.div>

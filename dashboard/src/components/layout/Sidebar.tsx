@@ -16,7 +16,16 @@ import {
   Shield,
   BarChart3,
   X,
+  ChevronLeft,
+  ChevronRight,
+  Wifi,
+  WifiOff,
+  Users,
+  MessageSquare,
+  Copy,
+  CreditCard,
 } from 'lucide-react';
+import { useState } from 'react';
 import { cn } from '../../lib/utils';
 import { useOverview } from '../../hooks/useOverview';
 
@@ -24,50 +33,77 @@ interface NavItem {
   to: string;
   label: string;
   icon: React.ReactNode;
+  group?: string;
 }
 
 const navItems: NavItem[] = [
-  { to: '/overview', label: 'Overview', icon: <LayoutDashboard size={20} /> },
-  { to: '/market-movers', label: 'Market Movers', icon: <BarChart3 size={20} /> },
-  { to: '/trades', label: 'Active Trades', icon: <TrendingUp size={20} /> },
-  { to: '/monitor', label: 'Signal Monitor', icon: <Shield size={20} /> },
-  { to: '/paper', label: 'Paper Trading', icon: <FileText size={20} /> },
-  { to: '/accuracy', label: 'Accuracy', icon: <Target size={20} /> },
-  { to: '/watchlist', label: 'Watchlist', icon: <Eye size={20} /> },
-  { to: '/backtesting', label: 'Backtesting', icon: <FlaskConical size={20} /> },
-  { to: '/engines', label: 'Pattern Engines', icon: <Cpu size={20} /> },
-  { to: '/wallstreet', label: 'Wall Street AI', icon: <Brain size={20} /> },
-  { to: '/news', label: 'News & Macro', icon: <Newspaper size={20} /> },
-  { to: '/momentum', label: 'Momentum', icon: <Rocket size={20} /> },
-  { to: '/options', label: 'Options Greeks', icon: <Calculator size={20} /> },
-  { to: '/payoff', label: 'Payoff Calc', icon: <LineChart size={20} /> },
+  { to: '/overview', label: 'Overview', icon: <LayoutDashboard size={18} />, group: 'core' },
+  { to: '/market-movers', label: 'Market Movers', icon: <BarChart3 size={18} />, group: 'core' },
+  { to: '/trades', label: 'Active Trades', icon: <TrendingUp size={18} />, group: 'core' },
+  { to: '/monitor', label: 'Signal Monitor', icon: <Shield size={18} />, group: 'core' },
+  { to: '/paper', label: 'Paper Trading', icon: <FileText size={18} />, group: 'trading' },
+  { to: '/accuracy', label: 'Accuracy', icon: <Target size={18} />, group: 'trading' },
+  { to: '/watchlist', label: 'Watchlist', icon: <Eye size={18} />, group: 'trading' },
+  { to: '/backtesting', label: 'Backtesting', icon: <FlaskConical size={18} />, group: 'analysis' },
+  { to: '/engines', label: 'Pattern Engines', icon: <Cpu size={18} />, group: 'analysis' },
+  { to: '/wallstreet', label: 'Wall Street AI', icon: <Brain size={18} />, group: 'analysis' },
+  { to: '/news', label: 'News & Macro', icon: <Newspaper size={18} />, group: 'intel' },
+  { to: '/momentum', label: 'Momentum', icon: <Rocket size={18} />, group: 'intel' },
+  { to: '/options', label: 'Options Greeks', icon: <Calculator size={18} />, group: 'options' },
+  { to: '/payoff', label: 'Payoff Calc', icon: <LineChart size={18} />, group: 'options' },
+  { to: '/agent-hub', label: 'Agent Hub', icon: <Users size={18} />, group: 'social' },
+  { to: '/signal-feed', label: 'Signal Feed', icon: <MessageSquare size={18} />, group: 'social' },
+  { to: '/copy-trading', label: 'Copy Trading', icon: <Copy size={18} />, group: 'social' },
+  { to: '/subscription', label: 'Subscription', icon: <CreditCard size={18} />, group: 'account' },
 ];
+
+const groupLabels: Record<string, string> = {
+  core: 'DASHBOARD',
+  trading: 'TRADING',
+  analysis: 'ANALYSIS',
+  intel: 'INTELLIGENCE',
+  options: 'OPTIONS',
+  social: 'SOCIAL TRADING',
+  account: 'ACCOUNT',
+};
+
+function groupItems(items: NavItem[]): [string, NavItem[]][] {
+  const groups: Record<string, NavItem[]> = {};
+  for (const item of items) {
+    const g = item.group || 'core';
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(item);
+  }
+  return Object.entries(groups);
+}
 
 interface MarketStatusProps {
   status: 'PRE' | 'LIVE' | 'POST' | 'CLOSED';
 }
 
 function MarketStatusIndicator({ status }: MarketStatusProps) {
-  const colorMap: Record<string, string> = {
-    LIVE: 'bg-trading-bull',
-    PRE: 'bg-trading-alert',
-    POST: 'bg-trading-info',
-    CLOSED: 'bg-slate-500',
-  };
-
-  const pulseMap: Record<string, string> = {
-    LIVE: 'animate-pulse',
-    PRE: 'animate-pulse',
-    POST: '',
-    CLOSED: '',
-  };
+  const isLive = status === 'LIVE';
+  const isPre = status === 'PRE';
 
   return (
-    <div className="flex items-center gap-2 px-4 py-3">
-      <div className={cn('w-2.5 h-2.5 rounded-full', colorMap[status], pulseMap[status])} />
-      <span className="text-sm text-slate-400">
-        Market: <span className="text-slate-200 font-medium">{status}</span>
-      </span>
+    <div className="flex items-center gap-2.5 px-4 py-3">
+      {isLive ? (
+        <div className="relative">
+          <Wifi size={14} className="text-trading-bull" />
+          <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-trading-bull rounded-full animate-pulse-live" />
+        </div>
+      ) : (
+        <WifiOff size={14} className="text-slate-600" />
+      )}
+      <div className="flex flex-col">
+        <span className="text-[10px] text-slate-500 uppercase tracking-wider">Market</span>
+        <span className={cn(
+          'text-xs font-mono font-semibold',
+          isLive ? 'text-trading-bull' : isPre ? 'text-trading-alert' : 'text-slate-500'
+        )}>
+          {status}
+        </span>
+      </div>
     </div>
   );
 }
@@ -79,13 +115,15 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { market } = useOverview(60000);
+  const [collapsed, setCollapsed] = useState(false);
+  const grouped = groupItems(navItems);
 
   return (
     <>
       {/* Mobile overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/60 z-40 md:hidden"
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 md:hidden"
           onClick={onClose}
         />
       )}
@@ -93,60 +131,108 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          'h-screen flex flex-col bg-[#0C1222] border-r border-trading-border z-50 transition-transform duration-300 ease-in-out',
+          'h-screen flex flex-col bg-sidebar-gradient z-50 transition-all duration-300 ease-out',
+          'border-r border-trading-border/60',
           // Mobile: fixed drawer
-          'fixed inset-y-0 left-0 w-[240px] md:relative md:translate-x-0',
+          'fixed inset-y-0 left-0 md:relative md:translate-x-0',
           isOpen ? 'translate-x-0' : '-translate-x-full',
-          // Desktop: always visible, static width
-          'md:min-w-[240px]',
+          // Width
+          collapsed ? 'w-[68px] md:min-w-[68px]' : 'w-[260px] md:min-w-[260px]',
         )}
       >
         {/* Logo */}
-        <div className="px-5 py-6 border-b border-trading-border flex items-center justify-between">
+        <div className={cn(
+          'border-b border-trading-border/40 flex items-center',
+          collapsed ? 'px-3 py-5 justify-center' : 'px-5 py-5 justify-between',
+        )}>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg gradient-ai flex items-center justify-center">
-              <Activity size={20} className="text-white" />
+            <div className="w-9 h-9 rounded-xl gradient-ai flex items-center justify-center shadow-glow-ai flex-shrink-0">
+              <Activity size={18} className="text-white" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold text-white tracking-tight">MKUMARAN</h1>
-              <p className="text-xs text-slate-400 -mt-0.5">Trading OS</p>
-            </div>
+            {!collapsed && (
+              <div className="overflow-hidden">
+                <h1 className="text-base font-bold text-white tracking-tight leading-none">MKUMARAN</h1>
+                <p className="text-[10px] text-trading-ai-light tracking-widest uppercase mt-0.5">Trading OS</p>
+              </div>
+            )}
           </div>
           {/* Close button on mobile */}
-          <button
-            onClick={onClose}
-            className="md:hidden p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
-          >
-            <X size={20} />
-          </button>
+          {!collapsed && (
+            <button
+              onClick={onClose}
+              className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={onClose}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
-                  isActive
-                    ? 'bg-trading-card text-white border-l-2 border-trading-ai'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-trading-card/50 border-l-2 border-transparent'
-                )
-              }
-            >
-              {item.icon}
-              {item.label}
-            </NavLink>
+        <nav className={cn(
+          'flex-1 py-3 overflow-y-auto',
+          collapsed ? 'px-2' : 'px-3',
+        )}>
+          {grouped.map(([group, items]) => (
+            <div key={group} className="mb-3">
+              {!collapsed && (
+                <p className="px-3 mb-1.5 text-[9px] font-semibold text-slate-600 uppercase tracking-[0.15em]">
+                  {groupLabels[group]}
+                </p>
+              )}
+              <div className="space-y-0.5">
+                {items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={onClose}
+                    title={collapsed ? item.label : undefined}
+                    className={({ isActive }) =>
+                      cn(
+                        'flex items-center gap-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 group relative',
+                        collapsed ? 'px-2.5 py-2.5 justify-center' : 'px-3 py-2',
+                        isActive
+                          ? 'bg-trading-ai/12 text-white shadow-inner-glow'
+                          : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.03]'
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && (
+                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-r-full bg-trading-ai" />
+                        )}
+                        <span className={cn(
+                          'flex-shrink-0 transition-colors',
+                          isActive ? 'text-trading-ai-light' : 'text-slate-500 group-hover:text-slate-300'
+                        )}>
+                          {item.icon}
+                        </span>
+                        {!collapsed && <span>{item.label}</span>}
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
-        {/* Market Status */}
-        <div className="border-t border-trading-border">
-          <MarketStatusIndicator status={market.market_status} />
+        {/* Collapse Toggle (desktop) */}
+        <div className="hidden md:flex items-center justify-center py-2 border-t border-trading-border/30">
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="p-1.5 rounded-lg text-slate-600 hover:text-slate-300 hover:bg-white/5 transition-colors"
+          >
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
         </div>
+
+        {/* Market Status */}
+        {!collapsed && (
+          <div className="border-t border-trading-border/30">
+            <MarketStatusIndicator status={market.market_status} />
+          </div>
+        )}
       </aside>
     </>
   );

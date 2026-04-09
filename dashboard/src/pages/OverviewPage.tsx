@@ -27,57 +27,48 @@ import { cn } from '../lib/utils';
 import type { Signal, ScannerResult, SectorStrength } from '../types';
 
 // --- Scanner Heatmap ---
-interface ScannerCellProps {
-  scanner: ScannerResult;
-}
-
-function ScannerCell({ scanner }: ScannerCellProps) {
+function ScannerCell({ scanner }: { scanner: ScannerResult }) {
   const colorMap: Record<string, string> = {
-    BULL: 'bg-trading-bull/20 text-trading-bull border-trading-bull/20',
-    BEAR: 'bg-trading-bear/20 text-trading-bear border-trading-bear/20',
-    NEUTRAL: 'bg-slate-700/50 text-slate-400 border-slate-600/30',
+    BULL: 'bg-trading-bull/8 text-trading-bull border-trading-bull/12',
+    BEAR: 'bg-trading-bear/8 text-trading-bear border-trading-bear/12',
+    NEUTRAL: 'bg-trading-bg-secondary/60 text-slate-500 border-trading-border/20',
   };
 
   return (
     <div
-      className={`p-2 rounded-lg border text-center ${colorMap[scanner.direction]}`}
+      className={cn('p-2 rounded-xl border text-center transition-all hover:scale-[1.02]', colorMap[scanner.direction])}
       title={`${scanner.name}: ${scanner.count} stocks`}
     >
-      <p className="text-[10px] font-medium truncate">{scanner.name}</p>
-      <p className="text-lg font-mono font-bold">{scanner.count}</p>
-      <p className="text-[9px] opacity-70">{scanner.group}</p>
+      <p className="text-[9px] font-medium truncate text-slate-400">{scanner.name}</p>
+      <p className="text-lg font-mono font-bold tabular-nums">{scanner.count}</p>
+      <p className="text-[8px] opacity-50 font-mono">{scanner.group}</p>
     </div>
   );
 }
 
 // --- Score Bar ---
-interface ScoreBarProps {
-  bullPct: number;
-  bearPct: number;
-}
-
-function ScoreBar({ bullPct, bearPct }: ScoreBarProps) {
+function ScoreBar({ bullPct, bearPct }: { bullPct: number; bearPct: number }) {
   return (
     <div className="space-y-2">
-      <div className="flex justify-between text-xs font-mono">
+      <div className="flex justify-between text-[10px] font-mono">
         <span className="text-trading-bull flex items-center gap-1">
-          <ArrowUpRight size={12} /> BULL {(bullPct ?? 0).toFixed(1)}%
+          <ArrowUpRight size={10} /> BULL {(bullPct ?? 0).toFixed(1)}%
         </span>
         <span className="text-trading-bear flex items-center gap-1">
-          BEAR {(bearPct ?? 0).toFixed(1)}% <ArrowDownRight size={12} />
+          BEAR {(bearPct ?? 0).toFixed(1)}% <ArrowDownRight size={10} />
         </span>
       </div>
-      <div className="h-3 bg-slate-700 rounded-full overflow-hidden flex">
+      <div className="h-2 bg-trading-bg-secondary rounded-full overflow-hidden flex border border-trading-border/20">
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${bullPct}%` }}
-          transition={{ duration: 1, ease: 'easeOut' }}
+          transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
           className="h-full bg-gradient-to-r from-trading-bull to-trading-bull-light"
         />
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${bearPct}%` }}
-          transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
+          transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
           className="h-full bg-gradient-to-r from-trading-bear-dark to-trading-bear"
         />
       </div>
@@ -86,15 +77,10 @@ function ScoreBar({ bullPct, bearPct }: ScoreBarProps) {
 }
 
 // --- Sector Badge ---
-interface SectorBadgeProps {
-  sector: string;
-  strength: SectorStrength;
-}
-
-function SectorBadge({ sector, strength }: SectorBadgeProps) {
+function SectorBadge({ sector, strength }: { sector: string; strength: SectorStrength }) {
   return (
-    <div className="flex items-center justify-between px-3 py-2 bg-slate-800/50 rounded-lg">
-      <span className="text-sm text-slate-300">{sector}</span>
+    <div className="flex items-center justify-between px-3 py-2.5 bg-trading-bg-secondary/40 rounded-xl border border-trading-border/15">
+      <span className="text-xs text-slate-400">{sector}</span>
       <StatusBadge status={strength} size="sm" />
     </div>
   );
@@ -126,7 +112,6 @@ function groupByLayer(scanners: ScannerResult[]): [string, ScannerResult[]][] {
     if (!groups[layer]) groups[layer] = [];
     groups[layer].push(s);
   }
-  // Sort layers in a logical order
   const order = ['Trend', 'Volume', 'Breakout', 'RSI', 'Gap', 'MA', 'Filter', 'SMC', 'Wyckoff', 'VSA', 'Harmonic', 'RL', 'Forex', 'Commodity', 'FnO'];
   const entries = Object.entries(groups);
   entries.sort((a, b) => {
@@ -137,7 +122,7 @@ function groupByLayer(scanners: ScannerResult[]): [string, ScannerResult[]][] {
   return entries;
 }
 
-// --- News Widget (compact) ---
+// --- News Widget ---
 function NewsWidget() {
   const { items, loading } = useNews({ hours: 12, minImpact: 'MEDIUM' });
   const highItems = items.filter((i) => i.impact === 'HIGH');
@@ -150,41 +135,37 @@ function NewsWidget() {
     <GlassCard>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Newspaper size={16} className="text-trading-ai" />
-          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-            Market News
-          </h3>
+          <Newspaper size={14} className="text-trading-ai" />
+          <h3 className="stat-label">Market News</h3>
           {highItems.length > 0 && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-trading-bear/15 text-trading-bear text-[10px] font-mono font-bold">
-              <AlertTriangle size={10} />
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-trading-bear/8 text-trading-bear text-[9px] font-mono font-bold border border-trading-bear/15">
+              <AlertTriangle size={9} />
               {highItems.length} HIGH
             </span>
           )}
         </div>
-        <a href="/news" className="text-[10px] text-trading-ai hover:underline">
+        <a href="/news" className="text-[9px] text-trading-ai hover:text-trading-ai-light transition-colors">
           View all
         </a>
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         {displayItems.map((item, idx) => (
           <div
             key={item.url || `${item.title}-${idx}`}
             className={cn(
-              'flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-800/40 transition-colors',
-              item.impact === 'HIGH' ? 'bg-trading-bear/5' : 'bg-transparent',
+              'flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/[0.02] transition-colors',
+              item.impact === 'HIGH' ? 'bg-trading-bear/[0.03]' : '',
             )}
           >
-            <span
-              className={cn(
-                'w-1.5 h-1.5 rounded-full flex-shrink-0',
-                item.impact === 'HIGH' ? 'bg-trading-bear' : 'bg-trading-alert',
-              )}
-            />
-            <span className="text-xs text-slate-300 truncate flex-1">{item.title}</span>
-            <span className="text-[9px] text-slate-600 font-mono flex-shrink-0">{item.source}</span>
+            <span className={cn(
+              'w-1.5 h-1.5 rounded-full flex-shrink-0',
+              item.impact === 'HIGH' ? 'bg-trading-bear' : 'bg-trading-alert',
+            )} />
+            <span className="text-[11px] text-slate-300 truncate flex-1">{item.title}</span>
+            <span className="text-[9px] text-slate-700 font-mono flex-shrink-0">{item.source}</span>
             {item.url && (
               <a href={item.url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
-                <ExternalLink size={10} className="text-slate-600 hover:text-slate-400" />
+                <ExternalLink size={9} className="text-slate-700 hover:text-slate-400 transition-colors" />
               </a>
             )}
           </div>
@@ -209,10 +190,8 @@ export default function OverviewPage() {
     setScanError(null);
     try {
       const result = await mwaApi.runScan();
-      // Refresh MWA data and signal cards after scan
       refreshMwa();
       if (result.mwa_signal_cards) {
-        // Reload signal cards from DB
         const cards = await mwaApi.getSignalCards();
         if (Array.isArray(cards)) setMwaSignals(cards);
       }
@@ -232,7 +211,6 @@ export default function OverviewPage() {
         today_signals: d.today_signals ?? 0,
       });
     }).catch(() => {});
-    // Fetch MWA signal cards (recent MWA Scan signals from DB)
     mwaApi.getSignalCards().then((data) => {
       if (Array.isArray(data)) setMwaSignals(data);
     }).catch(() => {});
@@ -243,8 +221,13 @@ export default function OverviewPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <Loader2 size={48} className="text-trading-ai animate-spin mb-4" />
-        <p className="text-slate-400 text-sm">Loading market data...</p>
+        <div className="relative">
+          <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+            <Loader2 size={24} className="text-trading-ai animate-spin" />
+          </div>
+          <div className="absolute inset-0 rounded-2xl bg-trading-ai/5 animate-ping" />
+        </div>
+        <p className="text-slate-500 text-xs mt-4 font-mono">Loading market data...</p>
       </div>
     );
   }
@@ -252,16 +235,14 @@ export default function OverviewPage() {
   if (mwaError) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <AlertCircle size={48} className="text-trading-alert mb-4" />
-        <p className="text-slate-400 text-sm">Failed to load data: {mwaError}</p>
+        <div className="w-12 h-12 rounded-2xl bg-trading-alert/10 flex items-center justify-center mb-4">
+          <AlertCircle size={24} className="text-trading-alert" />
+        </div>
+        <p className="text-slate-500 text-xs">{mwaError}</p>
       </div>
     );
   }
 
-  // Filter scanners by segment — maps the selected exchange to the scanner
-  // layers that actually run for that segment (matches backend segment
-  // assignment in mwa_scanner.py). NFO/F&O was previously missing, so the
-  // F&O tab was falling through to show ALL scanners instead of FnO-only.
   const allScannerEntries = mwa?.scanner_results ? Object.values(mwa.scanner_results) : [];
   const segmentLayerMap: Record<string, string[]> = {
     NSE: ['Trend', 'Volume', 'Breakout', 'RSI', 'Gap', 'MA', 'Filter', 'SMC', 'Wyckoff', 'VSA', 'Harmonic', 'RL'],
@@ -279,98 +260,69 @@ export default function OverviewPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-6"
+      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      className="space-y-5"
     >
       {/* Top Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard
-          title="Today's Signals"
-          value={stats.today_signals || signals.length}
-          icon={Zap}
-          color="ai"
-        />
-        <MetricCard
-          title="Active Trades"
-          value={stats.active_trades}
-          icon={TrendingUp}
-          color="bull"
-        />
-        <MetricCard
-          title="Win Rate"
-          value={stats.win_rate > 0 ? `${stats.win_rate}%` : '--'}
-          icon={Target}
-          color="info"
-        />
-        <MetricCard
-          title="MWA Direction"
-          value={mwa?.direction?.replace('_', ' ') || 'N/A'}
-          icon={Compass}
-          color="alert"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        <MetricCard title="Today's Signals" value={stats.today_signals || signals.length} icon={Zap} color="ai" />
+        <MetricCard title="Active Trades" value={stats.active_trades} icon={TrendingUp} color="bull" />
+        <MetricCard title="Win Rate" value={stats.win_rate > 0 ? `${stats.win_rate}%` : '--'} icon={Target} color="info" />
+        <MetricCard title="MWA Direction" value={mwa?.direction?.replace('_', ' ') || 'N/A'} icon={Compass} color="alert" />
       </div>
 
       {/* MWA Score + Scanner Grid */}
       {mwa ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* MWA Score Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* MWA Score */}
           <GlassCard className="lg:col-span-1">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-                  Market Weighted Average
-                </h3>
+                <h3 className="stat-label">Market Weighted Average</h3>
                 <StatusBadge status={mwa.direction} />
               </div>
 
-              {/* Run MWA Scan Button */}
               <button
                 onClick={handleRunMwaScan}
                 disabled={scanning}
                 className={cn(
-                  'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all',
+                  'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all',
                   scanning
-                    ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                    : 'bg-trading-ai/20 text-trading-ai-light hover:bg-trading-ai/30 border border-trading-ai/30'
+                    ? 'bg-trading-bg-secondary text-slate-500 cursor-not-allowed'
+                    : 'bg-trading-ai/8 text-trading-ai-light hover:bg-trading-ai/12 border border-trading-ai/15'
                 )}
               >
-                {scanning ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <RefreshCw size={14} />
-                )}
+                {scanning ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                 {scanning ? 'Running MWA Scan...' : 'Run MWA Scan'}
               </button>
-              {scanError && (
-                <p className="text-xs text-trading-bear mt-1">{scanError}</p>
-              )}
+              {scanError && <p className="text-[10px] text-trading-bear">{scanError}</p>}
 
               <ScoreBar bullPct={mwa.bull_pct} bearPct={mwa.bear_pct} />
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="text-center p-3 rounded-lg bg-trading-bull/5 border border-trading-bull/10">
-                  <p className="text-2xl font-mono font-bold text-trading-bull">{mwa.bull_score}</p>
-                  <p className="text-[10px] text-slate-500 uppercase mt-1">Bull Score</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="text-center p-3 rounded-xl bg-trading-bull/[0.04] border border-trading-bull/10">
+                  <p className="text-2xl font-mono font-bold text-trading-bull tabular-nums">{mwa.bull_score}</p>
+                  <p className="stat-label mt-1">Bull Score</p>
                 </div>
-                <div className="text-center p-3 rounded-lg bg-trading-bear/5 border border-trading-bear/10">
-                  <p className="text-2xl font-mono font-bold text-trading-bear">{mwa.bear_score}</p>
-                  <p className="text-[10px] text-slate-500 uppercase mt-1">Bear Score</p>
+                <div className="text-center p-3 rounded-xl bg-trading-bear/[0.04] border border-trading-bear/10">
+                  <p className="text-2xl font-mono font-bold text-trading-bear tabular-nums">{mwa.bear_score}</p>
+                  <p className="stat-label mt-1">Bear Score</p>
                 </div>
               </div>
 
               {/* FII / DII */}
-              <div className="pt-2 border-t border-trading-border space-y-2">
-                <h4 className="text-xs text-slate-500 uppercase tracking-wider">Institutional Flow</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-800/50">
-                    <span className="text-xs text-slate-400">FII</span>
-                    <span className={`text-sm font-mono font-bold ${(mwa.fii_net ?? 0) >= 0 ? 'text-trading-bull' : 'text-trading-bear'}`}>
+              <div className="pt-3 border-t border-trading-border/20 space-y-2">
+                <h4 className="stat-label">Institutional Flow</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-trading-bg-secondary/40 border border-trading-border/15">
+                    <span className="text-[10px] text-slate-500">FII</span>
+                    <span className={cn('text-xs font-mono font-bold tabular-nums', (mwa.fii_net ?? 0) >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
                       {(mwa.fii_net ?? 0) >= 0 ? '+' : ''}{(mwa.fii_net ?? 0).toFixed(0)} Cr
                     </span>
                   </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-800/50">
-                    <span className="text-xs text-slate-400">DII</span>
-                    <span className={`text-sm font-mono font-bold ${(mwa.dii_net ?? 0) >= 0 ? 'text-trading-bull' : 'text-trading-bear'}`}>
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-trading-bg-secondary/40 border border-trading-border/15">
+                    <span className="text-[10px] text-slate-500">DII</span>
+                    <span className={cn('text-xs font-mono font-bold tabular-nums', (mwa.dii_net ?? 0) >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
                       {(mwa.dii_net ?? 0) >= 0 ? '+' : ''}{(mwa.dii_net ?? 0).toFixed(0)} Cr
                     </span>
                   </div>
@@ -379,13 +331,13 @@ export default function OverviewPage() {
 
               {/* Promoted Stocks */}
               {mwa.promoted_stocks && mwa.promoted_stocks.length > 0 && (
-                <div className="pt-2 border-t border-trading-border">
-                  <h4 className="text-xs text-slate-500 uppercase tracking-wider mb-2">Promoted Stocks</h4>
+                <div className="pt-3 border-t border-trading-border/20">
+                  <h4 className="stat-label mb-2">Promoted Stocks</h4>
                   <div className="flex flex-wrap gap-1.5">
                     {mwa.promoted_stocks.map((stock) => (
                       <span
                         key={stock}
-                        className="px-2 py-0.5 text-xs font-mono bg-trading-ai/10 text-trading-ai-light border border-trading-ai/20 rounded"
+                        className="px-2 py-0.5 text-[10px] font-mono bg-trading-ai/6 text-trading-ai-light border border-trading-ai/12 rounded-lg"
                       >
                         {stock}
                       </span>
@@ -399,21 +351,17 @@ export default function OverviewPage() {
           {/* Scanner Heatmap */}
           <GlassCard className="lg:col-span-2">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-                {scannerEntries.length}-Scanner Heatmap
-              </h3>
-              <span className="text-[10px] text-slate-500 font-mono">
-                {scannerLayers.length} layers
-              </span>
+              <h3 className="stat-label">{scannerEntries.length}-Scanner Heatmap</h3>
+              <span className="text-[9px] text-slate-600 font-mono">{scannerLayers.length} layers</span>
             </div>
             {scannerEntries.length > 0 ? (
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                 {scannerLayers.map(([layer, scanners]) => (
                   <div key={layer}>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                      <span className={`w-1.5 h-1.5 rounded-full ${layerColors[layer] || 'bg-slate-500'}`} />
+                    <p className="text-[9px] text-slate-600 uppercase tracking-[0.12em] mb-1.5 flex items-center gap-1.5">
+                      <span className={cn('w-1.5 h-1.5 rounded-full', layerColors[layer] || 'bg-slate-600')} />
                       {layer}
-                      <span className="text-slate-600">({scanners.length})</span>
+                      <span className="text-slate-700">({scanners.length})</span>
                     </p>
                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-1.5">
                       {scanners.map((scanner) => (
@@ -424,43 +372,37 @@ export default function OverviewPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-slate-500 text-sm text-center py-8">No scanner data available</p>
+              <p className="text-slate-600 text-xs text-center py-8">No scanner data available</p>
             )}
           </GlassCard>
         </div>
       ) : (
-        <GlassCard className="text-center py-12">
-          <Compass size={32} className="mx-auto mb-2 text-slate-600" />
-          <p className="text-slate-500 text-sm mb-4">No MWA data available yet. Run the MWA scanner to see market breadth.</p>
+        <GlassCard className="text-center py-14">
+          <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mx-auto mb-3">
+            <Compass size={24} className="text-slate-600" />
+          </div>
+          <p className="text-slate-500 text-xs mb-4">No MWA data. Run the scanner to see market breadth.</p>
           <button
             onClick={handleRunMwaScan}
             disabled={scanning}
             className={cn(
-              'inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all',
+              'inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold transition-all',
               scanning
-                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                : 'bg-trading-ai/20 text-trading-ai-light hover:bg-trading-ai/30 border border-trading-ai/30'
+                ? 'bg-trading-bg-secondary text-slate-500 cursor-not-allowed'
+                : 'bg-trading-ai/8 text-trading-ai-light hover:bg-trading-ai/12 border border-trading-ai/15'
             )}
           >
-            {scanning ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <RefreshCw size={14} />
-            )}
-            {scanning ? 'Running MWA Scan...' : 'Run MWA Scan'}
+            {scanning ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {scanning ? 'Running...' : 'Run MWA Scan'}
           </button>
-          {scanError && (
-            <p className="text-xs text-trading-bear mt-2">{scanError}</p>
-          )}
+          {scanError && <p className="text-[10px] text-trading-bear mt-2">{scanError}</p>}
         </GlassCard>
       )}
 
       {/* Sector Strength */}
       {sectorEntries.length > 0 && (
         <GlassCard>
-          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
-            Sector Strength
-          </h3>
+          <h3 className="stat-label mb-4">Sector Strength</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {sectorEntries.map(([sector, strength]) => (
               <SectorBadge key={sector} sector={sector} strength={strength as SectorStrength} />
@@ -473,15 +415,13 @@ export default function OverviewPage() {
       {mwaSignals.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <Zap size={14} className="text-trading-ai" />
+            <h3 className="stat-label flex items-center gap-2">
+              <Zap size={12} className="text-trading-ai" />
               MWA Signal Cards
             </h3>
-            <a href="/monitor" className="text-[10px] text-trading-ai hover:underline">
-              View Monitor
-            </a>
+            <a href="/monitor" className="text-[9px] text-trading-ai hover:text-trading-ai-light transition-colors">View Monitor</a>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
             {mwaSignals.map((signal) => (
               <SignalCard key={signal.id} signal={signal} />
             ))}
@@ -489,19 +429,17 @@ export default function OverviewPage() {
         </div>
       )}
 
-      {/* News Ticker */}
+      {/* News */}
       <NewsWidget />
 
-      {/* Today's Signals (exclude ones already shown in MWA Signal Cards) */}
+      {/* Today's Signals */}
       {(() => {
         const mwaIds = new Set(mwaSignals.map((s) => s.id));
         const otherSignals = signals.filter((s) => !mwaIds.has(s.id));
         return otherSignals.length > 0 ? (
           <div>
-            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
-              Today's Signals
-            </h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+            <h3 className="stat-label mb-4">Today's Signals</h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
               {otherSignals.map((signal) => (
                 <SignalCard key={signal.id} signal={signal} />
               ))}
@@ -509,12 +447,12 @@ export default function OverviewPage() {
           </div>
         ) : mwaSignals.length === 0 ? (
           <div>
-            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
-              Today's Signals
-            </h3>
-            <GlassCard className="text-center py-12">
-              <Zap size={32} className="mx-auto mb-2 text-slate-600" />
-              <p className="text-slate-500 text-sm">No signals generated yet today</p>
+            <h3 className="stat-label mb-4">Today's Signals</h3>
+            <GlassCard className="text-center py-14">
+              <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mx-auto mb-3">
+                <Zap size={24} className="text-slate-600" />
+              </div>
+              <p className="text-slate-600 text-xs">No signals generated yet today</p>
             </GlassCard>
           </div>
         ) : null;

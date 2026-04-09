@@ -28,7 +28,6 @@ import type { Signal, ClosedSignal } from '../types';
 
 function isMarketHours(): boolean {
   const now = new Date();
-  // Convert to IST (UTC+5:30)
   const utc = now.getTime() + now.getTimezoneOffset() * 60000;
   const ist = new Date(utc + 5.5 * 3600000);
   const h = ist.getHours();
@@ -52,7 +51,6 @@ export default function SignalMonitorPage() {
   const prevSignalIdsRef = useRef<Set<number>>(new Set());
   const { filter } = useMarketSegment();
 
-  // Check market status every 30s
   useEffect(() => {
     const timer = setInterval(() => setMarketOpen(isMarketHours()), 30000);
     return () => clearInterval(timer);
@@ -61,8 +59,6 @@ export default function SignalMonitorPage() {
   const fetchOpenSignals = useCallback(async () => {
     try {
       const data = await signalMonitorApi.getOpenSignals(filter);
-
-      // Detect new signals for flash animation
       const currentIds = new Set(data.map((s) => s.id));
       const prevIds = prevSignalIdsRef.current;
       const freshIds = new Set<number>();
@@ -71,11 +67,9 @@ export default function SignalMonitorPage() {
       });
       if (freshIds.size > 0) {
         setNewSignalIds(freshIds);
-        // Clear flash after 3 seconds
         setTimeout(() => setNewSignalIds(new Set()), 3000);
       }
       prevSignalIdsRef.current = currentIds;
-
       setOpenSignals(data);
       setError(null);
     } catch (err) {
@@ -85,7 +79,6 @@ export default function SignalMonitorPage() {
     }
   }, [filter]);
 
-  // Poll every 10 seconds
   useEffect(() => {
     fetchOpenSignals();
     const interval = setInterval(fetchOpenSignals, 10000);
@@ -113,8 +106,10 @@ export default function SignalMonitorPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <Loader2 size={48} className="text-trading-ai animate-spin mb-4" />
-        <p className="text-slate-400 text-sm">Loading signal monitor...</p>
+        <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+          <Loader2 size={24} className="text-trading-ai animate-spin" />
+        </div>
+        <p className="text-slate-500 text-xs mt-4 font-mono">Loading signal monitor...</p>
       </div>
     );
   }
@@ -127,114 +122,102 @@ export default function SignalMonitorPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-6"
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className="space-y-5"
     >
-      {/* Header with LIVE badge + Check Now */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Shield size={20} className="text-trading-ai" />
-          <h2 className="text-lg font-bold text-white">Signal Monitor</h2>
+          <div className="w-8 h-8 rounded-xl bg-trading-ai/10 flex items-center justify-center">
+            <Shield size={16} className="text-trading-ai" />
+          </div>
+          <h2 className="text-sm font-bold text-white">Signal Monitor</h2>
           {marketOpen ? (
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-500/15 border border-green-500/30">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-trading-bull/8 border border-trading-bull/15">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-trading-bull opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-trading-bull" />
               </span>
-              <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider">Live</span>
+              <span className="text-[9px] font-bold text-trading-bull uppercase tracking-wider">Live</span>
             </span>
           ) : (
-            <span className="text-xs text-slate-500 font-mono">Market closed</span>
+            <span className="text-[10px] text-slate-600 font-mono">Market closed</span>
           )}
-          <span className="text-xs text-slate-600 font-mono">Polling every 10s</span>
+          <span className="text-[9px] text-slate-700 font-mono">Polling 10s</span>
         </div>
         <div className="flex items-center gap-3">
           {lastChecked && (
-            <span className="text-xs text-slate-500 flex items-center gap-1">
-              <Clock size={12} /> Last: {lastChecked}
+            <span className="text-[10px] text-slate-600 flex items-center gap-1 font-mono">
+              <Clock size={10} /> {lastChecked}
             </span>
           )}
           <button
             onClick={handleCheckNow}
             disabled={checking}
             className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+              'flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all',
               checking
-                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                : 'bg-trading-ai/20 text-trading-ai-light hover:bg-trading-ai/30 border border-trading-ai/30'
+                ? 'bg-trading-bg-secondary text-slate-500 cursor-not-allowed'
+                : 'bg-trading-ai/8 text-trading-ai-light hover:bg-trading-ai/12 border border-trading-ai/15'
             )}
           >
-            {checking ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <RefreshCw size={14} />
-            )}
+            {checking ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             {checking ? 'Checking...' : 'Check Now'}
           </button>
         </div>
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-trading-bear/10 border border-trading-bear/20">
-          <AlertCircle size={16} className="text-trading-bear" />
-          <span className="text-sm text-trading-bear">{error}</span>
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-trading-bear/6 border border-trading-bear/12">
+          <AlertCircle size={14} className="text-trading-bear" />
+          <span className="text-xs text-trading-bear">{error}</span>
         </div>
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <MetricCard title="Open Signals" value={totalOpen} icon={Target} color="alert" />
         <MetricCard title="Long" value={longCount} icon={TrendingUp} color="bull" />
         <MetricCard title="Short" value={shortCount} icon={TrendingDown} color="bear" />
-        <MetricCard
-          title="Recently Closed"
-          value={recentClosed.length}
-          icon={CheckCircle2}
-          color="info"
-        />
+        <MetricCard title="Recently Closed" value={recentClosed.length} icon={CheckCircle2} color="info" />
       </div>
 
-      {/* Recently Closed Signals (after Check Now) */}
+      {/* Recently Closed */}
       {recentClosed.length > 0 && (
         <GlassCard glowColor={recentClosed.some((c) => c.outcome === 'WIN') ? 'bull' : 'bear'}>
-          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <CheckCircle2 size={14} className="text-trading-info" />
+          <h3 className="stat-label mb-3 flex items-center gap-2">
+            <CheckCircle2 size={12} className="text-trading-info" />
             Just Closed
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {recentClosed.map((c) => (
               <div
                 key={c.signal_id}
                 className={cn(
-                  'flex items-center justify-between p-3 rounded-lg border',
+                  'flex items-center justify-between p-3 rounded-xl border',
                   c.outcome === 'WIN'
-                    ? 'bg-trading-bull/5 border-trading-bull/20'
-                    : 'bg-trading-bear/5 border-trading-bear/20'
+                    ? 'bg-trading-bull/[0.03] border-trading-bull/12'
+                    : 'bg-trading-bear/[0.03] border-trading-bear/12'
                 )}
               >
                 <div className="flex items-center gap-3">
                   {c.outcome === 'WIN' ? (
-                    <CheckCircle2 size={16} className="text-trading-bull" />
+                    <CheckCircle2 size={14} className="text-trading-bull" />
                   ) : (
-                    <XCircle size={16} className="text-trading-bear" />
+                    <XCircle size={14} className="text-trading-bear" />
                   )}
-                  <span className="font-mono font-bold text-white">{c.ticker}</span>
-                  <span className="text-xs text-slate-400">{c.direction}</span>
-                  <span className="text-xs text-slate-500">{c.status.replace('_', ' ')}</span>
+                  <span className="font-mono font-bold text-white text-sm">{c.ticker}</span>
+                  <span className="text-[10px] text-slate-500">{c.direction}</span>
+                  <span className="text-[10px] text-slate-600">{c.status.replace('_', ' ')}</span>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className="text-xs text-slate-400 font-mono">
+                  <span className="text-[10px] text-slate-500 font-mono tabular-nums">
                     {c.entry.toFixed(1)} → {c.exit.toFixed(1)}
                   </span>
-                  <span
-                    className={cn(
-                      'text-sm font-mono font-bold',
-                      c.pnl_pct >= 0 ? 'text-trading-bull' : 'text-trading-bear'
-                    )}
-                  >
+                  <span className={cn('text-xs font-mono font-bold tabular-nums', c.pnl_pct >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
                     {c.pnl_pct >= 0 ? '+' : ''}{c.pnl_pct.toFixed(1)}%
                   </span>
-                  <span className="text-xs text-slate-500">{c.days_held}d</span>
+                  <span className="text-[10px] text-slate-600 font-mono">{c.days_held}d</span>
                 </div>
               </div>
             ))}
@@ -242,16 +225,16 @@ export default function SignalMonitorPage() {
         </GlassCard>
       )}
 
-      {/* Open Signals Table with expandable chart */}
+      {/* Open Signals Table */}
       {totalOpen > 0 ? (
-        <GlassCard>
-          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
-            Open Signals Being Monitored
-          </h3>
+        <GlassCard className="!p-0 overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-trading-border/20">
+            <h3 className="stat-label">Open Signals Being Monitored</h3>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-trading-border">
+                <tr className="text-[9px] text-slate-600 uppercase tracking-[0.12em] border-b border-trading-border/20">
                   <th className="text-left py-3 px-2 w-6"></th>
                   <th className="text-left py-3 px-2">Ticker</th>
                   <th className="text-center py-3 px-2">Exch</th>
@@ -265,7 +248,7 @@ export default function SignalMonitorPage() {
                   <th className="text-center py-3 px-2">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-trading-border/50">
+              <tbody>
                 {openSignals.map((sig, idx) => {
                   const isLong = sig.direction === 'LONG' || sig.direction === 'BUY';
                   const confidencePct = Math.round(sig.ai_confidence);
@@ -275,83 +258,60 @@ export default function SignalMonitorPage() {
                   return (
                     <motion.tr
                       key={sig.id}
-                      initial={isNew ? { opacity: 0, backgroundColor: 'rgba(34,197,94,0.15)' } : { opacity: 0, x: -10 }}
+                      initial={isNew ? { opacity: 0, backgroundColor: 'rgba(0,230,118,0.1)' } : { opacity: 0, x: -8 }}
                       animate={isNew
-                        ? { opacity: 1, backgroundColor: 'rgba(34,197,94,0)', transition: { duration: 2 } }
+                        ? { opacity: 1, backgroundColor: 'rgba(0,230,118,0)', transition: { duration: 2 } }
                         : { opacity: 1, x: 0 }
                       }
-                      transition={{ duration: 0.2, delay: idx * 0.04 }}
+                      transition={{ duration: 0.2, delay: idx * 0.03 }}
                       onClick={() => toggleChart(sig.id)}
                       className={cn(
-                        'cursor-pointer transition-colors',
-                        isExpanded ? 'bg-slate-800/50' : 'hover:bg-slate-800/30',
-                        isNew && 'ring-1 ring-green-500/30'
+                        'cursor-pointer transition-colors border-b border-trading-border/10',
+                        isExpanded ? 'bg-white/[0.02]' : 'hover:bg-white/[0.015]',
+                        isNew && 'ring-1 ring-trading-bull/20'
                       )}
                     >
                       <td className="py-3 px-2">
-                        {isExpanded ? (
-                          <ChevronUp size={14} className="text-slate-400" />
-                        ) : (
-                          <ChevronDown size={14} className="text-slate-500" />
-                        )}
+                        {isExpanded ? <ChevronUp size={12} className="text-slate-500" /> : <ChevronDown size={12} className="text-slate-600" />}
                       </td>
                       <td className="py-3 px-2">
-                        <span className="font-mono font-bold text-white">{sig.ticker}</span>
+                        <span className="font-mono font-bold text-white text-sm">{sig.ticker}</span>
                       </td>
                       <td className="py-3 px-2 text-center">
-                        <span
-                          className={cn(
-                            'text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border',
-                            sig.exchange === 'MCX'
-                              ? 'bg-amber-500/15 text-amber-400 border-amber-500/20'
-                              : sig.exchange === 'CDS'
-                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
-                                : 'bg-blue-500/15 text-blue-400 border-blue-500/20'
-                          )}
-                        >
+                        <span className={cn(
+                          'text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md border',
+                          sig.exchange === 'MCX' ? 'bg-amber-500/8 text-amber-400 border-amber-500/15' :
+                          sig.exchange === 'CDS' ? 'bg-emerald-500/8 text-emerald-400 border-emerald-500/15' :
+                          'bg-blue-500/8 text-blue-400 border-blue-500/15'
+                        )}>
                           {sig.exchange || 'NSE'}
                         </span>
                       </td>
                       <td className="py-3 px-2 text-center">
-                        <div
-                          className={cn(
-                            'inline-flex items-center gap-0.5 text-xs font-bold',
-                            isLong ? 'text-trading-bull' : 'text-trading-bear'
-                          )}
-                        >
-                          {isLong ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                        <div className={cn(
+                          'inline-flex items-center gap-0.5 text-[10px] font-bold',
+                          isLong ? 'text-trading-bull' : 'text-trading-bear'
+                        )}>
+                          {isLong ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
                           {isLong ? 'LONG' : 'SHORT'}
                         </div>
                       </td>
-                      <td className="py-3 px-2 text-right font-mono text-slate-300">
-                        {sig.entry_price.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-2 text-right font-mono text-trading-bear">
-                        {sig.stop_loss.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-2 text-right font-mono text-trading-bull">
-                        {sig.target.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-2 text-center font-mono text-trading-info">
-                        {sig.rrr.toFixed(1)}
-                      </td>
+                      <td className="py-3 px-2 text-right font-mono text-slate-300 text-xs tabular-nums">{sig.entry_price.toFixed(2)}</td>
+                      <td className="py-3 px-2 text-right font-mono text-trading-bear/70 text-xs tabular-nums">{sig.stop_loss.toFixed(2)}</td>
+                      <td className="py-3 px-2 text-right font-mono text-trading-bull/70 text-xs tabular-nums">{sig.target.toFixed(2)}</td>
+                      <td className="py-3 px-2 text-center font-mono text-trading-info text-xs tabular-nums">{sig.rrr.toFixed(1)}</td>
                       <td className="py-3 px-2 text-center">
-                        <span className="text-xs text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                        <span className="text-[10px] text-slate-400 bg-trading-bg-secondary px-2 py-0.5 rounded-md border border-trading-border/20">
                           {sig.pattern}
                         </span>
                       </td>
                       <td className="py-3 px-2 text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          <Brain size={12} className="text-trading-ai" />
-                          <div className="w-12 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full gradient-ai"
-                              style={{ width: `${confidencePct}%` }}
-                            />
+                          <Brain size={11} className="text-trading-ai/60" />
+                          <div className="w-10 h-1.5 bg-trading-bg-secondary rounded-full overflow-hidden border border-trading-border/15">
+                            <div className="h-full rounded-full gradient-ai" style={{ width: `${confidencePct}%` }} />
                           </div>
-                          <span className="text-[10px] font-mono text-trading-ai-light">
-                            {confidencePct}%
-                          </span>
+                          <span className="text-[9px] font-mono text-trading-ai-light tabular-nums">{confidencePct}%</span>
                         </div>
                       </td>
                       <td className="py-3 px-2 text-center">
@@ -363,7 +323,6 @@ export default function SignalMonitorPage() {
               </tbody>
             </table>
 
-            {/* Expanded chart panel (rendered outside table for proper layout) */}
             <AnimatePresence>
               {expandedSignalId && (() => {
                 const sig = openSignals.find((s) => s.id === expandedSignalId);
@@ -377,8 +336,8 @@ export default function SignalMonitorPage() {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="border-t border-trading-border/50 p-4"
+                    transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                    className="border-t border-trading-border/20 p-4"
                   >
                     <CandlestickChart
                       ticker={chartTicker}
@@ -399,11 +358,11 @@ export default function SignalMonitorPage() {
         </GlassCard>
       ) : (
         <GlassCard className="flex flex-col items-center justify-center py-16">
-          <Shield size={48} className="text-slate-600 mb-4" />
-          <p className="text-slate-500 text-sm">No open signals being monitored</p>
-          <p className="text-slate-600 text-xs mt-1">
-            Signals from MWA scan will appear here when generated
-          </p>
+          <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mb-4">
+            <Shield size={24} className="text-slate-600" />
+          </div>
+          <p className="text-slate-500 text-xs">No open signals being monitored</p>
+          <p className="text-slate-700 text-[10px] mt-1">Signals from MWA scan will appear here</p>
         </GlassCard>
       )}
     </motion.div>

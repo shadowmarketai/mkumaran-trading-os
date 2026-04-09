@@ -18,6 +18,10 @@ import PayoffPage from './pages/PayoffPage';
 import PaperTradingPage from './pages/PaperTradingPage';
 import SignalMonitorPage from './pages/SignalMonitorPage';
 import MarketMoversPage from './pages/MarketMoversPage';
+import AgentHubPage from './pages/AgentHubPage';
+import SignalFeedPage from './pages/SignalFeedPage';
+import CopyTradingPage from './pages/CopyTradingPage';
+import SubscriptionPage from './pages/SubscriptionPage';
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -31,11 +35,11 @@ function App() {
         path="/*"
         element={
           <ProtectedRoute>
-            <div className="flex h-screen overflow-hidden">
+            <div className="flex h-screen overflow-hidden bg-trading-bg">
               <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
               <div className="flex-1 flex flex-col overflow-hidden min-w-0">
                 <TopBar onMenuClick={toggleSidebar} />
-                <main className="flex-1 overflow-auto p-3 md:p-6">
+                <main className="flex-1 overflow-auto p-3 md:p-5">
                   <Routes>
                     <Route path="/" element={<Navigate to="/overview" replace />} />
                     <Route path="/overview" element={<OverviewPage />} />
@@ -52,6 +56,10 @@ function App() {
                     <Route path="/paper" element={<PaperTradingPage />} />
                     <Route path="/monitor" element={<SignalMonitorPage />} />
                     <Route path="/market-movers" element={<MarketMoversPage />} />
+                    <Route path="/agent-hub" element={<AgentHubPage />} />
+                    <Route path="/signal-feed" element={<SignalFeedPage />} />
+                    <Route path="/copy-trading" element={<CopyTradingPage />} />
+                    <Route path="/subscription" element={<SubscriptionPage />} />
                   </Routes>
                 </main>
               </div>

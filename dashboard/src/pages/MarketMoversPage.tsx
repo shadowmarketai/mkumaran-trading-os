@@ -17,20 +17,20 @@ import { useMarketMovers } from '../hooks/useMarketMovers';
 import type { MarketMoverStock, MarketMoverCategory } from '../types';
 
 const TABS: { key: MarketMoverCategory; label: string; icon: React.ReactNode; color: string }[] = [
-  { key: 'gainers', label: 'Top Gainers', icon: <TrendingUp size={14} />, color: 'text-trading-bull' },
-  { key: 'losers', label: 'Top Losers', icon: <TrendingDown size={14} />, color: 'text-trading-bear' },
-  { key: 'week52_high', label: '52W High', icon: <Star size={14} />, color: 'text-trading-gold' },
-  { key: 'week52_low', label: '52W Low', icon: <ArrowDownRight size={14} />, color: 'text-trading-alert' },
-  { key: 'most_active', label: 'Most Active', icon: <BarChart3 size={14} />, color: 'text-trading-info' },
+  { key: 'gainers', label: 'Top Gainers', icon: <TrendingUp size={13} />, color: 'text-trading-bull' },
+  { key: 'losers', label: 'Top Losers', icon: <TrendingDown size={13} />, color: 'text-trading-bear' },
+  { key: 'week52_high', label: '52W High', icon: <Star size={13} />, color: 'text-trading-gold' },
+  { key: 'week52_low', label: '52W Low', icon: <ArrowDownRight size={13} />, color: 'text-trading-alert' },
+  { key: 'most_active', label: 'Most Active', icon: <BarChart3 size={13} />, color: 'text-trading-info' },
 ];
 
 const EXCHANGES = ['ALL', 'NSE', 'MCX', 'CDS'];
 
 const EXCHANGE_COLORS: Record<string, string> = {
-  NSE: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
-  NFO: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
-  MCX: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-  CDS: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+  NSE: 'bg-blue-500/8 text-blue-400 border-blue-500/15',
+  NFO: 'bg-purple-500/8 text-purple-400 border-purple-500/15',
+  MCX: 'bg-amber-500/8 text-amber-400 border-amber-500/15',
+  CDS: 'bg-emerald-500/8 text-emerald-400 border-emerald-500/15',
 };
 
 function formatVolume(vol: number): string {
@@ -64,65 +64,54 @@ function StockRow({ stock, rank, category }: { stock: MarketMoverStock; rank: nu
 
   return (
     <motion.tr
-      initial={{ opacity: 0, x: -8 }}
+      initial={{ opacity: 0, x: -6 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: rank * 0.02 }}
-      className="border-b border-trading-border/50 hover:bg-slate-800/30 transition-colors"
+      transition={{ delay: rank * 0.015, ease: [0.16, 1, 0.3, 1] }}
+      className="border-b border-trading-border/10 hover:bg-white/[0.015] transition-colors"
     >
-      <td className="py-2.5 px-2 md:px-3 font-mono text-xs text-slate-500">{rank}</td>
+      <td className="py-2.5 px-2 md:px-3 font-mono text-[10px] text-slate-600 tabular-nums">{rank}</td>
       <td className="py-2.5 px-2 md:px-3">
         <div className="flex items-center gap-2">
           <span className="font-medium text-white text-sm">{stock.ticker}</span>
-          <span
-            className={cn(
-              'px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border',
-              EXCHANGE_COLORS[stock.exchange] || 'bg-slate-700/50 text-slate-400 border-slate-600/30',
-            )}
-          >
+          <span className={cn(
+            'px-1.5 py-0.5 rounded-md text-[8px] font-mono font-bold border',
+            EXCHANGE_COLORS[stock.exchange] || 'bg-slate-700/30 text-slate-500 border-slate-600/20',
+          )}>
             {stock.exchange}
           </span>
         </div>
       </td>
-      <td className="py-2.5 px-2 md:px-3 text-right font-mono text-sm text-white">
+      <td className="py-2.5 px-2 md:px-3 text-right font-mono text-xs text-white tabular-nums">
         {stock.ltp.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
       </td>
       <td className="py-2.5 px-2 md:px-3 text-right">
-        <span
-          className={cn(
-            'font-mono text-xs',
-            positive ? 'text-trading-bull' : 'text-trading-bear',
-          )}
-        >
+        <span className={cn('font-mono text-[10px] tabular-nums', positive ? 'text-trading-bull' : 'text-trading-bear')}>
           {positive ? '+' : ''}{stock.change.toFixed(2)}
         </span>
       </td>
       <td className="py-2.5 px-2 md:px-3 text-right">
-        <span
-          className={cn(
-            'inline-flex items-center gap-0.5 px-2 py-0.5 rounded font-mono text-xs font-bold',
-            positive
-              ? 'bg-trading-bull/10 text-trading-bull'
-              : 'bg-trading-bear/10 text-trading-bear',
-          )}
-        >
-          {positive ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
+        <span className={cn(
+          'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md font-mono text-[10px] font-bold tabular-nums',
+          positive ? 'bg-trading-bull/6 text-trading-bull' : 'bg-trading-bear/6 text-trading-bear',
+        )}>
+          {positive ? <ArrowUpRight size={9} /> : <ArrowDownRight size={9} />}
           {positive ? '+' : ''}{stock.pct_change.toFixed(2)}%
         </span>
       </td>
-      <td className="py-2.5 px-2 md:px-3 text-right font-mono text-xs text-slate-400 hidden md:table-cell">
+      <td className="py-2.5 px-2 md:px-3 text-right font-mono text-[10px] text-slate-500 tabular-nums hidden md:table-cell">
         {stock.open.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
       </td>
-      <td className="py-2.5 px-2 md:px-3 text-right font-mono text-xs text-slate-400 hidden md:table-cell">
+      <td className="py-2.5 px-2 md:px-3 text-right font-mono text-[10px] text-slate-500 tabular-nums hidden md:table-cell">
         {stock.high.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
       </td>
-      <td className="py-2.5 px-2 md:px-3 text-right font-mono text-xs text-slate-400 hidden md:table-cell">
+      <td className="py-2.5 px-2 md:px-3 text-right font-mono text-[10px] text-slate-500 tabular-nums hidden md:table-cell">
         {stock.low.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
       </td>
-      <td className="py-2.5 px-2 md:px-3 text-right font-mono text-xs text-slate-400">
+      <td className="py-2.5 px-2 md:px-3 text-right font-mono text-[10px] tabular-nums">
         {showVolume ? (
           <span className="text-trading-info font-bold">{formatVolume(stock.volume)}</span>
         ) : (
-          formatVolume(stock.volume)
+          <span className="text-slate-500">{formatVolume(stock.volume)}</span>
         )}
       </td>
     </motion.tr>
@@ -130,9 +119,7 @@ function StockRow({ stock, rank, category }: { stock: MarketMoverStock; rank: nu
 }
 
 export default function MarketMoversPage() {
-  const {
-    data, loading, error, category, setCategory, exchange, setExchange, refresh,
-  } = useMarketMovers();
+  const { data, loading, error, category, setCategory, exchange, setExchange, refresh } = useMarketMovers();
 
   const stocks = data?.stocks || [];
   const activeTab = TABS.find((t) => t.key === category) || TABS[0];
@@ -140,8 +127,10 @@ export default function MarketMoversPage() {
   if (loading && !data) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <Loader2 size={48} className="text-trading-ai animate-spin mb-4" />
-        <p className="text-slate-400 text-sm">Loading market movers...</p>
+        <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+          <Loader2 size={24} className="text-trading-ai animate-spin" />
+        </div>
+        <p className="text-slate-500 text-xs mt-4 font-mono">Loading market movers...</p>
       </div>
     );
   }
@@ -149,11 +138,11 @@ export default function MarketMoversPage() {
   if (error && !data) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <AlertCircle size={48} className="text-trading-alert mb-4" />
-        <p className="text-slate-400 text-sm">Failed to load: {error}</p>
-        <button onClick={refresh} className="mt-4 text-trading-ai text-sm hover:underline">
-          Retry
-        </button>
+        <div className="w-12 h-12 rounded-2xl bg-trading-alert/10 flex items-center justify-center mb-4">
+          <AlertCircle size={24} className="text-trading-alert" />
+        </div>
+        <p className="text-slate-500 text-xs">{error}</p>
+        <button onClick={refresh} className="mt-4 text-trading-ai text-xs hover:text-trading-ai-light transition-colors">Retry</button>
       </div>
     );
   }
@@ -162,18 +151,19 @@ export default function MarketMoversPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
       className="space-y-4"
     >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <BarChart3 size={20} className="text-trading-ai" />
-          <h2 className="text-lg font-semibold text-white">Market Movers</h2>
+          <div className="w-8 h-8 rounded-xl bg-trading-ai/10 flex items-center justify-center">
+            <BarChart3 size={16} className="text-trading-ai" />
+          </div>
+          <h2 className="text-sm font-bold text-white">Market Movers</h2>
           {data?.fetched_at && (
-            <span className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
-              <Clock size={10} />
-              {formatTime(data.fetched_at)}
+            <span className="flex items-center gap-1 text-[9px] text-slate-600 font-mono">
+              <Clock size={9} /> {formatTime(data.fetched_at)}
             </span>
           )}
         </div>
@@ -181,23 +171,19 @@ export default function MarketMoversPage() {
           onClick={refresh}
           disabled={loading}
           className={cn(
-            'flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-all',
+            'flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all',
             loading
-              ? 'bg-trading-ai/20 text-trading-ai-light cursor-wait'
-              : 'bg-trading-ai/10 text-trading-ai hover:bg-trading-ai/20 border border-trading-ai/30',
+              ? 'bg-trading-ai/8 text-trading-ai-light cursor-wait'
+              : 'bg-trading-ai/8 text-trading-ai-light hover:bg-trading-ai/12 border border-trading-ai/15',
           )}
         >
-          {loading ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <RefreshCw size={14} />
-          )}
+          {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
           Refresh
         </button>
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      {/* Category Tabs */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {TABS.map((tab) => {
           const isActive = category === tab.key;
           return (
@@ -207,16 +193,16 @@ export default function MarketMoversPage() {
               className={cn(
                 'glass-card !p-3 text-center transition-all cursor-pointer border',
                 isActive
-                  ? 'border-trading-ai/40 bg-trading-ai/5'
-                  : 'border-transparent hover:border-trading-border',
+                  ? 'border-trading-ai/25 bg-trading-ai/[0.04]'
+                  : 'border-transparent hover:border-trading-border/30',
               )}
             >
               <div className={cn('flex items-center justify-center gap-1.5 mb-1', tab.color)}>
                 {tab.icon}
-                <span className="text-[10px] uppercase tracking-wider font-medium">{tab.label}</span>
+                <span className="text-[9px] uppercase tracking-[0.1em] font-semibold">{tab.label}</span>
               </div>
               {isActive && (
-                <p className="text-lg font-mono font-bold text-white">{stocks.length}</p>
+                <p className="text-lg font-mono font-bold text-white tabular-nums">{stocks.length}</p>
               )}
             </button>
           );
@@ -225,24 +211,24 @@ export default function MarketMoversPage() {
 
       {/* Exchange filter */}
       <div className="flex items-center gap-2">
-        <span className="text-[10px] text-slate-500 uppercase tracking-wider">Exchange:</span>
+        <span className="text-[9px] text-slate-600 uppercase tracking-[0.12em]">Exchange:</span>
         {EXCHANGES.map((ex) => (
           <button
             key={ex}
             onClick={() => setExchange(ex)}
             className={cn(
-              'px-2.5 py-1 rounded-md text-xs font-mono transition-colors',
+              'px-2.5 py-1 rounded-lg text-[10px] font-mono transition-all',
               exchange === ex
-                ? 'bg-trading-card text-white border border-trading-ai/30'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50',
+                ? 'bg-trading-card text-white border border-trading-ai/20'
+                : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]',
             )}
           >
             {ex}
           </button>
         ))}
         {data?.total_universe && (
-          <span className="ml-auto text-[10px] text-slate-600 font-mono">
-            Universe: {data.total_universe} stocks
+          <span className="ml-auto text-[9px] text-slate-700 font-mono tabular-nums">
+            Universe: {data.total_universe}
           </span>
         )}
       </div>
@@ -250,15 +236,15 @@ export default function MarketMoversPage() {
       {/* Table */}
       {stocks.length > 0 ? (
         <GlassCard className="!p-0 overflow-hidden">
-          <div className={cn('px-4 py-3 border-b border-trading-border flex items-center gap-2', activeTab.color)}>
+          <div className={cn('px-4 py-3 border-b border-trading-border/20 flex items-center gap-2', activeTab.color)}>
             {activeTab.icon}
             <span className="text-sm font-medium text-white">{activeTab.label}</span>
-            <span className="text-xs text-slate-500 font-mono ml-1">({stocks.length})</span>
+            <span className="text-[10px] text-slate-600 font-mono ml-1 tabular-nums">({stocks.length})</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[10px] uppercase tracking-wider text-slate-500 border-b border-trading-border">
+                <tr className="text-[9px] uppercase tracking-[0.12em] text-slate-600 border-b border-trading-border/20">
                   <th className="py-2.5 px-2 md:px-3 text-left w-10">#</th>
                   <th className="py-2.5 px-2 md:px-3 text-left">Stock</th>
                   <th className="py-2.5 px-2 md:px-3 text-right">LTP</th>
@@ -273,12 +259,7 @@ export default function MarketMoversPage() {
               <tbody>
                 <AnimatePresence>
                   {stocks.map((stock, i) => (
-                    <StockRow
-                      key={`${stock.ticker}-${stock.exchange}`}
-                      stock={stock}
-                      rank={i + 1}
-                      category={category}
-                    />
+                    <StockRow key={`${stock.ticker}-${stock.exchange}`} stock={stock} rank={i + 1} category={category} />
                   ))}
                 </AnimatePresence>
               </tbody>
@@ -286,25 +267,23 @@ export default function MarketMoversPage() {
           </div>
         </GlassCard>
       ) : (
-        <GlassCard className="text-center py-12">
-          <BarChart3 size={32} className="mx-auto mb-3 text-slate-600" />
-          <p className="text-slate-400 text-sm mb-1">No data available</p>
-          <p className="text-slate-500 text-xs">
-            Click Refresh to fetch latest market movers data.
-          </p>
+        <GlassCard className="text-center py-14">
+          <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mx-auto mb-3">
+            <BarChart3 size={24} className="text-slate-600" />
+          </div>
+          <p className="text-slate-500 text-xs mb-1">No data available</p>
+          <p className="text-slate-700 text-[10px]">Click Refresh to fetch latest market movers.</p>
         </GlassCard>
       )}
 
-      {/* Error display */}
       {error && data && (
-        <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-trading-bear/10 border border-trading-bear/20">
-          <AlertCircle size={14} className="text-trading-bear" />
-          <span className="text-xs text-trading-bear">{error}</span>
+        <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-trading-bear/6 border border-trading-bear/12">
+          <AlertCircle size={12} className="text-trading-bear" />
+          <span className="text-[10px] text-trading-bear">{error}</span>
         </div>
       )}
 
-      {/* Footer */}
-      <p className="text-center text-[10px] text-slate-600">
+      <p className="text-center text-[9px] text-slate-700">
         Data refreshes every 5 minutes during market hours | Source: yfinance | All segments: NSE, MCX, CDS
       </p>
     </motion.div>

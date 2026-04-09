@@ -629,6 +629,14 @@ AUTH_PUBLIC_PREFIXES = (
     # Options enrichment — universe list + per-symbol picker
     "/api/fno/option_recommendation/",
     "/api/fno/option_universe",
+    # Agent system — public endpoints (agents use their own Bearer token auth)
+    "/api/agents/register", "/api/agents/login", "/api/agents/count",
+    "/api/agents/skill/", "/api/agents/SKILL.md",
+    "/api/agents/signals/feed", "/api/agents/leaderboard",
+    "/api/agents/profile/", "/api/agents/positions/",
+    "/api/agents/subscription/plans",
+    "/api/agents/webhook/razorpay",
+    "/api/agents/signals/", # replies read
 )
 
 
@@ -678,6 +686,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(AuthMiddleware)
+
+# ── Mount Agent Social Trading Router ─────────────────────────
+from mcp_server.agent_routes import agent_router
+app.include_router(agent_router, prefix="/api/agents")
 
 
 @app.exception_handler(Exception)
@@ -1808,7 +1820,7 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
 
 
 async def _auto_sync_sheets(signal_data: dict = None, mwa_data: dict = None):
-    """Background auto-sync to Google Sheets. Non-blocking, fails silently."""
+    """Background auto-sync to Google Sheets + Stitch. Non-blocking, fails silently."""
     try:
         from mcp_server.sheets_sync import log_signal, log_mwa
         if signal_data:
@@ -1817,6 +1829,14 @@ async def _auto_sync_sheets(signal_data: dict = None, mwa_data: dict = None):
             log_mwa(mwa_data)
     except Exception as e:
         logger.debug("Sheets auto-sync skipped: %s", e)
+
+    # Mirror to Stitch warehouse (non-blocking)
+    try:
+        if signal_data and settings.STITCH_API_TOKEN:
+            from mcp_server.stitch_sync import push_signals
+            await push_signals([signal_data])
+    except Exception as e:
+        logger.debug("Stitch auto-sync skipped: %s", e)
 
 
 @app.post("/tools/backtest_strategy")
@@ -4208,6 +4228,97 @@ async def tool_clear_sheets():
         "errors": errors,
         "message": f"Cleared {len(cleared)} tabs, {len(errors)} errors",
     }
+
+
+# ── Stitch Data endpoints ───────────────────────────────────────────
+
+@app.get("/tools/stitch_status")
+async def tool_stitch_status():
+    """Check if Stitch Import API pipeline is healthy."""
+    from mcp_server.stitch_sync import stitch_status
+    try:
+        result = await stitch_status()
+        return {"status": "ok", "tool": "stitch_status", "stitch": result}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+class StitchPushRequest(BaseModel):
+    table_name: str
+    key_names: list[str]
+    records: list[dict]
+
+
+@app.post("/tools/stitch_push")
+async def tool_stitch_push(req: StitchPushRequest):
+    """Push arbitrary records to Stitch data warehouse."""
+    from mcp_server.stitch_sync import stitch_push
+    try:
+        result = await stitch_push(req.table_name, req.key_names, req.records)
+        return {"status": "ok", "tool": "stitch_push", "stitch": result}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/tools/stitch_push_signals")
+async def tool_stitch_push_signals(db: Session = Depends(get_db)):
+    """Push all recent trading signals to Stitch warehouse."""
+    from mcp_server.stitch_sync import push_signals
+
+    signals = db.query(Signal).order_by(desc(Signal.created_at)).limit(500).all()
+    records = [
+        {
+            "signal_id": str(s.id),
+            "symbol": s.ticker,
+            "exchange": s.exchange or "NSE",
+            "direction": s.direction,
+            "entry": s.entry_price,
+            "stoploss": s.stop_loss,
+            "target": s.target,
+            "confidence": s.confidence or 0,
+            "scanner": s.pattern or "",
+            "timestamp": s.created_at.isoformat() if s.created_at else "",
+        }
+        for s in signals
+    ]
+    result = await push_signals(records)
+    return {"status": "ok", "tool": "stitch_push_signals", "count": len(records), "stitch": result}
+
+
+@app.post("/tools/stitch_push_trades")
+async def tool_stitch_push_trades(db: Session = Depends(get_db)):
+    """Push closed trade history to Stitch warehouse."""
+    from mcp_server.stitch_sync import push_trades
+
+    outcomes = db.query(Outcome).order_by(desc(Outcome.closed_at)).limit(500).all()
+    records = [
+        {
+            "trade_id": str(o.id),
+            "symbol": o.ticker,
+            "direction": o.direction,
+            "entry_price": o.entry_price,
+            "exit_price": o.exit_price or 0,
+            "pnl": o.pnl or 0,
+            "pnl_pct": o.pnl_pct or 0,
+            "status": o.status or "CLOSED",
+            "opened_at": o.opened_at.isoformat() if o.opened_at else "",
+            "closed_at": o.closed_at.isoformat() if o.closed_at else "",
+        }
+        for o in outcomes
+    ]
+    result = await push_trades(records)
+    return {"status": "ok", "tool": "stitch_push_trades", "count": len(records), "stitch": result}
+
+
+@app.post("/tools/stitch_validate")
+async def tool_stitch_validate(req: StitchPushRequest):
+    """Validate records against Stitch without persisting (dry run)."""
+    from mcp_server.stitch_sync import stitch_validate
+    try:
+        result = await stitch_validate(req.table_name, req.key_names, req.records)
+        return {"status": "ok", "tool": "stitch_validate", "stitch": result}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 
 @app.post("/api/telegram_webhook")

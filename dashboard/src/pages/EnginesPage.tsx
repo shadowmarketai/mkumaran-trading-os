@@ -83,13 +83,13 @@ function PatternCard({ pattern }: { pattern: EnginePattern }) {
           <span className={cn('text-sm font-medium', dirColor)}>{pattern.name}</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-12 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+          <div className="w-12 h-1.5 bg-trading-bg-secondary rounded-full overflow-hidden">
             <div
               className={cn('h-full rounded-full', isBull ? 'bg-trading-bull' : 'bg-trading-bear')}
               style={{ width: `${pattern.confidence * 100}%` }}
             />
           </div>
-          <span className="text-[10px] font-mono text-slate-400">
+          <span className="text-[10px] font-mono tabular-nums text-slate-400">
             {(pattern.confidence * 100).toFixed(0)}%
           </span>
         </div>
@@ -115,7 +115,7 @@ function EngineResultCard({ engine, result }: { engine: EngineConfig; result: En
           </div>
         </div>
         {totalPatterns > 0 && (
-          <span className={cn('text-xs font-mono px-2 py-0.5 rounded', engine.bgColor, engine.color)}>
+          <span className={cn('text-xs font-mono tabular-nums px-2 py-0.5 rounded', engine.bgColor, engine.color)}>
             {totalPatterns} detected
           </span>
         )}
@@ -124,10 +124,10 @@ function EngineResultCard({ engine, result }: { engine: EngineConfig; result: En
       {totalPatterns === 0 ? (
         <p className="text-xs text-slate-600 text-center py-4">No patterns detected</p>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {bullPatterns.length > 0 && (
             <div>
-              <p className="text-[10px] text-trading-bull uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <p className="stat-label text-trading-bull uppercase tracking-wider mb-1.5 flex items-center gap-1">
                 <ArrowUpRight size={10} /> Bullish ({bullPatterns.length})
               </p>
               <div className="space-y-2">
@@ -139,7 +139,7 @@ function EngineResultCard({ engine, result }: { engine: EngineConfig; result: En
           )}
           {bearPatterns.length > 0 && (
             <div>
-              <p className="text-[10px] text-trading-bear uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <p className="stat-label text-trading-bear uppercase tracking-wider mb-1.5 flex items-center gap-1">
                 <ArrowDownRight size={10} /> Bearish ({bearPatterns.length})
               </p>
               <div className="space-y-2">
@@ -193,8 +193,8 @@ export default function EnginesPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-6"
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className="space-y-5"
     >
       {/* Header */}
       <div>
@@ -209,9 +209,9 @@ export default function EnginesPage() {
 
       {/* Search Bar */}
       <GlassCard glowColor="ai">
-        <div className="flex items-end gap-4">
+        <div className="flex items-end gap-3">
           <div className="flex-1">
-            <label className="text-xs text-slate-500 uppercase tracking-wider block mb-1.5">
+            <label className="stat-label uppercase tracking-wider block mb-1.5">
               Ticker
             </label>
             <input
@@ -220,11 +220,11 @@ export default function EnginesPage() {
               onChange={(e) => setTicker(e.target.value)}
               placeholder="e.g., RELIANCE"
               onKeyDown={(e) => e.key === 'Enter' && handleScan()}
-              className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2.5 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai"
+              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2.5 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40"
             />
           </div>
           <div className="w-28">
-            <label className="text-xs text-slate-500 uppercase tracking-wider block mb-1.5">
+            <label className="stat-label uppercase tracking-wider block mb-1.5">
               Lookback
             </label>
             <input
@@ -233,15 +233,15 @@ export default function EnginesPage() {
               onChange={(e) => setDays(e.target.value)}
               min="30"
               max="365"
-              className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-trading-ai"
+              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40"
             />
           </div>
           <button
             onClick={handleScan}
             disabled={loading || !ticker.trim()}
             className={cn(
-              'flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all',
-              loading ? 'bg-slate-700 text-slate-400 cursor-wait' : 'gradient-ai text-white hover:opacity-90'
+              'flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all border',
+              loading ? 'bg-trading-ai/8 text-slate-400 cursor-wait border-trading-ai/15' : 'gradient-ai text-white hover:opacity-90'
             )}
           >
             {loading ? (
@@ -263,19 +263,19 @@ export default function EnginesPage() {
 
       {/* Summary Strip */}
       {totalDetected > 0 && (
-        <div className="flex items-center gap-4 px-1">
+        <div className="flex items-center gap-3 px-1">
           <span className="text-sm text-slate-400">
-            <span className="font-mono font-bold text-white">{totalDetected}</span> patterns detected for{' '}
-            <span className="font-mono font-bold text-white">{ticker.toUpperCase()}</span>
+            <span className="font-mono tabular-nums font-bold text-white">{totalDetected}</span> patterns detected for{' '}
+            <span className="font-mono tabular-nums font-bold text-white">{ticker.toUpperCase()}</span>
           </span>
-          <span className="text-xs text-trading-bull font-mono">{bullTotal} bull</span>
-          <span className="text-xs text-trading-bear font-mono">{bearTotal} bear</span>
+          <span className="text-xs text-trading-bull font-mono tabular-nums">{bullTotal} bull</span>
+          <span className="text-xs text-trading-bear font-mono tabular-nums">{bearTotal} bear</span>
         </div>
       )}
 
       {/* Engine Results Grid */}
       {Object.keys(results).length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {ENGINES.map((engine) => (
             <EngineResultCard
               key={engine.id}
@@ -289,11 +289,13 @@ export default function EnginesPage() {
       {/* Empty State */}
       {Object.keys(results).length === 0 && !loading && !error && (
         <GlassCard className="flex flex-col items-center justify-center py-16">
-          <Cpu size={48} className="text-slate-600 mb-4" />
+          <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mb-4">
+            <Cpu size={24} className="text-slate-600" />
+          </div>
           <p className="text-slate-500 text-sm">Enter a ticker and click "Detect Patterns" to scan with all 4 engines</p>
           <div className="flex items-center gap-3 mt-4">
             {ENGINES.map((e) => (
-              <span key={e.id} className={cn('text-xs font-mono px-2 py-0.5 rounded border', e.bgColor, e.color, e.borderColor)}>
+              <span key={e.id} className={cn('text-xs font-mono tabular-nums px-2 py-0.5 rounded border', e.bgColor, e.color, e.borderColor)}>
                 {e.label}
               </span>
             ))}
@@ -304,7 +306,9 @@ export default function EnginesPage() {
       {/* Loading State */}
       {loading && (
         <GlassCard className="flex flex-col items-center justify-center py-16">
-          <Loader2 size={48} className="text-trading-ai animate-spin mb-4" />
+          <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center mb-4">
+            <Loader2 size={24} className="text-trading-ai animate-spin" />
+          </div>
           <p className="text-slate-400 text-sm">Running 4 engines on {ticker.toUpperCase()}...</p>
           <p className="text-slate-600 text-xs mt-1">SMC + Wyckoff + VSA + Harmonic</p>
         </GlassCard>

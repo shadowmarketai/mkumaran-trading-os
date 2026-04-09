@@ -125,8 +125,8 @@ export default function PayoffPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-6"
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className="space-y-5"
     >
       {/* Header */}
       <div>
@@ -141,15 +141,15 @@ export default function PayoffPage() {
 
       {/* Presets */}
       <GlassCard>
-        <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">
+        <h3 className="stat-label">
           Strategy Presets
         </h3>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-3">
           {Object.entries(PRESETS).map(([key, preset]) => (
             <button
               key={key}
               onClick={() => applyPreset(key)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-trading-border hover:border-trading-ai hover:text-trading-ai-light transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-trading-ai/8 text-trading-ai-light border border-trading-ai/15 hover:border-trading-ai hover:text-trading-ai-light transition-all"
             >
               <Zap size={12} />
               {preset.label}
@@ -161,7 +161,7 @@ export default function PayoffPage() {
       {/* Leg Builder */}
       <GlassCard glowColor="ai">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+          <h3 className="stat-label">
             Option Legs ({legs.length})
           </h3>
           <button
@@ -174,12 +174,12 @@ export default function PayoffPage() {
 
         <div className="space-y-2">
           {legs.map((leg, i) => (
-            <div key={i} className="grid grid-cols-6 gap-2 items-center">
+            <div key={i} className="grid grid-cols-6 gap-3 items-center">
               <select
                 value={leg.action}
                 onChange={(e) => updateLeg(i, 'action', e.target.value)}
                 className={cn(
-                  'bg-slate-800 border rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none',
+                  'bg-trading-bg-secondary border rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums focus:outline-none',
                   leg.action === 'BUY'
                     ? 'border-trading-bull/30 text-trading-bull'
                     : 'border-trading-bear/30 text-trading-bear'
@@ -191,7 +191,7 @@ export default function PayoffPage() {
               <select
                 value={leg.option_type}
                 onChange={(e) => updateLeg(i, 'option_type', e.target.value)}
-                className="bg-slate-800 border border-trading-border rounded-lg px-2 py-1.5 text-xs font-mono text-white focus:outline-none"
+                className="bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums text-white focus:outline-none focus:border-trading-ai/40"
               >
                 <option value="CE">CE</option>
                 <option value="PE">PE</option>
@@ -201,14 +201,14 @@ export default function PayoffPage() {
                 value={leg.strike}
                 onChange={(e) => updateLeg(i, 'strike', parseFloat(e.target.value) || 0)}
                 placeholder="Strike"
-                className="bg-slate-800 border border-trading-border rounded-lg px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-trading-ai"
+                className="bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums text-white focus:outline-none focus:border-trading-ai/40"
               />
               <input
                 type="number"
                 value={leg.premium}
                 onChange={(e) => updateLeg(i, 'premium', parseFloat(e.target.value) || 0)}
                 placeholder="Premium"
-                className="bg-slate-800 border border-trading-border rounded-lg px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-trading-ai"
+                className="bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums text-white focus:outline-none focus:border-trading-ai/40"
               />
               <input
                 type="number"
@@ -216,11 +216,11 @@ export default function PayoffPage() {
                 onChange={(e) => updateLeg(i, 'qty', parseInt(e.target.value) || 1)}
                 placeholder="Qty"
                 min="1"
-                className="bg-slate-800 border border-trading-border rounded-lg px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-trading-ai"
+                className="bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums text-white focus:outline-none focus:border-trading-ai/40"
               />
               <button
                 onClick={() => removeLeg(i)}
-                className="flex items-center justify-center p-1.5 rounded-lg text-slate-500 hover:text-trading-bear hover:bg-trading-bear/10 transition-colors"
+                className="flex items-center justify-center p-1.5 rounded-xl text-slate-500 hover:text-trading-bear hover:bg-trading-bear/10 transition-colors"
               >
                 <Trash2 size={14} />
               </button>
@@ -232,8 +232,8 @@ export default function PayoffPage() {
           onClick={handleCalculate}
           disabled={loading || legs.length === 0}
           className={cn(
-            'mt-4 flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all w-full',
-            loading ? 'bg-slate-700 text-slate-400' : 'gradient-ai text-white hover:opacity-90'
+            'mt-4 flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-medium transition-all w-full',
+            loading ? 'bg-trading-bg-secondary text-slate-400' : 'gradient-ai text-white hover:opacity-90'
           )}
         >
           {loading ? <Loader2 size={16} className="animate-spin" /> : <LineChartIcon size={16} />}
@@ -253,11 +253,11 @@ export default function PayoffPage() {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="space-y-6"
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="space-y-5"
         >
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <MetricCard
               title="Net Premium"
               value={`${payoff.net_premium >= 0 ? '+' : ''}${payoff.net_premium.toLocaleString('en-IN')}`}
@@ -286,7 +286,7 @@ export default function PayoffPage() {
 
           {/* Payoff Chart */}
           <GlassCard>
-            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
+            <h3 className="stat-label">
               Payoff Diagram
             </h3>
             <div className="h-80">
@@ -353,7 +353,9 @@ export default function PayoffPage() {
       {/* Empty State */}
       {!payoff && !loading && !error && (
         <GlassCard className="flex flex-col items-center justify-center py-16">
-          <LineChartIcon size={48} className="text-slate-600 mb-4" />
+          <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center mb-4">
+            <LineChartIcon size={24} className="text-slate-600" />
+          </div>
           <p className="text-slate-500 text-sm">Add option legs and click Calculate to see the payoff diagram</p>
           <p className="text-slate-600 text-xs mt-1">Use presets for common strategies like Iron Condor or Straddle</p>
         </GlassCard>

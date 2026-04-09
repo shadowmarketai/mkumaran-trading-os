@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Activity, Lock, Mail, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
@@ -30,63 +31,88 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-trading-bg">
-      <div className="w-full max-w-md">
-        {/* Logo / Title */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white tracking-tight">
-            MKUMARAN <span className="text-trading-bull">Trading OS</span>
+    <div className="min-h-screen flex items-center justify-center bg-trading-bg relative overflow-hidden">
+      {/* Background effects */}
+      <div className="absolute inset-0">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-trading-ai/5 rounded-full blur-[128px]" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-trading-bull/3 rounded-full blur-[128px]" />
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(124,77,255,0.04)_0%,transparent_70%)]" />
+      </div>
+
+      <div className="w-full max-w-sm relative z-10">
+        {/* Logo */}
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl gradient-ai shadow-glow-ai mb-5">
+            <Activity size={24} className="text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">
+            MKUMARAN
           </h1>
-          <p className="text-slate-400 text-sm mt-2">Hybrid Trading Intelligence</p>
+          <p className="text-trading-ai-light text-[10px] tracking-[0.3em] uppercase mt-1">Trading OS</p>
         </div>
 
         {/* Login Card */}
-        <div className="glass-card rounded-xl p-8 border border-trading-border">
-          <h2 className="text-lg font-semibold text-white mb-6">Sign In</h2>
+        <div className="glass-card p-8">
+          <h2 className="text-sm font-semibold text-white mb-6 tracking-wide">Sign In</h2>
 
           {error && (
-            <div className="mb-4 p-3 rounded-lg bg-trading-bear/10 border border-trading-bear/30 text-trading-bear text-sm">
+            <div className="mb-5 p-3 rounded-xl bg-trading-bear/8 border border-trading-bear/15 text-trading-bear text-xs">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-lg bg-trading-card border border-trading-border text-white placeholder-slate-500 focus:outline-none focus:border-trading-bull/50 focus:ring-1 focus:ring-trading-bull/30 transition-colors"
-                placeholder="admin@shadowmarket.ai"
-                required
-                autoFocus
-              />
+              <label className="block text-[10px] font-medium text-slate-500 mb-2 uppercase tracking-wider">Email</label>
+              <div className="relative">
+                <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-trading-bg-secondary border border-trading-border/60 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-trading-ai/40 focus:ring-1 focus:ring-trading-ai/20 transition-all"
+                  placeholder="admin@shadowmarket.ai"
+                  required
+                  autoFocus
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-lg bg-trading-card border border-trading-border text-white placeholder-slate-500 focus:outline-none focus:border-trading-bull/50 focus:ring-1 focus:ring-trading-bull/30 transition-colors"
-                placeholder="Enter password"
-                required
-              />
+              <label className="block text-[10px] font-medium text-slate-500 mb-2 uppercase tracking-wider">Password</label>
+              <div className="relative">
+                <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-trading-bg-secondary border border-trading-border/60 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-trading-ai/40 focus:ring-1 focus:ring-trading-ai/20 transition-all"
+                  placeholder="Enter password"
+                  required
+                />
+              </div>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 rounded-lg bg-gradient-to-r from-trading-bull to-emerald-600 text-white font-semibold text-sm hover:from-trading-bull/90 hover:to-emerald-600/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-trading-ai to-trading-ai-light text-white font-semibold text-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-glow-ai mt-2 flex items-center justify-center gap-2"
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                'Sign In'
+              )}
             </button>
           </form>
         </div>
 
-        <p className="text-center text-xs text-slate-600 mt-6">Shadow Market Intelligence</p>
+        <p className="text-center text-[10px] text-slate-700 mt-8 tracking-wider">
+          Shadow Market Intelligence
+        </p>
       </div>
     </div>
   );

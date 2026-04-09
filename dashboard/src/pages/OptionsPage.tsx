@@ -29,18 +29,18 @@ interface CalcFormState {
 function OptionChainTable({ chain, spot }: { chain: OptionStrike[]; spot: number }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-xs">
+      <table className="w-full text-[9px]">
         <thead>
-          <tr className="border-b border-trading-border">
-            <th colSpan={5} className="text-center py-2 px-1 text-trading-bull font-semibold uppercase tracking-wider bg-trading-bull/5">
+          <tr className="border-b border-trading-border/15">
+            <th colSpan={5} className="text-center py-2 px-1 text-trading-bull font-semibold uppercase tracking-[0.12em] bg-trading-bull/5">
               Calls (CE)
             </th>
-            <th className="py-2 px-2 text-center text-white font-bold bg-slate-800">Strike</th>
-            <th colSpan={5} className="text-center py-2 px-1 text-trading-bear font-semibold uppercase tracking-wider bg-trading-bear/5">
+            <th className="py-2 px-2 text-center text-white font-bold bg-trading-card">Strike</th>
+            <th colSpan={5} className="text-center py-2 px-1 text-trading-bear font-semibold uppercase tracking-[0.12em] bg-trading-bear/5">
               Puts (PE)
             </th>
           </tr>
-          <tr className="border-b border-trading-border text-slate-500 uppercase">
+          <tr className="border-b border-trading-border/15 text-slate-500 uppercase tracking-[0.12em]">
             <th className="py-1.5 px-1.5 text-right">Price</th>
             <th className="py-1.5 px-1.5 text-right">IV%</th>
             <th className="py-1.5 px-1.5 text-right">Delta</th>
@@ -62,46 +62,46 @@ function OptionChainTable({ chain, spot }: { chain: OptionStrike[]; spot: number
               <tr
                 key={row.strike}
                 className={cn(
-                  'border-b border-trading-border/30 transition-colors',
+                  'border-b border-trading-border/15 transition-colors',
                   row.is_atm
                     ? 'bg-trading-ai/10 border-trading-ai/30'
-                    : 'hover:bg-slate-800/30'
+                    : 'hover:bg-white/[0.015]'
                 )}
               >
-                <td className={cn('py-1.5 px-1.5 text-right font-mono', isITMCall ? 'text-trading-bull' : 'text-slate-400')}>
+                <td className={cn('py-1.5 px-1.5 text-right font-mono tabular-nums', isITMCall ? 'text-trading-bull' : 'text-slate-400')}>
                   {row.ce.price.toFixed(1)}
                 </td>
-                <td className="py-1.5 px-1.5 text-right font-mono text-slate-400">
+                <td className="py-1.5 px-1.5 text-right font-mono tabular-nums text-slate-400">
                   {row.ce.iv > 0 ? row.ce.iv.toFixed(1) : '--'}
                 </td>
-                <td className="py-1.5 px-1.5 text-right font-mono text-slate-300">
+                <td className="py-1.5 px-1.5 text-right font-mono tabular-nums text-slate-300">
                   {row.ce.delta.toFixed(2)}
                 </td>
-                <td className="py-1.5 px-1.5 text-right font-mono text-trading-bear">
+                <td className="py-1.5 px-1.5 text-right font-mono tabular-nums text-trading-bear">
                   {row.ce.theta.toFixed(1)}
                 </td>
-                <td className="py-1.5 px-1.5 text-right font-mono text-slate-400">
+                <td className="py-1.5 px-1.5 text-right font-mono tabular-nums text-slate-400">
                   {row.ce.vega.toFixed(1)}
                 </td>
                 <td className={cn(
-                  'py-1.5 px-2 text-center font-mono font-bold',
+                  'py-1.5 px-2 text-center font-mono tabular-nums font-bold',
                   row.is_atm ? 'text-trading-ai-light bg-trading-ai/5' : 'text-white'
                 )}>
                   {row.strike}
                 </td>
-                <td className="py-1.5 px-1.5 text-right font-mono text-slate-400">
+                <td className="py-1.5 px-1.5 text-right font-mono tabular-nums text-slate-400">
                   {row.pe.vega.toFixed(1)}
                 </td>
-                <td className="py-1.5 px-1.5 text-right font-mono text-trading-bear">
+                <td className="py-1.5 px-1.5 text-right font-mono tabular-nums text-trading-bear">
                   {row.pe.theta.toFixed(1)}
                 </td>
-                <td className="py-1.5 px-1.5 text-right font-mono text-slate-300">
+                <td className="py-1.5 px-1.5 text-right font-mono tabular-nums text-slate-300">
                   {row.pe.delta.toFixed(2)}
                 </td>
-                <td className="py-1.5 px-1.5 text-right font-mono text-slate-400">
+                <td className="py-1.5 px-1.5 text-right font-mono tabular-nums text-slate-400">
                   {row.pe.iv > 0 ? row.pe.iv.toFixed(1) : '--'}
                 </td>
-                <td className={cn('py-1.5 px-1.5 text-right font-mono', isITMPut ? 'text-trading-bear' : 'text-slate-400')}>
+                <td className={cn('py-1.5 px-1.5 text-right font-mono tabular-nums', isITMPut ? 'text-trading-bear' : 'text-slate-400')}>
                   {row.pe.price.toFixed(1)}
                 </td>
               </tr>
@@ -157,12 +157,12 @@ export default function OptionsPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-6"
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className="space-y-5"
     >
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+        <h2 className="text-xl font-bold text-white flex items-center gap-3">
           <Calculator size={22} className="text-trading-ai" />
           Options Greeks Dashboard
         </h2>
@@ -173,7 +173,7 @@ export default function OptionsPage() {
 
       {/* Option Chain Section */}
       <GlassCard glowColor="ai">
-        <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
+        <h3 className="stat-label">
           Option Chain
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end mb-4">
@@ -183,7 +183,7 @@ export default function OptionsPage() {
               type="number"
               value={chainForm.spot}
               onChange={(e) => setChainForm({ ...chainForm, spot: e.target.value })}
-              className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai"
+              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40"
             />
           </div>
           <div>
@@ -192,7 +192,7 @@ export default function OptionsPage() {
               type="number"
               value={chainForm.expiryDays}
               onChange={(e) => setChainForm({ ...chainForm, expiryDays: e.target.value })}
-              className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai"
+              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40"
             />
           </div>
           <div>
@@ -201,15 +201,15 @@ export default function OptionsPage() {
               type="number"
               value={chainForm.strikeStep}
               onChange={(e) => setChainForm({ ...chainForm, strikeStep: e.target.value })}
-              className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai"
+              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40"
             />
           </div>
           <button
             onClick={handleFetchChain}
             disabled={chainLoading}
             className={cn(
-              'flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-              chainLoading ? 'bg-slate-700 text-slate-400' : 'gradient-ai text-white hover:opacity-90'
+              'flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all',
+              chainLoading ? 'bg-trading-bg-secondary text-slate-400' : 'gradient-ai text-white hover:opacity-90'
             )}
           >
             {chainLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
@@ -225,11 +225,11 @@ export default function OptionsPage() {
 
         {chain && chain.chain && chain.chain.length > 0 && (
           <div className="mt-2">
-            <div className="flex items-center gap-4 text-xs text-slate-400 mb-3">
-              <span>Spot: <span className="text-white font-mono font-medium">{chain.spot}</span></span>
-              <span>ATM: <span className="text-trading-ai-light font-mono">{chain.atm_strike}</span></span>
-              <span>Expiry: <span className="text-white font-mono">{chain.expiry_days}d</span></span>
-              <span>Strikes: <span className="text-white font-mono">{chain.strikes_count}</span></span>
+            <div className="flex items-center gap-3 text-xs text-slate-400 mb-3">
+              <span>Spot: <span className="text-white font-mono tabular-nums font-medium">{chain.spot}</span></span>
+              <span>ATM: <span className="text-trading-ai-light font-mono tabular-nums">{chain.atm_strike}</span></span>
+              <span>Expiry: <span className="text-white font-mono tabular-nums">{chain.expiry_days}d</span></span>
+              <span>Strikes: <span className="text-white font-mono tabular-nums">{chain.strikes_count}</span></span>
             </div>
             <OptionChainTable chain={chain.chain} spot={chain.spot} />
           </div>
@@ -238,7 +238,7 @@ export default function OptionsPage() {
 
       {/* Single Option Greeks Calculator */}
       <GlassCard>
-        <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
+        <h3 className="stat-label">
           Single Option Calculator
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 items-end">
@@ -248,7 +248,7 @@ export default function OptionsPage() {
               type="number"
               value={calcForm.spot}
               onChange={(e) => setCalcForm({ ...calcForm, spot: e.target.value })}
-              className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai"
+              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40"
             />
           </div>
           <div>
@@ -257,7 +257,7 @@ export default function OptionsPage() {
               type="number"
               value={calcForm.strike}
               onChange={(e) => setCalcForm({ ...calcForm, strike: e.target.value })}
-              className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai"
+              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40"
             />
           </div>
           <div>
@@ -266,7 +266,7 @@ export default function OptionsPage() {
               type="number"
               value={calcForm.expiryDays}
               onChange={(e) => setCalcForm({ ...calcForm, expiryDays: e.target.value })}
-              className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai"
+              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40"
             />
           </div>
           <div>
@@ -275,7 +275,7 @@ export default function OptionsPage() {
               type="number"
               value={calcForm.volatility}
               onChange={(e) => setCalcForm({ ...calcForm, volatility: e.target.value })}
-              className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai"
+              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40"
             />
           </div>
           <div>
@@ -284,7 +284,7 @@ export default function OptionsPage() {
               type="number"
               value={calcForm.rate}
               onChange={(e) => setCalcForm({ ...calcForm, rate: e.target.value })}
-              className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai"
+              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40"
             />
           </div>
           <div>
@@ -292,7 +292,7 @@ export default function OptionsPage() {
             <select
               value={calcForm.optionType}
               onChange={(e) => setCalcForm({ ...calcForm, optionType: e.target.value as 'CE' | 'PE' })}
-              className="w-full bg-slate-800 border border-trading-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai"
+              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40"
             >
               <option value="CE">Call (CE)</option>
               <option value="PE">Put (PE)</option>
@@ -302,8 +302,8 @@ export default function OptionsPage() {
             onClick={handleCalculate}
             disabled={calcLoading}
             className={cn(
-              'flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-              calcLoading ? 'bg-slate-700 text-slate-400' : 'gradient-ai text-white hover:opacity-90'
+              'flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all',
+              calcLoading ? 'bg-trading-bg-secondary text-slate-400' : 'gradient-ai text-white hover:opacity-90'
             )}
           >
             {calcLoading ? <Loader2 size={16} className="animate-spin" /> : <Calculator size={16} />}
@@ -327,8 +327,8 @@ export default function OptionsPage() {
               { label: 'Vega', value: greeks.vega.toFixed(2), color: 'text-trading-alert' },
               { label: 'Rho', value: greeks.rho.toFixed(2), color: 'text-slate-300' },
             ].map((g) => (
-              <div key={g.label} className="text-center p-3 rounded-lg bg-slate-800/50">
-                <p className={cn('text-lg font-mono font-bold', g.color)}>{g.value}</p>
+              <div key={g.label} className="text-center p-3 rounded-xl bg-trading-card">
+                <p className={cn('text-lg font-mono tabular-nums font-bold', g.color)}>{g.value}</p>
                 <p className="text-[10px] text-slate-500 uppercase mt-1">{g.label}</p>
               </div>
             ))}

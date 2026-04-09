@@ -145,11 +145,30 @@ class Settings:
     RULES_MINE_ON_RETRAIN: bool = os.getenv("RULES_MINE_ON_RETRAIN", "true").lower() == "true"
     POSTMORTEM_LOOKBACK_DAYS: int = int(os.getenv("POSTMORTEM_LOOKBACK_DAYS", "14"))
 
+    # Stitch Data (ETL to data warehouse)
+    STITCH_API_TOKEN: str = os.getenv("STITCH_API_TOKEN", "")
+    STITCH_CLIENT_ID: str = os.getenv("STITCH_CLIENT_ID", "")
+    STITCH_REGION: str = os.getenv("STITCH_REGION", "us")  # "us" or "eu"
+
     # Options Enrichment (attach concrete option contracts to FNO futures signals)
     OPTION_SIGNALS_ENABLED: bool = os.getenv("OPTION_SIGNALS_ENABLED", "true").lower() == "true"
     OPTION_IV_DEBIT_MAX: float = float(os.getenv("OPTION_IV_DEBIT_MAX", "40"))
     OPTION_IV_CREDIT_MIN: float = float(os.getenv("OPTION_IV_CREDIT_MIN", "60"))
     OPTION_MIN_DAYS_TO_EXPIRY: int = int(os.getenv("OPTION_MIN_DAYS_TO_EXPIRY", "2"))
+
+    # Razorpay (subscription billing)
+    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "")
+    RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
+    RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+
+    # Multi-Agent System
+    AGENT_DEFAULT_CAPITAL: float = float(os.getenv("AGENT_DEFAULT_CAPITAL", "1000000"))  # ₹10L
+    AGENT_TRADE_FEE_RATE: float = float(os.getenv("AGENT_TRADE_FEE_RATE", "0.001"))  # 0.1%
+    AGENT_POINTS_EXCHANGE_RATE: int = int(os.getenv("AGENT_POINTS_EXCHANGE_RATE", "1000"))
+
+    # India Market
+    MARKET_TIMEZONE: str = "Asia/Kolkata"
+    DEFAULT_CURRENCY: str = "INR"
 
 
 settings = Settings()

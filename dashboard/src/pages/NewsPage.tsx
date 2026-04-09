@@ -25,14 +25,14 @@ type CategoryFilter = 'ALL' | 'POLICY' | 'MACRO' | 'GEOPOLITICAL' | 'REGULATORY'
 const impactConfig: Record<string, { color: string; bg: string; border: string; label: string }> = {
   HIGH: {
     color: 'text-trading-bear',
-    bg: 'bg-trading-bear/10',
-    border: 'border-trading-bear/30',
+    bg: 'bg-trading-bear/8',
+    border: 'border-trading-bear/15',
     label: 'HIGH',
   },
   MEDIUM: {
     color: 'text-trading-alert',
-    bg: 'bg-trading-alert/10',
-    border: 'border-trading-alert/30',
+    bg: 'bg-trading-alert/8',
+    border: 'border-trading-alert/15',
     label: 'MEDIUM',
   },
   LOW: {
@@ -64,7 +64,7 @@ const categoryColors: Record<string, string> = {
 function ImpactBadge({ impact }: { impact: string }) {
   const cfg = impactConfig[impact] || impactConfig.LOW;
   return (
-    <span className={cn('px-2 py-0.5 rounded text-[10px] font-mono font-bold border', cfg.bg, cfg.color, cfg.border)}>
+    <span className={cn('px-2 py-0.5 rounded text-[10px] font-mono font-bold border tabular-nums', cfg.bg, cfg.color, cfg.border)}>
       {cfg.label}
     </span>
   );
@@ -87,8 +87,9 @@ function NewsCard({ item }: { item: NewsItem }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
+      transition={{ ease: [0.16, 1, 0.3, 1] }}
       className={cn(
-        'glass-card p-4 border-l-2 hover:bg-slate-800/30 transition-colors',
+        'glass-card p-4 border-l-2 hover:bg-trading-card/30 transition-colors',
         item.impact === 'HIGH' ? 'border-l-trading-bear' : item.impact === 'MEDIUM' ? 'border-l-trading-alert' : 'border-l-slate-600',
       )}
     >
@@ -117,10 +118,10 @@ function NewsCard({ item }: { item: NewsItem }) {
           )}
 
           {/* Badges row */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
             <ImpactBadge impact={item.impact} />
             <CategoryBadge category={item.category} />
-            <span className="text-[10px] text-slate-500 font-mono">{item.source}</span>
+            <span className="text-[10px] text-slate-500 font-mono tabular-nums">{item.source}</span>
           </div>
 
           {/* Keywords */}
@@ -129,7 +130,7 @@ function NewsCard({ item }: { item: NewsItem }) {
               {item.matched_keywords.slice(0, 4).map((kw) => (
                 <span
                   key={kw}
-                  className={cn('px-1.5 py-0.5 text-[9px] font-mono rounded', impactCfg.bg, impactCfg.color)}
+                  className={cn('px-1.5 py-0.5 text-[9px] font-mono rounded tabular-nums', impactCfg.bg, impactCfg.color)}
                 >
                   {kw}
                 </span>
@@ -140,7 +141,7 @@ function NewsCard({ item }: { item: NewsItem }) {
 
         {/* Timestamp */}
         {item.published && (
-          <div className="flex items-center gap-1 text-[10px] text-slate-500 flex-shrink-0">
+          <div className="flex items-center gap-1 text-[10px] text-slate-500 flex-shrink-0 font-mono tabular-nums">
             <Clock size={10} />
             <span>{formatRelativeTime(item.published)}</span>
           </div>
@@ -216,8 +217,10 @@ export default function NewsPage() {
   if (loading && items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <Loader2 size={48} className="text-trading-ai animate-spin mb-4" />
-        <p className="text-slate-400 text-sm">Fetching news feeds...</p>
+        <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+          <Loader2 size={24} className="text-trading-ai animate-spin" />
+        </div>
+        <p className="text-slate-400 text-sm mt-4">Fetching news feeds...</p>
       </div>
     );
   }
@@ -227,7 +230,7 @@ export default function NewsPage() {
       <div className="flex flex-col items-center justify-center py-24">
         <AlertCircle size={48} className="text-trading-alert mb-4" />
         <p className="text-slate-400 text-sm">Failed to load news: {error}</p>
-        <button onClick={refresh} className="mt-4 text-trading-ai text-sm hover:underline">
+        <button onClick={refresh} className="mt-4 px-3 py-1.5 rounded-xl bg-trading-ai/8 text-trading-ai-light border border-trading-ai/15 text-sm hover:bg-trading-ai/12 transition-colors">
           Retry
         </button>
       </div>
@@ -239,7 +242,7 @@ export default function NewsPage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
-      className="space-y-4"
+      className="space-y-5"
     >
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -247,7 +250,7 @@ export default function NewsPage() {
           <Newspaper size={20} className="text-trading-ai" />
           <h2 className="text-lg font-semibold text-white">News & Macro Events</h2>
           {highCount > 0 && (
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-trading-bear/15 text-trading-bear text-xs font-mono font-bold">
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-trading-bear/8 text-trading-bear text-xs font-mono font-bold border border-trading-bear/15">
               <AlertTriangle size={12} />
               {highCount} HIGH
             </span>
@@ -256,7 +259,7 @@ export default function NewsPage() {
         <button
           onClick={refresh}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-trading-ai/8 text-trading-ai-light border border-trading-ai/15 text-xs hover:bg-trading-ai/12 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           Refresh
@@ -265,44 +268,44 @@ export default function NewsPage() {
 
       {/* Filters */}
       <GlassCard className="!p-3">
-        <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-2 sm:gap-4">
+        <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 sm:gap-3">
           {/* Impact filter */}
           <div className="flex items-center gap-1.5">
             <Filter size={12} className="text-slate-500" />
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider mr-1">Impact</span>
+            <span className="stat-label mr-1">Impact</span>
             {impactFilters.map((f) => (
               <button
                 key={f.value}
                 onClick={() => setImpactFilter(f.value)}
                 className={cn(
-                  'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+                  'px-2.5 py-1 rounded-xl text-xs font-medium transition-colors border',
                   impactFilter === f.value
-                    ? 'bg-trading-card text-white border border-trading-ai/30'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50',
+                    ? 'bg-trading-card text-white border-trading-ai/15'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-trading-bg-secondary/50 border-transparent',
                 )}
               >
                 {f.label}
                 {f.count !== undefined && f.count > 0 && (
-                  <span className="ml-1 text-[10px] text-slate-500">{f.count}</span>
+                  <span className="ml-1 text-[10px] text-slate-500 font-mono tabular-nums">{f.count}</span>
                 )}
               </button>
             ))}
           </div>
 
-          <div className="w-px h-5 bg-trading-border hidden sm:block" />
+          <div className="w-px h-5 bg-trading-border/20 hidden sm:block" />
 
           {/* Category filter */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider mr-1">Category</span>
+            <span className="stat-label mr-1">Category</span>
             {categoryFilters.map((f) => (
               <button
                 key={f.value}
                 onClick={() => setCategoryFilter(f.value)}
                 className={cn(
-                  'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+                  'px-2.5 py-1 rounded-xl text-xs font-medium transition-colors border',
                   categoryFilter === f.value
-                    ? 'bg-trading-card text-white border border-trading-ai/30'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50',
+                    ? 'bg-trading-card text-white border-trading-ai/15'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-trading-bg-secondary/50 border-transparent',
                 )}
               >
                 {f.label}
@@ -310,7 +313,7 @@ export default function NewsPage() {
             ))}
           </div>
 
-          <div className="w-px h-5 bg-trading-border hidden sm:block" />
+          <div className="w-px h-5 bg-trading-border/20 hidden sm:block" />
 
           {/* Time range */}
           <div className="flex items-center gap-1.5">
@@ -320,10 +323,10 @@ export default function NewsPage() {
                 key={h.value}
                 onClick={() => setHoursBack(h.value)}
                 className={cn(
-                  'px-2 py-1 rounded-md text-xs font-mono transition-colors',
+                  'px-2 py-1 rounded-xl text-xs font-mono transition-colors border tabular-nums',
                   hoursBack === h.value
-                    ? 'bg-trading-card text-white border border-trading-ai/30'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50',
+                    ? 'bg-trading-card text-white border-trading-ai/15'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-trading-bg-secondary/50 border-transparent',
                 )}
               >
                 {h.label}
@@ -334,7 +337,7 @@ export default function NewsPage() {
       </GlassCard>
 
       {/* News Items */}
-      <div className="space-y-2">
+      <div className="space-y-3">
         <AnimatePresence mode="popLayout">
           {filteredItems.length > 0 ? (
             filteredItems.map((item, idx) => (
@@ -352,7 +355,7 @@ export default function NewsPage() {
       </div>
 
       {/* Footer */}
-      <p className="text-center text-[10px] text-slate-600">
+      <p className="text-center text-[10px] text-slate-600 font-mono tabular-nums">
         Sources: MoneyControl, Economic Times, Livemint
         {items.some((i) => i.source.startsWith('newsapi:')) && ' + NewsAPI'}
         {' | '}Auto-refreshes every 5 minutes
