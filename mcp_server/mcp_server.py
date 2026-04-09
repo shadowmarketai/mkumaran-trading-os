@@ -37,13 +37,6 @@ from mcp_server.asset_registry import (
     parse_ticker, get_asset_class, get_exchange,
     get_supported_exchanges,
 )
-try:
-    from mcp_server.agent_routes import agent_router
-    _AGENT_ROUTER_AVAILABLE = True
-except Exception as _agent_import_err:
-    _AGENT_ROUTER_AVAILABLE = False
-    import logging as _l
-    _l.getLogger(__name__).warning("Agent routes unavailable: %s", _agent_import_err)
 
 logger = logging.getLogger(__name__)
 
@@ -636,14 +629,6 @@ AUTH_PUBLIC_PREFIXES = (
     # Options enrichment — universe list + per-symbol picker
     "/api/fno/option_recommendation/",
     "/api/fno/option_universe",
-    # Agent system — public endpoints (agents use their own Bearer token auth)
-    "/api/agents/register", "/api/agents/login", "/api/agents/count",
-    "/api/agents/skill/", "/api/agents/SKILL.md",
-    "/api/agents/signals/feed", "/api/agents/leaderboard",
-    "/api/agents/profile/", "/api/agents/positions/",
-    "/api/agents/subscription/plans",
-    "/api/agents/webhook/razorpay",
-    "/api/agents/signals/", # replies read
 )
 
 
@@ -694,12 +679,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(AuthMiddleware)
 
-
-# ── Mount Agent Social Trading Router ─────────────────────────
-if _AGENT_ROUTER_AVAILABLE:
-    app.include_router(agent_router, prefix="/api/agents")
-else:
-    logger.warning("Agent router not mounted — import failed")
 
 
 @app.exception_handler(Exception)

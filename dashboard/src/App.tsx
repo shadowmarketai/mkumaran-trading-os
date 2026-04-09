@@ -18,10 +18,6 @@ import PayoffPage from './pages/PayoffPage';
 import PaperTradingPage from './pages/PaperTradingPage';
 import SignalMonitorPage from './pages/SignalMonitorPage';
 import MarketMoversPage from './pages/MarketMoversPage';
-import AgentHubPage from './pages/AgentHubPage';
-import SignalFeedPage from './pages/SignalFeedPage';
-import CopyTradingPage from './pages/CopyTradingPage';
-import SubscriptionPage from './pages/SubscriptionPage';
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -56,10 +52,6 @@ function App() {
                     <Route path="/paper" element={<PaperTradingPage />} />
                     <Route path="/monitor" element={<SignalMonitorPage />} />
                     <Route path="/market-movers" element={<MarketMoversPage />} />
-                    <Route path="/agent-hub" element={<AgentHubPage />} />
-                    <Route path="/signal-feed" element={<SignalFeedPage />} />
-                    <Route path="/copy-trading" element={<CopyTradingPage />} />
-                    <Route path="/subscription" element={<SubscriptionPage />} />
                   </Routes>
                 </main>
               </div>

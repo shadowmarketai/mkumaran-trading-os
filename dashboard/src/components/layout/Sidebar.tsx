@@ -20,10 +20,6 @@ import {
   ChevronRight,
   Wifi,
   WifiOff,
-  Users,
-  MessageSquare,
-  Copy,
-  CreditCard,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../../lib/utils';
@@ -51,10 +47,6 @@ const navItems: NavItem[] = [
   { to: '/momentum', label: 'Momentum', icon: <Rocket size={18} />, group: 'intel' },
   { to: '/options', label: 'Options Greeks', icon: <Calculator size={18} />, group: 'options' },
   { to: '/payoff', label: 'Payoff Calc', icon: <LineChart size={18} />, group: 'options' },
-  { to: '/agent-hub', label: 'Agent Hub', icon: <Users size={18} />, group: 'social' },
-  { to: '/signal-feed', label: 'Signal Feed', icon: <MessageSquare size={18} />, group: 'social' },
-  { to: '/copy-trading', label: 'Copy Trading', icon: <Copy size={18} />, group: 'social' },
-  { to: '/subscription', label: 'Subscription', icon: <CreditCard size={18} />, group: 'account' },
 ];
 
 const groupLabels: Record<string, string> = {
@@ -63,8 +55,6 @@ const groupLabels: Record<string, string> = {
   analysis: 'ANALYSIS',
   intel: 'INTELLIGENCE',
   options: 'OPTIONS',
-  social: 'SOCIAL TRADING',
-  account: 'ACCOUNT',
 };
 
 function groupItems(items: NavItem[]): [string, NavItem[]][] {

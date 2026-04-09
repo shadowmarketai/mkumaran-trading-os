@@ -156,19 +156,6 @@ class Settings:
     OPTION_IV_CREDIT_MIN: float = float(os.getenv("OPTION_IV_CREDIT_MIN", "60"))
     OPTION_MIN_DAYS_TO_EXPIRY: int = int(os.getenv("OPTION_MIN_DAYS_TO_EXPIRY", "2"))
 
-    # Razorpay (subscription billing)
-    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "")
-    RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
-    RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
-
-    # Multi-Agent System
-    AGENT_DEFAULT_CAPITAL: float = float(os.getenv("AGENT_DEFAULT_CAPITAL", "1000000"))  # ₹10L
-    AGENT_TRADE_FEE_RATE: float = float(os.getenv("AGENT_TRADE_FEE_RATE", "0.001"))  # 0.1%
-    AGENT_POINTS_EXCHANGE_RATE: int = int(os.getenv("AGENT_POINTS_EXCHANGE_RATE", "1000"))
-
-    # India Market
-    MARKET_TIMEZONE: str = "Asia/Kolkata"
-    DEFAULT_CURRENCY: str = "INR"
 
 
 settings = Settings()

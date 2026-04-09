@@ -21,10 +21,6 @@ const pageNames: Record<string, string> = {
   '/paper': 'Paper Trading',
   '/monitor': 'Signal Monitor',
   '/market-movers': 'Market Movers',
-  '/agent-hub': 'Agent Hub',
-  '/signal-feed': 'Signal Feed',
-  '/copy-trading': 'Copy Trading',
-  '/subscription': 'Subscription',
 };
 
 interface IndexPriceProps {
