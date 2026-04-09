@@ -30,7 +30,7 @@ def _call_claude(prompt: str, max_tokens: int = 500) -> str:
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-20251001",
             max_tokens=max_tokens,
             timeout=30.0,
             messages=[{"role": "user", "content": prompt}],

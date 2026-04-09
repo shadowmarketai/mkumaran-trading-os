@@ -29,6 +29,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/resume NSE:TICKER \u2014 Resume alerts\n"
         "/watchlist [tier] \u2014 Show watchlist\n"
         "/close NSE:TICKER \u2014 Log trade exit\n"
+        "/analyze BUY NSE:TICKER @ PRICE SL PRICE TGT PRICE \u2014 AI signal analysis\n"
         "/status \u2014 Alias for /health"
     )
 
@@ -349,6 +350,134 @@ async def cmd_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"\U0001f4dd Trade exit logged for {ticker}\n(Full implementation in Phase 3)")
 
 
+async def cmd_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /analyze — parse a signal from text and run AI analysis.
+
+    Usage:
+      /analyze BUY NSE:RELIANCE @ 2500 SL 2400 TGT 2800
+      /analyze SELL MCX:GOLD 72000 SL 72500 TGT 71000
+    """
+    if not context.args:
+        await update.message.reply_text(
+            "\U0001f50d Signal Analyzer\n"
+            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+            "Send a signal to analyze:\n\n"
+            "/analyze BUY NSE:RELIANCE @ 2500 SL 2400 TGT 2800\n"
+            "/analyze SELL MCX:GOLD 72000 SL 72500 TGT 71000\n\n"
+            "I'll run AI analysis with entry/SL/target validation, "
+            "RRR check, and a confidence score."
+        )
+        return
+
+    signal_text = " ".join(context.args)
+    await update.message.reply_text("\u23f3 Analyzing signal...")
+
+    # Parse the signal
+    try:
+        from mcp_server.telegram_receiver import parse_signal_message
+        signal = parse_signal_message(signal_text)
+    except Exception as e:
+        await update.message.reply_text(f"\u274c Parse error: {e}")
+        return
+
+    if signal is None:
+        await update.message.reply_text(
+            "\u274c Could not parse signal. Use format:\n"
+            "BUY NSE:TICKER @ PRICE SL PRICE TGT PRICE"
+        )
+        return
+
+    # Basic validation
+    issues = []
+    if signal.entry_price <= 0:
+        issues.append("\u2022 Entry price missing or invalid")
+    if signal.stop_loss <= 0:
+        issues.append("\u2022 Stop loss missing")
+    if signal.target <= 0:
+        issues.append("\u2022 Target missing")
+    if signal.rrr < 1.0 and signal.rrr > 0:
+        issues.append(f"\u2022 RRR too low ({signal.rrr:.1f}) \u2014 minimum 1:1 recommended")
+
+    # Direction vs price sanity
+    if signal.direction in ("BUY", "LONG"):
+        if signal.stop_loss > 0 and signal.stop_loss >= signal.entry_price:
+            issues.append("\u2022 SL above entry for BUY \u2014 check values")
+        if signal.target > 0 and signal.target <= signal.entry_price:
+            issues.append("\u2022 Target below entry for BUY \u2014 check values")
+    elif signal.direction in ("SELL", "SHORT"):
+        if signal.stop_loss > 0 and signal.stop_loss <= signal.entry_price:
+            issues.append("\u2022 SL below entry for SELL \u2014 check values")
+        if signal.target > 0 and signal.target >= signal.entry_price:
+            issues.append("\u2022 Target above entry for SELL \u2014 check values")
+
+    # Risk calculation
+    risk_per_share = abs(signal.entry_price - signal.stop_loss) if signal.stop_loss > 0 else 0
+    reward_per_share = abs(signal.target - signal.entry_price) if signal.target > 0 else 0
+    risk_pct = (risk_per_share / signal.entry_price * 100) if signal.entry_price > 0 else 0
+
+    # Build basic report
+    dir_emoji = "\U0001f7e2" if signal.direction in ("BUY", "LONG") else "\U0001f534"
+    rrr_emoji = "\u2705" if signal.rrr >= 2.0 else "\u26a0\ufe0f" if signal.rrr >= 1.0 else "\u274c"
+
+    report = (
+        f"\U0001f50d Signal Analysis\n"
+        f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+        f"{dir_emoji} {signal.direction} {signal.ticker}\n"
+        f"Entry: \u20b9{signal.entry_price:,.2f}\n"
+        f"Stop Loss: \u20b9{signal.stop_loss:,.2f} ({risk_pct:.1f}% risk)\n"
+        f"Target: \u20b9{signal.target:,.2f}\n"
+        f"Risk/Share: \u20b9{risk_per_share:,.2f}\n"
+        f"Reward/Share: \u20b9{reward_per_share:,.2f}\n"
+        f"{rrr_emoji} RRR: {signal.rrr:.2f}\n"
+    )
+
+    if issues:
+        report += "\n\u26a0\ufe0f Issues:\n" + "\n".join(issues) + "\n"
+
+    # Run AI analysis if API key available
+    ai_analysis = ""
+    try:
+        if settings.ANTHROPIC_API_KEY:
+            import anthropic
+            client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+            prompt = (
+                f"Analyze this Indian stock market trading signal in 4-5 bullet points. "
+                f"Be concise and actionable.\n\n"
+                f"Signal: {signal.direction} {signal.ticker}\n"
+                f"Entry: Rs.{signal.entry_price} | SL: Rs.{signal.stop_loss} | Target: Rs.{signal.target}\n"
+                f"RRR: {signal.rrr}\n\n"
+                f"Cover: 1) Is the RRR acceptable? 2) Key support/resistance near these levels "
+                f"3) Risk assessment 4) Verdict: TAKE / SKIP / WAIT with brief reason"
+            )
+
+            response = client.messages.create(
+                model=settings.AI_REPORT_MODEL,  # Uses haiku by default
+                max_tokens=300,
+                timeout=15.0,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            ai_analysis = response.content[0].text.strip()
+    except Exception as e:
+        logger.warning("AI analysis failed for /analyze: %s", e)
+        ai_analysis = "(AI analysis unavailable)"
+
+    if ai_analysis:
+        report += f"\n\U0001f916 AI Analysis:\n{ai_analysis}\n"
+
+    # Verdict
+    if not issues and signal.rrr >= 2.0:
+        report += "\n\u2705 Verdict: LOOKS GOOD \u2014 RRR and levels check out"
+    elif not issues and signal.rrr >= 1.0:
+        report += "\n\u26a0\ufe0f Verdict: ACCEPTABLE \u2014 but RRR could be better"
+    elif issues:
+        report += "\n\u274c Verdict: FIX ISSUES before taking this trade"
+
+    report += "\n\n\u26a0\ufe0f Not SEBI advice. Do your own research."
+
+    await update.message.reply_text(report)
+
+
 async def send_telegram_message(
     text: str,
     exchange: str = "NSE",
@@ -443,6 +572,7 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("resume", cmd_resume))
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
     app.add_handler(CommandHandler("close", cmd_close))
+    app.add_handler(CommandHandler("analyze", cmd_analyze))
 
-    logger.info("Telegram bot configured with 11 command handlers")
+    logger.info("Telegram bot configured with 12 command handlers")
     return app

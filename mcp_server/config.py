@@ -156,6 +156,13 @@ class Settings:
     OPTION_IV_CREDIT_MIN: float = float(os.getenv("OPTION_IV_CREDIT_MIN", "60"))
     OPTION_MIN_DAYS_TO_EXPIRY: int = int(os.getenv("OPTION_MIN_DAYS_TO_EXPIRY", "2"))
 
+    # Telegram behavior
+    TELEGRAM_SIGNALS_ONLY: bool = os.getenv("TELEGRAM_SIGNALS_ONLY", "true").lower() == "true"
+    # When true: only send actual trade signal cards to Telegram
+    # When false: also send MWA scan summaries, reports, etc.
+
+    # AI model for reports (use haiku for cost savings, sonnet for quality)
+    AI_REPORT_MODEL: str = os.getenv("AI_REPORT_MODEL", "claude-haiku-4-5-20251001")
 
 
 settings = Settings()
