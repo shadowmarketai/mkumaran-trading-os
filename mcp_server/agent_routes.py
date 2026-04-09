@@ -10,6 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
+from mcp_server.db import SessionLocal
+from mcp_server.db_adapter import DbAdapter
+
 from mcp_server.agents import (
     accept_reply,
     agent_heartbeat,
@@ -43,6 +46,15 @@ logger = logging.getLogger(__name__)
 agent_router = APIRouter(tags=["agents"])
 
 SKILLS_DIR = Path(__file__).parent / "skills"
+
+
+def get_agent_db():
+    """Dependency: yields a DbAdapter wrapping a SQLAlchemy session."""
+    session = SessionLocal()
+    try:
+        yield DbAdapter(session)
+    finally:
+        session.close()
 
 
 # ── Pydantic Models ───────────────────────────────────────────
@@ -114,7 +126,7 @@ class SubscribeRequest(BaseModel):
 
 # ── Auth Dependency ───────────────────────────────────────────
 
-async def get_current_agent(request: Request):
+async def get_current_agent(request: Request, db=Depends(get_agent_db)):
     """Extract agent from Bearer token."""
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "").strip() if auth_header else ""
@@ -125,15 +137,12 @@ async def get_current_agent(request: Request):
     if not token:
         raise HTTPException(status_code=401, detail="Missing agent token")
 
-    # Use raw DB connection from request state or create one
-    db = request.state.db if hasattr(request.state, "db") else None
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not available")
-
     agent = await get_agent_by_token(db, token)
     if not agent:
         raise HTTPException(status_code=401, detail="Invalid or expired agent token")
 
+    # Stash db on request for sub-dependencies
+    request.state.db = db
     return agent
 
 
@@ -160,11 +169,11 @@ async def serve_main_skill():
 # ── Agent Auth ────────────────────────────────────────────────
 
 @agent_router.post("/register")
-async def api_register_agent(req: AgentRegisterRequest, request: Request):
+async def api_register_agent(req: AgentRegisterRequest, request: Request, db=Depends(get_agent_db)):
     """Register a new trading agent."""
     try:
         result = await register_agent(
-            request.state.db,
+            db,
             name=req.name,
             password=req.password,
             agent_type=req.agent_type,
@@ -176,10 +185,10 @@ async def api_register_agent(req: AgentRegisterRequest, request: Request):
 
 
 @agent_router.post("/login")
-async def api_login_agent(req: AgentLoginRequest, request: Request):
+async def api_login_agent(req: AgentLoginRequest, request: Request, db=Depends(get_agent_db)):
     """Login and get a new token."""
     try:
-        result = await login_agent(request.state.db, name=req.name, password=req.password)
+        result = await login_agent(db, name=req.name, password=req.password)
         return result
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
@@ -203,18 +212,18 @@ async def api_agent_me(agent=Depends(get_current_agent)):
 
 
 @agent_router.get("/profile/{agent_id}")
-async def api_agent_profile(agent_id: int, request: Request):
+async def api_agent_profile(agent_id: int, request: Request, db=Depends(get_agent_db)):
     """Get public agent profile."""
-    profile = await get_agent_profile(request.state.db, agent_id)
+    profile = await get_agent_profile(db, agent_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Agent not found")
     return profile
 
 
 @agent_router.get("/count")
-async def api_agent_count(request: Request):
+async def api_agent_count(request: Request, db=Depends(get_agent_db)):
     """Get total agent count."""
-    count = await request.state.db.fetchval("SELECT COUNT(*) FROM agents WHERE is_active = true")
+    count = await db.fetchval("SELECT COUNT(*) FROM agents WHERE is_active = true")
     return {"count": count}
 
 
@@ -283,6 +292,7 @@ async def api_publish_discussion(req: DiscussionRequest, request: Request, agent
 @agent_router.get("/signals/feed")
 async def api_signal_feed(
     request: Request,
+    db=Depends(get_agent_db),
     signal_type: str | None = None,
     exchange: str | None = None,
     limit: int = Query(50, le=100),
@@ -296,14 +306,14 @@ async def api_signal_feed(
         auth = request.headers.get("Authorization", "")
         if auth:
             token = auth.replace("Bearer ", "").strip()
-            agent = await get_agent_by_token(request.state.db, token)
+            agent = await get_agent_by_token(db, token)
             if agent:
                 agent_id = agent["id"]
     except Exception:
         pass
 
     signals = await get_signal_feed(
-        request.state.db,
+        db,
         signal_type=signal_type,
         exchange=exchange,
         limit=limit,
@@ -384,9 +394,9 @@ async def api_accept_reply(signal_id: int, reply_id: int, request: Request, agen
 
 
 @agent_router.get("/signals/{signal_id}/replies")
-async def api_get_replies(signal_id: int, request: Request):
+async def api_get_replies(signal_id: int, request: Request, db=Depends(get_agent_db)):
     """Get replies for a signal."""
-    rows = await request.state.db.fetch(
+    rows = await db.fetch(
         """SELECT r.*, a.name AS agent_name, a.agent_type
            FROM signal_replies r
            JOIN agents a ON a.id = r.agent_id
@@ -411,18 +421,19 @@ async def api_heartbeat(request: Request, agent=Depends(get_current_agent)):
 @agent_router.get("/leaderboard")
 async def api_leaderboard(
     request: Request,
+    db=Depends(get_agent_db),
     limit: int = Query(20, le=50),
     days: int = 30,
 ):
     """Get agent leaderboard."""
-    leaders = await get_leaderboard(request.state.db, limit=limit, days=days)
+    leaders = await get_leaderboard(db, limit=limit, days=days)
     return {"leaderboard": leaders, "currency": "INR"}
 
 
 @agent_router.get("/leaderboard/{agent_id}/history")
-async def api_profit_history(agent_id: int, request: Request, days: int = 7):
+async def api_profit_history(agent_id: int, request: Request, db=Depends(get_agent_db), days: int = 7):
     """Get profit history for an agent (for charts)."""
-    history = await get_profit_history(request.state.db, agent_id, days)
+    history = await get_profit_history(db, agent_id, days)
     return {"agent_id": agent_id, "history": history}
 
 
@@ -455,9 +466,9 @@ async def api_my_positions(request: Request, agent=Depends(get_current_agent)):
 
 
 @agent_router.get("/positions/{agent_id}")
-async def api_agent_positions(agent_id: int, request: Request):
+async def api_agent_positions(agent_id: int, request: Request, db=Depends(get_agent_db)):
     """Get any agent's positions (public)."""
-    rows = await request.state.db.fetch(
+    rows = await db.fetch(
         """SELECT symbol, exchange, side, quantity, entry_price, current_price,
                   pnl_amount, pnl_pct, opened_at
            FROM agent_positions
@@ -478,9 +489,9 @@ async def api_my_subscription(request: Request, agent=Depends(get_current_agent)
 
 
 @agent_router.get("/subscription/plans")
-async def api_list_plans(request: Request):
+async def api_list_plans(request: Request, db=Depends(get_agent_db)):
     """List available subscription plans."""
-    plans = await get_plans(request.state.db)
+    plans = await get_plans(db)
     return {"plans": plans, "currency": "INR", "gst_included": True}
 
 
@@ -515,7 +526,7 @@ async def api_cancel_subscription(request: Request, agent=Depends(get_current_ag
 # ── Razorpay Webhook ──────────────────────────────────────────
 
 @agent_router.post("/webhook/razorpay")
-async def api_razorpay_webhook(request: Request):
+async def api_razorpay_webhook(request: Request, db=Depends(get_agent_db)):
     """Handle Razorpay payment webhooks."""
     body = await request.body()
     signature = request.headers.get("X-Razorpay-Signature", "")
@@ -526,5 +537,5 @@ async def api_razorpay_webhook(request: Request):
     payload = await request.json()
     event = payload.get("event", "")
 
-    result = await handle_razorpay_webhook(request.state.db, event, payload.get("payload", {}))
+    result = await handle_razorpay_webhook(db, event, payload.get("payload", {}))
     return result

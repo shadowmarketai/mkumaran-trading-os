@@ -568,24 +568,18 @@ async def get_profit_history(db, agent_id: int, days: int = 7) -> list[dict]:
 
 async def agent_heartbeat(db, agent_id: int) -> dict:
     """Pull unread messages and return them."""
+    # Fetch unread messages
     messages = await db.fetch(
-        """UPDATE agent_messages SET read = true
-           WHERE agent_id = $1 AND read = false
-           RETURNING id, from_agent_id, type, title, content, data_json, created_at
-           """,
+        "SELECT id, from_agent_id, type, title, content, data_json, created_at FROM agent_messages WHERE agent_id = $1 AND read = false ORDER BY created_at DESC LIMIT 50",
         agent_id,
     )
-    # Fallback if UPDATE ... RETURNING not supported
-    if messages is None:
-        messages = await db.fetch(
-            "SELECT id, from_agent_id, type, title, content, data_json, created_at FROM agent_messages WHERE agent_id = $1 AND read = false ORDER BY created_at DESC LIMIT 50",
-            agent_id,
-        )
-        if messages:
-            ids = [m["id"] for m in messages]
+
+    # Mark them as read
+    if messages:
+        for m in messages:
             await db.execute(
-                "UPDATE agent_messages SET read = true WHERE id = ANY($1::int[])",
-                ids,
+                "UPDATE agent_messages SET read = true WHERE id = $1",
+                m["id"],
             )
 
     return {
