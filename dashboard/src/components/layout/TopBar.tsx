@@ -41,8 +41,8 @@ function IndexPrice({ name, price, change, changePct }: IndexPriceProps) {
       <div className={cn(
         'flex items-center gap-0.5 text-xs font-mono tabular-nums px-1.5 py-0.5 rounded-md',
         isPositive
-          ? 'text-trading-bull bg-trading-bull/8'
-          : 'text-trading-bear bg-trading-bear/8'
+          ? 'text-trading-bull bg-trading-bull/10'
+          : 'text-trading-bear bg-trading-bear/10'
       )}>
         {isPositive ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
         <span className="font-semibold">{isPositive ? '+' : ''}{changePct.toFixed(2)}%</span>
@@ -60,8 +60,8 @@ function DirectionBadge({ direction }: DirectionBadgeProps) {
     BULL: 'bg-trading-bull/10 text-trading-bull border-trading-bull/20',
     BEAR: 'bg-trading-bear/10 text-trading-bear border-trading-bear/20',
     SIDEWAYS: 'bg-trading-info/10 text-trading-info border-trading-info/20',
-    MILD_BULL: 'bg-trading-bull/8 text-trading-bull-light border-trading-bull-light/15',
-    MILD_BEAR: 'bg-trading-bear/8 text-trading-bear-light border-trading-bear-light/15',
+    MILD_BULL: 'bg-trading-bull/10 text-trading-bull-light border-trading-bull-light/15',
+    MILD_BEAR: 'bg-trading-bear/10 text-trading-bear-light border-trading-bear-light/15',
   };
 
   return (

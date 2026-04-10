@@ -96,8 +96,8 @@ export default function SignalCard({ signal }: SignalCardProps) {
           <div className={cn(
             'flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border',
             isLong
-              ? 'bg-trading-bull/8 text-trading-bull border-trading-bull/15'
-              : 'bg-trading-bear/8 text-trading-bear border-trading-bear/15'
+              ? 'bg-trading-bull/10 text-trading-bull border-trading-bull/20'
+              : 'bg-trading-bear/10 text-trading-bear border-trading-bear/20'
           )}>
             {isLong ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
             {isLong ? 'BUY' : 'SHORT'}

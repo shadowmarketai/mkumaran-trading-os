@@ -18,8 +18,8 @@ const statusColorMap: Record<string, string> = {
   WEAK: 'bg-trading-bear/10 text-trading-bear border-trading-bear/20',
   SIDEWAYS: 'bg-trading-info/10 text-trading-info border-trading-info/20',
   NEUTRAL: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
-  MILD_BULL: 'bg-trading-bull/8 text-trading-bull-light border-trading-bull-light/15',
-  MILD_BEAR: 'bg-trading-bear/8 text-trading-bear-light border-trading-bear-light/15',
+  MILD_BULL: 'bg-trading-bull/10 text-trading-bull-light border-trading-bull-light/15',
+  MILD_BEAR: 'bg-trading-bear/10 text-trading-bear-light border-trading-bear-light/15',
   OPEN: 'bg-trading-alert/10 text-trading-alert border-trading-alert/20',
   EXPIRED: 'bg-slate-500/10 text-slate-500 border-slate-500/15',
 };

@@ -241,7 +241,7 @@ export default function EnginesPage() {
             disabled={loading || !ticker.trim()}
             className={cn(
               'flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all border',
-              loading ? 'bg-trading-ai/8 text-slate-400 cursor-wait border-trading-ai/15' : 'gradient-ai text-white hover:opacity-90'
+              loading ? 'bg-trading-ai/12 text-slate-400 cursor-wait border-trading-ai/25' : 'gradient-ai text-white hover:opacity-90'
             )}
           >
             {loading ? (
@@ -310,7 +310,7 @@ export default function EnginesPage() {
             <Loader2 size={24} className="text-trading-ai animate-spin" />
           </div>
           <p className="text-slate-400 text-sm">Running 4 engines on {ticker.toUpperCase()}...</p>
-          <p className="text-slate-600 text-xs mt-1">SMC + Wyckoff + VSA + Harmonic</p>
+          <p className="text-slate-500 text-xs mt-1">SMC + Wyckoff + VSA + Harmonic</p>
         </GlassCard>
       )}
     </motion.div>

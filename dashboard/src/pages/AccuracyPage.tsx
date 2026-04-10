@@ -111,10 +111,10 @@ function PatternRow({ pattern, index }: { pattern: PatternAccuracy; index: numbe
       transition={{ delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
       className="hover:bg-white/[0.015] transition-colors"
     >
-      <td className="py-2.5 px-3 font-medium text-slate-200 border-b border-trading-border/15">{pattern.pattern}</td>
-      <td className="py-2.5 px-3 text-center font-mono font-medium text-slate-400 tabular-nums border-b border-trading-border/15">{pattern.total}</td>
-      <td className="py-2.5 px-3 text-center font-mono font-medium text-trading-bull tabular-nums border-b border-trading-border/15">{pattern.wins}</td>
-      <td className="py-2.5 px-3 border-b border-trading-border/15">
+      <td className="py-2.5 px-3 font-medium text-slate-200 border-b border-trading-border/20">{pattern.pattern}</td>
+      <td className="py-2.5 px-3 text-center font-mono font-medium text-slate-400 tabular-nums border-b border-trading-border/20">{pattern.total}</td>
+      <td className="py-2.5 px-3 text-center font-mono font-medium text-trading-bull tabular-nums border-b border-trading-border/20">{pattern.wins}</td>
+      <td className="py-2.5 px-3 border-b border-trading-border/20">
         <div className="flex items-center gap-2">
           <div className="flex-1 h-2 bg-trading-bg-secondary rounded-full overflow-hidden">
             <motion.div
@@ -144,7 +144,7 @@ function DirectionComparison({ directions }: { directions: DirectionAccuracy[] }
   return (
     <div className="grid grid-cols-2 gap-3">
       {longDir && (
-        <div className="p-4 rounded-xl bg-trading-bull/[0.04] border border-trading-bull/15 text-center space-y-2">
+        <div className="p-4 rounded-xl bg-trading-bull/[0.04] border border-trading-bull/20 text-center space-y-2">
           <TrendingUp size={24} className="text-trading-bull mx-auto" />
           <p className="stat-label">Long</p>
           <p className="text-2xl font-mono font-bold text-trading-bull tabular-nums">{longDir.win_rate.toFixed(1)}%</p>
@@ -152,7 +152,7 @@ function DirectionComparison({ directions }: { directions: DirectionAccuracy[] }
         </div>
       )}
       {shortDir && (
-        <div className="p-4 rounded-xl bg-trading-bear/[0.04] border border-trading-bear/15 text-center space-y-2">
+        <div className="p-4 rounded-xl bg-trading-bear/[0.04] border border-trading-bear/20 text-center space-y-2">
           <TrendingDown size={24} className="text-trading-bear mx-auto" />
           <p className="stat-label">Short</p>
           <p className="text-2xl font-mono font-bold text-trading-bear tabular-nums">{shortDir.win_rate.toFixed(1)}%</p>
@@ -195,7 +195,7 @@ function MonthlyPnLBar({ month, index, maxPnl }: { month: MonthlyPnL; index: num
         />
       </div>
       <span className="text-[9px] text-slate-500 whitespace-nowrap">{month.month.split(' ')[0]}</span>
-      <span className="text-[9px] text-slate-600 font-mono tabular-nums">{month.win_rate.toFixed(0)}%</span>
+      <span className="text-[9px] text-slate-500 font-mono tabular-nums">{month.win_rate.toFixed(0)}%</span>
     </motion.div>
   );
 }
@@ -302,7 +302,7 @@ export default function AccuracyPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-[9px]">
               <thead>
-                <tr className="text-[9px] text-slate-600 uppercase tracking-[0.12em] font-medium border-b border-trading-border/15">
+                <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] font-medium border-b border-trading-border/20">
                   <th className="text-left py-2.5 px-3">Pattern</th>
                   <th className="text-center py-2.5 px-3">Total</th>
                   <th className="text-center py-2.5 px-3">Wins</th>

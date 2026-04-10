@@ -87,7 +87,7 @@ export default function ActiveTradesPage() {
             <Layers size={24} className="text-slate-600" />
           </div>
           <p className="text-slate-500 text-xs">No active trades</p>
-          <p className="text-slate-700 text-[10px] mt-1">Trades will appear here when signals are executed</p>
+          <p className="text-slate-600 text-[10px] mt-1">Trades will appear here when signals are executed</p>
         </GlassCard>
       </motion.div>
     );
@@ -116,7 +116,7 @@ export default function ActiveTradesPage() {
               className={cn(
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-trading-ai/10 text-trading-ai-light border border-trading-ai/20'
+                  ? 'bg-trading-ai/10 text-trading-ai-light border border-trading-ai/25'
                   : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
               )}
             >
@@ -124,7 +124,7 @@ export default function ActiveTradesPage() {
               {count > 0 && (
                 <span className={cn(
                   'text-[9px] font-mono px-1.5 py-0.5 rounded-md',
-                  isActive ? 'bg-trading-ai/15 text-trading-ai-light' : 'bg-trading-bg-secondary text-slate-600'
+                  isActive ? 'bg-trading-ai/15 text-trading-ai-light' : 'bg-trading-bg-secondary text-slate-500'
                 )}>
                   {count}
                 </span>
@@ -179,7 +179,7 @@ export default function ActiveTradesPage() {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.25, delay: idx * 0.03 }}
                     className={cn(
-                      'border-b border-trading-border/15 hover:bg-white/[0.015] transition-colors',
+                      'border-b border-trading-border/20 hover:bg-white/[0.015] transition-colors',
                       trade.alert_sent && 'bg-trading-alert/[0.03]'
                     )}
                   >
@@ -248,16 +248,16 @@ export default function ActiveTradesPage() {
         <div className="flex items-center justify-between py-4 px-4 border-t border-trading-border/20 bg-trading-bg-secondary/20">
           <div className="flex items-center gap-6">
             <div>
-              <span className="text-[9px] text-slate-600 uppercase tracking-wider">Positions </span>
+              <span className="text-[9px] text-slate-500 uppercase tracking-wider">Positions </span>
               <span className="text-xs font-mono font-bold text-white">{totalPositions}</span>
             </div>
             <div>
-              <span className="text-[9px] text-slate-600 uppercase tracking-wider">Avg RRR </span>
+              <span className="text-[9px] text-slate-500 uppercase tracking-wider">Avg RRR </span>
               <span className="text-xs font-mono font-bold text-trading-info">{avgRRR.toFixed(2)}</span>
             </div>
           </div>
           <div>
-            <span className="text-[9px] text-slate-600 uppercase tracking-wider">Total Unrealized </span>
+            <span className="text-[9px] text-slate-500 uppercase tracking-wider">Total Unrealized </span>
             <span className={cn('text-xs font-mono font-bold', totalPnlPct >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
               {totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%
             </span>
@@ -276,6 +276,12 @@ export default function ActiveTradesPage() {
           <span>Alert Triggered</span>
         </div>
       </div>
+
+      <p className="sebi-disclaimer mt-4">
+        This platform provides AI-powered market analytics and decision support tools for educational purposes only.
+        Not SEBI-registered investment advice. Past performance is not indicative of future results.
+        Consult a SEBI-registered financial advisor before making investment decisions.
+      </p>
     </motion.div>
   );
 }

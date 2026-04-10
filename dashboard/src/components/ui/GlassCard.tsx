@@ -12,9 +12,9 @@ interface GlassCardProps {
 }
 
 const glowStyles: Record<GlowColor, string> = {
-  bull: 'glow-bull border-trading-bull/15',
-  bear: 'glow-bear border-trading-bear/15',
-  ai: 'glow-ai border-trading-ai/15',
+  bull: 'glow-bull border-trading-bull/20',
+  bear: 'glow-bear border-trading-bear/20',
+  ai: 'glow-ai border-trading-ai/25',
   alert: 'border-trading-alert/15 shadow-[0_0_24px_rgba(255,171,0,0.08)]',
   info: 'glow-info border-trading-info/15',
 };

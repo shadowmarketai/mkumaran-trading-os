@@ -173,8 +173,8 @@ export default function MarketMoversPage() {
           className={cn(
             'flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all',
             loading
-              ? 'bg-trading-ai/8 text-trading-ai-light cursor-wait'
-              : 'bg-trading-ai/8 text-trading-ai-light hover:bg-trading-ai/12 border border-trading-ai/15',
+              ? 'bg-trading-ai/12 text-trading-ai-light cursor-wait'
+              : 'bg-trading-ai/12 text-trading-ai-light hover:bg-trading-ai/18 border border-trading-ai/25',
           )}
         >
           {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
@@ -227,7 +227,7 @@ export default function MarketMoversPage() {
           </button>
         ))}
         {data?.total_universe && (
-          <span className="ml-auto text-[9px] text-slate-700 font-mono tabular-nums">
+          <span className="ml-auto text-[9px] text-slate-600 font-mono tabular-nums">
             Universe: {data.total_universe}
           </span>
         )}
@@ -272,7 +272,7 @@ export default function MarketMoversPage() {
             <BarChart3 size={24} className="text-slate-600" />
           </div>
           <p className="text-slate-500 text-xs mb-1">No data available</p>
-          <p className="text-slate-700 text-[10px]">Click Refresh to fetch latest market movers.</p>
+          <p className="text-slate-600 text-[10px]">Click Refresh to fetch latest market movers.</p>
         </GlassCard>
       )}
 
@@ -283,7 +283,7 @@ export default function MarketMoversPage() {
         </div>
       )}
 
-      <p className="text-center text-[9px] text-slate-700">
+      <p className="text-center text-[9px] text-slate-600">
         Data refreshes every 5 minutes during market hours | Source: yfinance | All segments: NSE, MCX, CDS
       </p>
     </motion.div>

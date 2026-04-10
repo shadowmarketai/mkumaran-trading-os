@@ -74,7 +74,7 @@ function RankingsTable({ rankings }: { rankings: MomentumStock[] }) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-[9px] uppercase tracking-[0.12em] text-slate-500 border-b border-trading-border/15">
+          <tr className="text-[9px] uppercase tracking-[0.12em] text-slate-500 border-b border-trading-border/20">
             <th className="py-2.5 px-2 md:px-3 text-left">#</th>
             <th className="py-2.5 px-2 text-center w-12"></th>
             <th className="py-2.5 px-2 md:px-3 text-left">Symbol</th>
@@ -94,7 +94,7 @@ function RankingsTable({ rankings }: { rankings: MomentumStock[] }) {
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0 }}
-                className="border-b border-trading-border/15 hover:bg-white/[0.015] transition-colors"
+                className="border-b border-trading-border/20 hover:bg-white/[0.015] transition-colors"
               >
                 <td className="py-2.5 px-2 md:px-3 font-mono font-bold text-white tabular-nums">{stock.rank}</td>
                 <td className="py-2.5 px-2 text-center">
@@ -275,7 +275,7 @@ export default function MomentumPage() {
               'flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-medium transition-all',
               rebalancing
                 ? 'bg-trading-ai/20 text-trading-ai-light cursor-wait'
-                : 'bg-trading-ai/8 text-trading-ai-light hover:bg-trading-ai/12 border border-trading-ai/15',
+                : 'bg-trading-ai/12 text-trading-ai-light hover:bg-trading-ai/18 border border-trading-ai/25',
             )}
           >
             {rebalancing ? (

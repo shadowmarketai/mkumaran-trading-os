@@ -13,31 +13,19 @@
   body {
     @apply bg-trading-bg text-slate-100 font-sans overflow-x-hidden;
     background-image:
-      radial-gradient(ellipse at 0% 0%, rgba(124,77,255,0.03) 0%, transparent 50%),
-      radial-gradient(ellipse at 100% 100%, rgba(0,230,118,0.02) 0%, transparent 50%);
+      radial-gradient(ellipse at 15% 10%, rgba(139,92,246,0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 85% 90%, rgba(0,255,136,0.03) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, rgba(59,130,246,0.02) 0%, transparent 70%);
     background-attachment: fixed;
   }
 
-  ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
-  }
-
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    @apply bg-trading-border rounded-full;
-    transition: background 0.2s;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-trading-border-light;
-  }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-trading-border/60 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-trading-border-light; }
 
   ::selection {
-    background: rgba(124,77,255,0.3);
+    background: rgba(139,92,246,0.35);
     color: white;
   }
 }
@@ -45,11 +33,11 @@
 @layer components {
   /* ── Glass Cards ─────────────────────────────────────────── */
   .glass-card {
-    @apply bg-trading-card/90 backdrop-blur-xl border border-trading-border rounded-2xl;
+    @apply bg-trading-card/90 backdrop-blur-xl border border-trading-border/70 rounded-2xl;
     box-shadow:
-      0 4px 24px -4px rgba(0,0,0,0.35),
-      0 0 0 1px rgba(27,40,69,0.4),
-      inset 0 1px 0 0 rgba(255,255,255,0.03);
+      0 4px 28px -4px rgba(0,0,0,0.4),
+      0 0 0 1px rgba(26,39,68,0.4),
+      inset 0 1px 0 0 rgba(255,255,255,0.04);
   }
 
   .glass-card-hover {
@@ -59,110 +47,83 @@
   .glass-card-hover:hover {
     @apply bg-trading-card-hover border-trading-border-light;
     box-shadow:
-      0 8px 32px -4px rgba(0,0,0,0.45),
-      0 0 0 1px rgba(36,51,82,0.6),
-      inset 0 1px 0 0 rgba(255,255,255,0.05);
-    transform: translateY(-1px);
+      0 12px 40px -4px rgba(0,0,0,0.5),
+      0 0 0 1px rgba(37,58,92,0.7),
+      inset 0 1px 0 0 rgba(255,255,255,0.06);
+    transform: translateY(-2px);
   }
 
   .glass-surface {
-    @apply bg-trading-bg-secondary/80 backdrop-blur-md border border-trading-border/60 rounded-xl;
+    @apply bg-trading-bg-secondary/80 backdrop-blur-md border border-trading-border/50 rounded-xl;
   }
 
-  /* ── Gradient Accents ────────────────────────────────────── */
-  .gradient-bull {
-    @apply bg-gradient-to-r from-trading-bull to-trading-bull-light;
-  }
-
-  .gradient-bear {
-    @apply bg-gradient-to-r from-trading-bear to-trading-bear-light;
-  }
-
-  .gradient-info {
-    @apply bg-gradient-to-r from-trading-info to-trading-accent;
-  }
-
-  .gradient-alert {
-    @apply bg-gradient-to-r from-trading-alert to-trading-gold;
-  }
-
-  .gradient-ai {
-    @apply bg-gradient-to-r from-trading-ai to-trading-ai-light;
-  }
-
-  .gradient-border {
+  /* ── Vibrant Gradient Borders ───────────────────────────── */
+  .gradient-border-ai {
     position: relative;
-    background: linear-gradient(135deg, rgba(124,77,255,0.1), rgba(0,230,118,0.05));
+    border: 1px solid transparent;
+    background-clip: padding-box;
   }
-
-  .gradient-border::before {
+  .gradient-border-ai::before {
     content: '';
     position: absolute;
-    inset: 0;
+    inset: -1px;
     border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(135deg, rgba(124,77,255,0.3), rgba(0,230,118,0.15));
+    background: linear-gradient(135deg, rgba(139,92,246,0.5), rgba(59,130,246,0.3), rgba(0,255,136,0.2));
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
+    padding: 1px;
     pointer-events: none;
   }
+
+  /* ── Gradient Accents ────────────────────────────────────── */
+  .gradient-bull { @apply bg-gradient-to-r from-trading-bull to-trading-bull-light; }
+  .gradient-bear { @apply bg-gradient-to-r from-trading-bear to-trading-bear-light; }
+  .gradient-info { @apply bg-gradient-to-r from-trading-info to-trading-accent; }
+  .gradient-alert { @apply bg-gradient-to-r from-trading-alert to-trading-gold; }
+  .gradient-ai { @apply bg-gradient-to-r from-trading-ai to-trading-ai-light; }
+  .gradient-brand { @apply bg-gradient-to-r from-trading-ai via-trading-indigo to-trading-accent; }
+  .gradient-vibrant { @apply bg-gradient-to-r from-trading-magenta via-trading-ai to-trading-info; }
 
   /* ── Text Colors ─────────────────────────────────────────── */
   .text-bull { @apply text-trading-bull; }
   .text-bear { @apply text-trading-bear; }
 
   /* ── Glow Effects ────────────────────────────────────────── */
-  .glow-bull {
-    box-shadow: 0 0 24px rgba(0,230,118,0.12), 0 0 64px rgba(0,230,118,0.04);
-  }
+  .glow-bull { box-shadow: 0 0 28px rgba(0,255,136,0.15), 0 0 80px rgba(0,255,136,0.05); }
+  .glow-bear { box-shadow: 0 0 28px rgba(255,45,85,0.15), 0 0 80px rgba(255,45,85,0.05); }
+  .glow-ai { box-shadow: 0 0 28px rgba(139,92,246,0.2), 0 0 80px rgba(139,92,246,0.08); }
+  .glow-info { box-shadow: 0 0 28px rgba(0,212,255,0.15), 0 0 80px rgba(0,212,255,0.05); }
 
-  .glow-bear {
-    box-shadow: 0 0 24px rgba(255,23,68,0.12), 0 0 64px rgba(255,23,68,0.04);
-  }
-
-  .glow-ai {
-    box-shadow: 0 0 24px rgba(124,77,255,0.15), 0 0 64px rgba(124,77,255,0.06);
-  }
-
-  .glow-info {
-    box-shadow: 0 0 24px rgba(0,229,255,0.12), 0 0 64px rgba(0,229,255,0.04);
-  }
-
-  /* ── Noise Texture Overlay ──────────────────────────────── */
-  .noise-overlay {
-    position: relative;
-  }
-
-  .noise-overlay::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    opacity: 0.015;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-    pointer-events: none;
-    border-radius: inherit;
-  }
+  /* ── Neon Accents ────────────────────────────────────────── */
+  .neon-bull { box-shadow: 0 0 5px rgba(0,255,136,0.5), 0 0 15px rgba(0,255,136,0.2), 0 0 40px rgba(0,255,136,0.05); }
+  .neon-bear { box-shadow: 0 0 5px rgba(255,45,85,0.5), 0 0 15px rgba(255,45,85,0.2), 0 0 40px rgba(255,45,85,0.05); }
+  .neon-ai { box-shadow: 0 0 5px rgba(139,92,246,0.5), 0 0 15px rgba(139,92,246,0.25), 0 0 40px rgba(139,92,246,0.08); }
 
   /* ── Shimmer Loading ─────────────────────────────────────── */
   .shimmer {
     background: linear-gradient(
       90deg,
-      rgba(15,23,41,0) 0%,
-      rgba(124,77,255,0.06) 50%,
-      rgba(15,23,41,0) 100%
+      rgba(14,26,46,0) 0%,
+      rgba(139,92,246,0.08) 50%,
+      rgba(14,26,46,0) 100%
     );
     background-size: 200% 100%;
-    animation: shimmer 2s linear infinite;
+    animation: shimmer 2.5s linear infinite;
   }
 
-  /* ── Stat Label ──────────────────────────────────────────── */
+  /* ── Stat Labels ─────────────────────────────────────────── */
   .stat-label {
-    @apply text-[10px] text-slate-500 uppercase tracking-[0.12em] font-medium;
+    @apply text-[10px] text-slate-500 uppercase tracking-[0.14em] font-semibold;
   }
 
   .stat-value {
-    @apply text-xl font-mono font-bold text-white;
+    @apply text-xl font-mono font-bold text-white tabular-nums;
+  }
+
+  /* ── SEBI Disclaimer ─────────────────────────────────────── */
+  .sebi-disclaimer {
+    @apply text-[9px] text-slate-600 leading-relaxed px-4 py-3 rounded-xl bg-trading-bg-secondary/40 border border-trading-border/20;
   }
 }

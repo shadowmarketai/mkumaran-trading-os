@@ -199,7 +199,7 @@ function ComparisonTable({ data }: { data: BacktestCompareResult }) {
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-trading-border/15">
+            <tr className="border-b border-trading-border/20">
               <th className="text-left py-2 px-3 text-[9px] text-slate-500 uppercase tracking-[0.12em] cursor-pointer select-none font-medium" onClick={() => handleSort('strategy')}>Strategy <SortIcon col="strategy" /></th>
               <th className="text-right py-2 px-3 text-[9px] text-slate-500 uppercase tracking-[0.12em] cursor-pointer select-none font-medium" onClick={() => handleSort('total_trades')}>Trades <SortIcon col="total_trades" /></th>
               <th className="text-right py-2 px-3 text-[9px] text-slate-500 uppercase tracking-[0.12em] cursor-pointer select-none font-medium" onClick={() => handleSort('win_rate')}>Win Rate <SortIcon col="win_rate" /></th>
@@ -217,7 +217,7 @@ function ComparisonTable({ data }: { data: BacktestCompareResult }) {
                 <tr
                   key={s.strategy}
                   className={cn(
-                    'border-b border-trading-border/15 transition-colors text-[9px]',
+                    'border-b border-trading-border/20 transition-colors text-[9px]',
                     isBest ? 'bg-trading-ai/5' : 'hover:bg-white/[0.015]'
                   )}
                 >
@@ -381,7 +381,7 @@ export default function BacktestingPage() {
               'flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all border',
               comparing
                 ? 'bg-trading-bg-secondary text-slate-400 cursor-wait border-trading-border/20'
-                : 'bg-trading-ai/8 text-trading-ai-light border border-trading-ai/15 hover:bg-trading-ai/12'
+                : 'bg-trading-ai/12 text-trading-ai-light border border-trading-ai/25 hover:bg-trading-ai/18'
             )}
           >
             {comparing ? (
@@ -589,7 +589,7 @@ export default function BacktestingPage() {
             <FlaskConical size={24} className="text-slate-600" />
           </div>
           <p className="text-slate-500 text-sm">Configure parameters and run a backtest to see results</p>
-          <p className="text-slate-600 text-xs mt-1">Use "Compare All" to see all 6 strategies side by side</p>
+          <p className="text-slate-500 text-xs mt-1">Use "Compare All" to see all 6 strategies side by side</p>
         </GlassCard>
       )}
 
@@ -602,7 +602,7 @@ export default function BacktestingPage() {
           <p className="text-slate-400 text-sm">
             {comparing ? `Comparing all strategies for ${form.ticker.toUpperCase()}...` : `Running backtest for ${form.ticker.toUpperCase()}...`}
           </p>
-          <p className="text-slate-600 text-xs mt-1">
+          <p className="text-slate-500 text-xs mt-1">
             {comparing ? 'Running 6 strategies in sequence' : `Processing ${form.days} days of historical data`}
           </p>
         </GlassCard>

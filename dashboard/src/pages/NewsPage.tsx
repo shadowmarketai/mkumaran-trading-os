@@ -25,8 +25,8 @@ type CategoryFilter = 'ALL' | 'POLICY' | 'MACRO' | 'GEOPOLITICAL' | 'REGULATORY'
 const impactConfig: Record<string, { color: string; bg: string; border: string; label: string }> = {
   HIGH: {
     color: 'text-trading-bear',
-    bg: 'bg-trading-bear/8',
-    border: 'border-trading-bear/15',
+    bg: 'bg-trading-bear/10',
+    border: 'border-trading-bear/20',
     label: 'HIGH',
   },
   MEDIUM: {
@@ -230,7 +230,7 @@ export default function NewsPage() {
       <div className="flex flex-col items-center justify-center py-24">
         <AlertCircle size={48} className="text-trading-alert mb-4" />
         <p className="text-slate-400 text-sm">Failed to load news: {error}</p>
-        <button onClick={refresh} className="mt-4 px-3 py-1.5 rounded-xl bg-trading-ai/8 text-trading-ai-light border border-trading-ai/15 text-sm hover:bg-trading-ai/12 transition-colors">
+        <button onClick={refresh} className="mt-4 px-3 py-1.5 rounded-xl bg-trading-ai/12 text-trading-ai-light border border-trading-ai/25 text-sm hover:bg-trading-ai/18 transition-colors">
           Retry
         </button>
       </div>
@@ -250,7 +250,7 @@ export default function NewsPage() {
           <Newspaper size={20} className="text-trading-ai" />
           <h2 className="text-lg font-semibold text-white">News & Macro Events</h2>
           {highCount > 0 && (
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-trading-bear/8 text-trading-bear text-xs font-mono font-bold border border-trading-bear/15">
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-trading-bear/10 text-trading-bear text-xs font-mono font-bold border border-trading-bear/20">
               <AlertTriangle size={12} />
               {highCount} HIGH
             </span>
@@ -259,7 +259,7 @@ export default function NewsPage() {
         <button
           onClick={refresh}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-trading-ai/8 text-trading-ai-light border border-trading-ai/15 text-xs hover:bg-trading-ai/12 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-trading-ai/12 text-trading-ai-light border border-trading-ai/25 text-xs hover:bg-trading-ai/18 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           Refresh
@@ -280,7 +280,7 @@ export default function NewsPage() {
                 className={cn(
                   'px-2.5 py-1 rounded-xl text-xs font-medium transition-colors border',
                   impactFilter === f.value
-                    ? 'bg-trading-card text-white border-trading-ai/15'
+                    ? 'bg-trading-card text-white border-trading-ai/25'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-trading-bg-secondary/50 border-transparent',
                 )}
               >
@@ -304,7 +304,7 @@ export default function NewsPage() {
                 className={cn(
                   'px-2.5 py-1 rounded-xl text-xs font-medium transition-colors border',
                   categoryFilter === f.value
-                    ? 'bg-trading-card text-white border-trading-ai/15'
+                    ? 'bg-trading-card text-white border-trading-ai/25'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-trading-bg-secondary/50 border-transparent',
                 )}
               >
@@ -325,7 +325,7 @@ export default function NewsPage() {
                 className={cn(
                   'px-2 py-1 rounded-xl text-xs font-mono transition-colors border tabular-nums',
                   hoursBack === h.value
-                    ? 'bg-trading-card text-white border-trading-ai/15'
+                    ? 'bg-trading-card text-white border-trading-ai/25'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-trading-bg-secondary/50 border-transparent',
                 )}
               >

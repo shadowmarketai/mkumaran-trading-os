@@ -31,7 +31,7 @@ function OptionChainTable({ chain, spot }: { chain: OptionStrike[]; spot: number
     <div className="overflow-x-auto">
       <table className="w-full text-[9px]">
         <thead>
-          <tr className="border-b border-trading-border/15">
+          <tr className="border-b border-trading-border/20">
             <th colSpan={5} className="text-center py-2 px-1 text-trading-bull font-semibold uppercase tracking-[0.12em] bg-trading-bull/5">
               Calls (CE)
             </th>
@@ -40,7 +40,7 @@ function OptionChainTable({ chain, spot }: { chain: OptionStrike[]; spot: number
               Puts (PE)
             </th>
           </tr>
-          <tr className="border-b border-trading-border/15 text-slate-500 uppercase tracking-[0.12em]">
+          <tr className="border-b border-trading-border/20 text-slate-500 uppercase tracking-[0.12em]">
             <th className="py-1.5 px-1.5 text-right">Price</th>
             <th className="py-1.5 px-1.5 text-right">IV%</th>
             <th className="py-1.5 px-1.5 text-right">Delta</th>
@@ -62,7 +62,7 @@ function OptionChainTable({ chain, spot }: { chain: OptionStrike[]; spot: number
               <tr
                 key={row.strike}
                 className={cn(
-                  'border-b border-trading-border/15 transition-colors',
+                  'border-b border-trading-border/20 transition-colors',
                   row.is_atm
                     ? 'bg-trading-ai/10 border-trading-ai/30'
                     : 'hover:bg-white/[0.015]'

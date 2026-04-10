@@ -29,8 +29,8 @@ import type { Signal, ScannerResult, SectorStrength } from '../types';
 // --- Scanner Heatmap ---
 function ScannerCell({ scanner }: { scanner: ScannerResult }) {
   const colorMap: Record<string, string> = {
-    BULL: 'bg-trading-bull/8 text-trading-bull border-trading-bull/12',
-    BEAR: 'bg-trading-bear/8 text-trading-bear border-trading-bear/12',
+    BULL: 'bg-trading-bull/10 text-trading-bull border-trading-bull/12',
+    BEAR: 'bg-trading-bear/10 text-trading-bear border-trading-bear/12',
     NEUTRAL: 'bg-trading-bg-secondary/60 text-slate-500 border-trading-border/20',
   };
 
@@ -79,7 +79,7 @@ function ScoreBar({ bullPct, bearPct }: { bullPct: number; bearPct: number }) {
 // --- Sector Badge ---
 function SectorBadge({ sector, strength }: { sector: string; strength: SectorStrength }) {
   return (
-    <div className="flex items-center justify-between px-3 py-2.5 bg-trading-bg-secondary/40 rounded-xl border border-trading-border/15">
+    <div className="flex items-center justify-between px-3 py-2.5 bg-trading-bg-secondary/40 rounded-xl border border-trading-border/20">
       <span className="text-xs text-slate-400">{sector}</span>
       <StatusBadge status={strength} size="sm" />
     </div>
@@ -138,7 +138,7 @@ function NewsWidget() {
           <Newspaper size={14} className="text-trading-ai" />
           <h3 className="stat-label">Market News</h3>
           {highItems.length > 0 && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-trading-bear/8 text-trading-bear text-[9px] font-mono font-bold border border-trading-bear/15">
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-trading-bear/10 text-trading-bear text-[9px] font-mono font-bold border border-trading-bear/20">
               <AlertTriangle size={9} />
               {highItems.length} HIGH
             </span>
@@ -162,10 +162,10 @@ function NewsWidget() {
               item.impact === 'HIGH' ? 'bg-trading-bear' : 'bg-trading-alert',
             )} />
             <span className="text-[11px] text-slate-300 truncate flex-1">{item.title}</span>
-            <span className="text-[9px] text-slate-700 font-mono flex-shrink-0">{item.source}</span>
+            <span className="text-[9px] text-slate-600 font-mono flex-shrink-0">{item.source}</span>
             {item.url && (
               <a href={item.url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
-                <ExternalLink size={9} className="text-slate-700 hover:text-slate-400 transition-colors" />
+                <ExternalLink size={9} className="text-slate-600 hover:text-slate-400 transition-colors" />
               </a>
             )}
           </div>
@@ -289,7 +289,7 @@ export default function OverviewPage() {
                   'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all',
                   scanning
                     ? 'bg-trading-bg-secondary text-slate-500 cursor-not-allowed'
-                    : 'bg-trading-ai/8 text-trading-ai-light hover:bg-trading-ai/12 border border-trading-ai/15'
+                    : 'bg-trading-ai/12 text-trading-ai-light hover:bg-trading-ai/18 border border-trading-ai/25'
                 )}
               >
                 {scanning ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
@@ -314,13 +314,13 @@ export default function OverviewPage() {
               <div className="pt-3 border-t border-trading-border/20 space-y-2">
                 <h4 className="stat-label">Institutional Flow</h4>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-trading-bg-secondary/40 border border-trading-border/15">
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-trading-bg-secondary/40 border border-trading-border/20">
                     <span className="text-[10px] text-slate-500">FII</span>
                     <span className={cn('text-xs font-mono font-bold tabular-nums', (mwa.fii_net ?? 0) >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
                       {(mwa.fii_net ?? 0) >= 0 ? '+' : ''}{(mwa.fii_net ?? 0).toFixed(0)} Cr
                     </span>
                   </div>
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-trading-bg-secondary/40 border border-trading-border/15">
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-trading-bg-secondary/40 border border-trading-border/20">
                     <span className="text-[10px] text-slate-500">DII</span>
                     <span className={cn('text-xs font-mono font-bold tabular-nums', (mwa.dii_net ?? 0) >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
                       {(mwa.dii_net ?? 0) >= 0 ? '+' : ''}{(mwa.dii_net ?? 0).toFixed(0)} Cr
@@ -361,7 +361,7 @@ export default function OverviewPage() {
                     <p className="text-[9px] text-slate-600 uppercase tracking-[0.12em] mb-1.5 flex items-center gap-1.5">
                       <span className={cn('w-1.5 h-1.5 rounded-full', layerColors[layer] || 'bg-slate-600')} />
                       {layer}
-                      <span className="text-slate-700">({scanners.length})</span>
+                      <span className="text-slate-600">({scanners.length})</span>
                     </p>
                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-1.5">
                       {scanners.map((scanner) => (
@@ -389,7 +389,7 @@ export default function OverviewPage() {
               'inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold transition-all',
               scanning
                 ? 'bg-trading-bg-secondary text-slate-500 cursor-not-allowed'
-                : 'bg-trading-ai/8 text-trading-ai-light hover:bg-trading-ai/12 border border-trading-ai/15'
+                : 'bg-trading-ai/12 text-trading-ai-light hover:bg-trading-ai/18 border border-trading-ai/25'
             )}
           >
             {scanning ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}

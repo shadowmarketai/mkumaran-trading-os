@@ -56,7 +56,7 @@ export default function LoginPage() {
           <h2 className="text-sm font-semibold text-white mb-6 tracking-wide">Sign In</h2>
 
           {error && (
-            <div className="mb-5 p-3 rounded-xl bg-trading-bear/8 border border-trading-bear/15 text-trading-bear text-xs">
+            <div className="mb-5 p-3 rounded-xl bg-trading-bear/10 border border-trading-bear/20 text-trading-bear text-xs">
               {error}
             </div>
           )}
@@ -110,7 +110,7 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="text-center text-[10px] text-slate-700 mt-8 tracking-wider">
+        <p className="text-center text-[10px] text-slate-600 mt-8 tracking-wider">
           Shadow Market Intelligence
         </p>
       </div>

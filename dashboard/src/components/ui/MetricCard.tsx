@@ -21,13 +21,13 @@ const colorMap: Record<MetricColor, {
   bull: {
     bg: 'from-trading-bull/6 via-transparent to-transparent',
     text: 'text-trading-bull',
-    iconBg: 'bg-trading-bull/10 text-trading-bull border-trading-bull/15',
+    iconBg: 'bg-trading-bull/10 text-trading-bull border-trading-bull/20',
     border: 'border-trading-bull/8',
   },
   bear: {
     bg: 'from-trading-bear/6 via-transparent to-transparent',
     text: 'text-trading-bear',
-    iconBg: 'bg-trading-bear/10 text-trading-bear border-trading-bear/15',
+    iconBg: 'bg-trading-bear/10 text-trading-bear border-trading-bear/20',
     border: 'border-trading-bear/8',
   },
   info: {
@@ -45,7 +45,7 @@ const colorMap: Record<MetricColor, {
   ai: {
     bg: 'from-trading-ai/6 via-transparent to-transparent',
     text: 'text-trading-ai',
-    iconBg: 'bg-trading-ai/10 text-trading-ai border-trading-ai/15',
+    iconBg: 'bg-trading-ai/10 text-trading-ai border-trading-ai/25',
     border: 'border-trading-ai/8',
   },
 };
@@ -82,7 +82,7 @@ export default function MetricCard({ title, value, change, icon: Icon, color }: 
           {hasChange && (
             <div className={cn(
               'flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded-md w-fit',
-              isPositive ? 'text-trading-bull bg-trading-bull/8' : 'text-trading-bear bg-trading-bear/8'
+              isPositive ? 'text-trading-bull bg-trading-bull/10' : 'text-trading-bear bg-trading-bear/10'
             )}>
               {isPositive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
               <span className="text-[10px] font-mono font-bold tabular-nums">
