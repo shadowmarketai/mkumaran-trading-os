@@ -233,7 +233,7 @@ function ToolCard({ tool }: ToolCardProps) {
                 disabled={loading}
                 className={cn(
                   'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all',
-                  loading ? 'bg-trading-ai/8 text-slate-400 cursor-wait border border-trading-ai/15' : 'gradient-ai text-white hover:opacity-90'
+                  loading ? 'bg-trading-ai/12 text-slate-400 cursor-wait border border-trading-ai/25' : 'gradient-ai text-white hover:opacity-90'
                 )}
               >
                 {loading ? (

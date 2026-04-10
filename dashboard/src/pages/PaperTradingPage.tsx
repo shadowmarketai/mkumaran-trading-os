@@ -289,13 +289,13 @@ export default function PaperTradingPage() {
             <div className="flex flex-col items-center justify-center py-12 px-4">
               <Layers size={40} className="text-slate-600 mb-3" />
               <p className="text-slate-500 text-sm">No open positions</p>
-              <p className="text-slate-600 text-xs mt-1">Place an order to get started</p>
+              <p className="text-slate-500 text-xs mt-1">Place an order to get started</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-[9px]">
                 <thead>
-                  <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] border-b border-trading-border/15">
+                  <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] border-b border-trading-border/20">
                     <th className="text-left py-3 px-4">Order ID</th>
                     <th className="text-left py-3 px-4">Ticker</th>
                     <th className="text-center py-3 px-4">Dir</th>

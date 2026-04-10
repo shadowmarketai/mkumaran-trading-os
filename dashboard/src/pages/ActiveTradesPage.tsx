@@ -152,7 +152,7 @@ export default function ActiveTradesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-[9px] text-slate-600 uppercase tracking-[0.12em] border-b border-trading-border/30">
+              <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] border-b border-trading-border/30">
                 <th className="text-left py-3.5 px-3 md:px-4">Ticker</th>
                 <th className="text-center py-3.5 px-2 hidden md:table-cell">Exch</th>
                 <th className="text-center py-3.5 px-2 hidden lg:table-cell">TF</th>

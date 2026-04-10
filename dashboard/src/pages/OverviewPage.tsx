@@ -457,6 +457,12 @@ export default function OverviewPage() {
           </div>
         ) : null;
       })()}
+
+      <p className="sebi-disclaimer mt-4">
+        This platform provides AI-powered market analytics and decision support tools for educational purposes only.
+        Not SEBI-registered investment advice. Past performance is not indicative of future results.
+        Consult a SEBI-registered financial advisor before making investment decisions.
+      </p>
     </motion.div>
   );
 }

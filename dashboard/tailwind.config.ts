@@ -6,13 +6,13 @@ export default {
     extend: {
       colors: {
         trading: {
-          bg: '#05080F',
-          'bg-secondary': '#0B1121',
-          card: '#0E1A2E',
-          'card-hover': '#132240',
-          'card-active': '#1A2D52',
-          border: '#1A2744',
-          'border-light': '#253A5C',
+          bg: '#08060F',
+          'bg-secondary': '#0F0B18',
+          card: '#140F1F',
+          'card-hover': '#1C1530',
+          'card-active': '#241D3A',
+          border: '#2A2040',
+          'border-light': '#3D2E5C',
           // Vibrant bull/bear
           bull: '#00FF88',
           'bull-light': '#5CFFB1',
@@ -54,7 +54,7 @@ export default {
         'mesh-gradient': 'radial-gradient(at 0% 0%, rgba(139,92,246,0.08) 0%, transparent 50%), radial-gradient(at 100% 100%, rgba(0,255,136,0.04) 0%, transparent 50%)',
         'hero-gradient': 'linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(59,130,246,0.08) 50%, rgba(0,255,136,0.05) 100%)',
         'card-gradient': 'linear-gradient(135deg, rgba(14,26,46,0.95) 0%, rgba(11,17,33,0.98) 100%)',
-        'sidebar-gradient': 'linear-gradient(180deg, rgba(11,17,33,1) 0%, rgba(5,8,15,1) 100%)',
+        'sidebar-gradient': 'linear-gradient(180deg, rgba(15,11,24,1) 0%, rgba(8,6,15,1) 100%)',
         'vibrant-mesh': 'radial-gradient(at 20% 20%, rgba(139,92,246,0.12) 0%, transparent 50%), radial-gradient(at 80% 80%, rgba(0,255,136,0.06) 0%, transparent 50%), radial-gradient(at 50% 0%, rgba(59,130,246,0.08) 0%, transparent 60%)',
       },
       boxShadow: {

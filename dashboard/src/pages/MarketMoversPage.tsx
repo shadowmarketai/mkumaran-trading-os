@@ -244,7 +244,7 @@ export default function MarketMoversPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[9px] uppercase tracking-[0.12em] text-slate-600 border-b border-trading-border/20">
+                <tr className="text-[9px] uppercase tracking-[0.12em] text-slate-500 border-b border-trading-border/20">
                   <th className="py-2.5 px-2 md:px-3 text-left w-10">#</th>
                   <th className="py-2.5 px-2 md:px-3 text-left">Stock</th>
                   <th className="py-2.5 px-2 md:px-3 text-right">LTP</th>

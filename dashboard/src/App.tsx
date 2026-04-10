@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
 import ProtectedRoute from './components/ProtectedRoute';
+import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import OverviewPage from './pages/OverviewPage';
 import ActiveTradesPage from './pages/ActiveTradesPage';
@@ -26,7 +27,11 @@ function App() {
 
   return (
     <Routes>
+      {/* Public pages */}
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
+
+      {/* Protected dashboard */}
       <Route
         path="/*"
         element={
@@ -37,7 +42,6 @@ function App() {
                 <TopBar onMenuClick={toggleSidebar} />
                 <main className="flex-1 overflow-auto p-3 md:p-5">
                   <Routes>
-                    <Route path="/" element={<Navigate to="/overview" replace />} />
                     <Route path="/overview" element={<OverviewPage />} />
                     <Route path="/trades" element={<ActiveTradesPage />} />
                     <Route path="/accuracy" element={<AccuracyPage />} />

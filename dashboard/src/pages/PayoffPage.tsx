@@ -149,7 +149,7 @@ export default function PayoffPage() {
             <button
               key={key}
               onClick={() => applyPreset(key)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-trading-ai/8 text-trading-ai-light border border-trading-ai/15 hover:border-trading-ai hover:text-trading-ai-light transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-trading-ai/12 text-trading-ai-light border border-trading-ai/25 hover:border-trading-ai hover:text-trading-ai-light transition-all"
             >
               <Zap size={12} />
               {preset.label}
@@ -357,7 +357,7 @@ export default function PayoffPage() {
             <LineChartIcon size={24} className="text-slate-600" />
           </div>
           <p className="text-slate-500 text-sm">Add option legs and click Calculate to see the payoff diagram</p>
-          <p className="text-slate-600 text-xs mt-1">Use presets for common strategies like Iron Condor or Straddle</p>
+          <p className="text-slate-500 text-xs mt-1">Use presets for common strategies like Iron Condor or Straddle</p>
         </GlassCard>
       )}
     </motion.div>

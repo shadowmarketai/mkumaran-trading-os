@@ -133,7 +133,7 @@ export default function SignalMonitorPage() {
           </div>
           <h2 className="text-sm font-bold text-white">Signal Monitor</h2>
           {marketOpen ? (
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-trading-bull/8 border border-trading-bull/15">
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-trading-bull/10 border border-trading-bull/20">
               <span className="relative flex h-1.5 w-1.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-trading-bull opacity-75" />
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-trading-bull" />
@@ -143,7 +143,7 @@ export default function SignalMonitorPage() {
           ) : (
             <span className="text-[10px] text-slate-600 font-mono">Market closed</span>
           )}
-          <span className="text-[9px] text-slate-700 font-mono">Polling 10s</span>
+          <span className="text-[9px] text-slate-600 font-mono">Polling 10s</span>
         </div>
         <div className="flex items-center gap-3">
           {lastChecked && (
@@ -158,7 +158,7 @@ export default function SignalMonitorPage() {
               'flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all',
               checking
                 ? 'bg-trading-bg-secondary text-slate-500 cursor-not-allowed'
-                : 'bg-trading-ai/8 text-trading-ai-light hover:bg-trading-ai/12 border border-trading-ai/15'
+                : 'bg-trading-ai/12 text-trading-ai-light hover:bg-trading-ai/18 border border-trading-ai/25'
             )}
           >
             {checking ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
@@ -234,7 +234,7 @@ export default function SignalMonitorPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[9px] text-slate-600 uppercase tracking-[0.12em] border-b border-trading-border/20">
+                <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] border-b border-trading-border/20">
                   <th className="text-left py-3 px-2 w-6"></th>
                   <th className="text-left py-3 px-2">Ticker</th>
                   <th className="text-center py-3 px-2">Exch</th>
@@ -308,7 +308,7 @@ export default function SignalMonitorPage() {
                       <td className="py-3 px-2 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <Brain size={11} className="text-trading-ai/60" />
-                          <div className="w-10 h-1.5 bg-trading-bg-secondary rounded-full overflow-hidden border border-trading-border/15">
+                          <div className="w-10 h-1.5 bg-trading-bg-secondary rounded-full overflow-hidden border border-trading-border/20">
                             <div className="h-full rounded-full gradient-ai" style={{ width: `${confidencePct}%` }} />
                           </div>
                           <span className="text-[9px] font-mono text-trading-ai-light tabular-nums">{confidencePct}%</span>
@@ -362,9 +362,15 @@ export default function SignalMonitorPage() {
             <Shield size={24} className="text-slate-600" />
           </div>
           <p className="text-slate-500 text-xs">No open signals being monitored</p>
-          <p className="text-slate-700 text-[10px] mt-1">Signals from MWA scan will appear here</p>
+          <p className="text-slate-600 text-[10px] mt-1">Signals from MWA scan will appear here</p>
         </GlassCard>
       )}
+
+      <p className="sebi-disclaimer mt-4">
+        This platform provides AI-powered market analytics and decision support tools for educational purposes only.
+        Not SEBI-registered investment advice. Past performance is not indicative of future results.
+        Consult a SEBI-registered financial advisor before making investment decisions.
+      </p>
     </motion.div>
   );
 }

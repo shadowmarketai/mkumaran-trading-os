@@ -136,13 +136,13 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           collapsed ? 'px-3 py-5 justify-center' : 'px-5 py-5 justify-between',
         )}>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl gradient-ai flex items-center justify-center shadow-glow-ai flex-shrink-0">
+            <div className="w-9 h-9 rounded-xl gradient-ai flex items-center justify-center shadow-neon-ai flex-shrink-0">
               <Activity size={18} className="text-white" />
             </div>
             {!collapsed && (
               <div className="overflow-hidden">
-                <h1 className="text-base font-bold text-white tracking-tight leading-none">MKUMARAN</h1>
-                <p className="text-[10px] text-trading-ai-light tracking-widest uppercase mt-0.5">Trading OS</p>
+                <h1 className="text-base font-bold text-white tracking-tight leading-none">Shadow Market</h1>
+                <p className="text-[9px] text-trading-ai-light tracking-[0.2em] uppercase mt-0.5">AI Trading Intelligence</p>
               </div>
             )}
           </div>
