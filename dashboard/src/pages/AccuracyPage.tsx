@@ -92,7 +92,7 @@ function DonutChart({ wins, losses, open }: DonutChartProps) {
         )}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-3xl font-mono font-bold text-white tabular-nums">{winRate}%</span>
+        <span className="text-3xl font-mono font-bold text-slate-900 tabular-nums">{winRate}%</span>
         <span className="text-xs text-slate-500 uppercase">Win Rate</span>
       </div>
     </div>
@@ -109,14 +109,14 @@ function PatternRow({ pattern, index }: { pattern: PatternAccuracy; index: numbe
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
-      className="hover:bg-white/[0.015] transition-colors"
+      className="hover:bg-slate-50 transition-colors"
     >
-      <td className="py-2.5 px-3 font-medium text-slate-200 border-b border-trading-border/20">{pattern.pattern}</td>
-      <td className="py-2.5 px-3 text-center font-mono font-medium text-slate-400 tabular-nums border-b border-trading-border/20">{pattern.total}</td>
-      <td className="py-2.5 px-3 text-center font-mono font-medium text-trading-bull tabular-nums border-b border-trading-border/20">{pattern.wins}</td>
-      <td className="py-2.5 px-3 border-b border-trading-border/20">
+      <td className="py-2.5 px-3 font-medium text-slate-900 border-b border-slate-200">{pattern.pattern}</td>
+      <td className="py-2.5 px-3 text-center font-mono font-medium text-slate-500 tabular-nums border-b border-slate-200">{pattern.total}</td>
+      <td className="py-2.5 px-3 text-center font-mono font-medium text-trading-bull tabular-nums border-b border-slate-200">{pattern.wins}</td>
+      <td className="py-2.5 px-3 border-b border-slate-200">
         <div className="flex items-center gap-2">
-          <div className="flex-1 h-2 bg-trading-bg-secondary rounded-full overflow-hidden">
+          <div className="flex-1 h-2 bg-slate-50 rounded-full overflow-hidden">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${barWidth}%` }}
@@ -144,19 +144,19 @@ function DirectionComparison({ directions }: { directions: DirectionAccuracy[] }
   return (
     <div className="grid grid-cols-2 gap-3">
       {longDir && (
-        <div className="p-4 rounded-xl bg-trading-bull/[0.04] border border-trading-bull/20 text-center space-y-2">
+        <div className="p-4 rounded-xl bg-trading-bull-dim border border-emerald-200 text-center space-y-2">
           <TrendingUp size={24} className="text-trading-bull mx-auto" />
           <p className="stat-label">Long</p>
           <p className="text-2xl font-mono font-bold text-trading-bull tabular-nums">{longDir.win_rate.toFixed(1)}%</p>
-          <p className="text-xs text-slate-400 font-mono tabular-nums">{longDir.wins}/{longDir.total} trades</p>
+          <p className="text-xs text-slate-500 font-mono tabular-nums">{longDir.wins}/{longDir.total} trades</p>
         </div>
       )}
       {shortDir && (
-        <div className="p-4 rounded-xl bg-trading-bear/[0.04] border border-trading-bear/20 text-center space-y-2">
+        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-center space-y-2">
           <TrendingDown size={24} className="text-trading-bear mx-auto" />
           <p className="stat-label">Short</p>
           <p className="text-2xl font-mono font-bold text-trading-bear tabular-nums">{shortDir.win_rate.toFixed(1)}%</p>
-          <p className="text-xs text-slate-400 font-mono tabular-nums">{shortDir.wins}/{shortDir.total} trades</p>
+          <p className="text-xs text-slate-500 font-mono tabular-nums">{shortDir.wins}/{shortDir.total} trades</p>
         </div>
       )}
       {!longDir && !shortDir && (
@@ -185,7 +185,7 @@ function MonthlyPnLBar({ month, index, maxPnl }: { month: MonthlyPnL; index: num
       )}>
         {isPositive ? '+' : ''}{(month.pnl / 1000).toFixed(1)}K
       </span>
-      <div className="w-8 h-24 bg-trading-bg-secondary rounded-t relative flex items-end">
+      <div className="w-8 h-24 bg-slate-50 rounded-t relative flex items-end">
         <div
           className={cn(
             'w-full rounded-t transition-all',
@@ -207,10 +207,10 @@ export default function AccuracyPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-2xl bg-violet-50 text-trading-ai flex items-center justify-center">
           <Loader2 size={24} className="text-trading-ai animate-spin" />
         </div>
-        <p className="text-slate-400 text-sm mt-4">Loading accuracy metrics...</p>
+        <p className="text-slate-500 text-sm mt-4">Loading accuracy metrics...</p>
       </div>
     );
   }
@@ -218,10 +218,10 @@ export default function AccuracyPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
           <AlertCircle size={24} className="text-trading-alert" />
         </div>
-        <p className="text-slate-400 text-sm mt-4">Failed to load metrics: {error}</p>
+        <p className="text-slate-500 text-sm mt-4">Failed to load metrics: {error}</p>
       </div>
     );
   }
@@ -229,8 +229,8 @@ export default function AccuracyPage() {
   if (!metrics) {
     return (
       <GlassCard className="flex flex-col items-center justify-center py-16">
-        <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mb-4">
-          <Target size={24} className="text-slate-600" />
+        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+          <Target size={24} className="text-slate-400" />
         </div>
         <p className="text-slate-500 text-sm">No accuracy data available yet</p>
       </GlassCard>
@@ -269,15 +269,15 @@ export default function AccuracyPage() {
           <div className="flex items-center gap-6 mt-4">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-trading-bull" />
-              <span className="text-xs text-slate-400 font-mono tabular-nums">Wins ({metrics.wins})</span>
+              <span className="text-xs text-slate-500 font-mono tabular-nums">Wins ({metrics.wins})</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-trading-bear" />
-              <span className="text-xs text-slate-400 font-mono tabular-nums">Losses ({metrics.losses})</span>
+              <span className="text-xs text-slate-500 font-mono tabular-nums">Losses ({metrics.losses})</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-trading-alert" />
-              <span className="text-xs text-slate-400 font-mono tabular-nums">Open ({metrics.open})</span>
+              <span className="text-xs text-slate-500 font-mono tabular-nums">Open ({metrics.open})</span>
             </div>
           </div>
         </GlassCard>
@@ -302,7 +302,7 @@ export default function AccuracyPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-[9px]">
               <thead>
-                <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] font-medium border-b border-trading-border/20">
+                <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] font-medium border-b border-slate-200">
                   <th className="text-left py-2.5 px-3">Pattern</th>
                   <th className="text-center py-2.5 px-3">Total</th>
                   <th className="text-center py-2.5 px-3">Wins</th>

@@ -12,11 +12,11 @@ interface GlassCardProps {
 }
 
 const glowStyles: Record<GlowColor, string> = {
-  bull: 'glow-bull border-trading-bull/20',
-  bear: 'glow-bear border-trading-bear/20',
-  ai: 'glow-ai border-trading-ai/25',
-  alert: 'border-trading-alert/15 shadow-[0_0_24px_rgba(255,171,0,0.08)]',
-  info: 'glow-info border-trading-info/15',
+  bull: 'shadow-bull border-trading-bull/20',
+  bear: 'shadow-bear border-trading-bear/20',
+  ai: 'shadow-brand border-trading-ai/20',
+  alert: 'border-trading-alert/20 shadow-[0_4px_14px_rgba(245,158,11,0.08)]',
+  info: 'glow-info border-trading-info/20',
 };
 
 export default function GlassCard({ children, className, glowColor, animate = true, hover = false }: GlassCardProps) {

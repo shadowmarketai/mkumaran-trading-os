@@ -55,7 +55,7 @@ export default function ActiveTradesPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-2xl bg-violet-50 text-trading-ai flex items-center justify-center">
           <Loader2 size={24} className="text-trading-ai animate-spin" />
         </div>
         <p className="text-slate-500 text-xs mt-4 font-mono">Loading active trades...</p>
@@ -66,7 +66,7 @@ export default function ActiveTradesPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <div className="w-12 h-12 rounded-2xl bg-trading-alert/10 flex items-center justify-center mb-4">
+        <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
           <AlertCircle size={24} className="text-trading-alert" />
         </div>
         <p className="text-slate-500 text-xs">{error}</p>
@@ -83,11 +83,11 @@ export default function ActiveTradesPage() {
           <MetricCard title="Unrealized P&L" value="--" icon={DollarSign} color="info" />
         </div>
         <GlassCard className="flex flex-col items-center justify-center py-16">
-          <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mb-4">
-            <Layers size={24} className="text-slate-600" />
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+            <Layers size={24} className="text-slate-400" />
           </div>
           <p className="text-slate-500 text-xs">No active trades</p>
-          <p className="text-slate-600 text-[10px] mt-1">Trades will appear here when signals are executed</p>
+          <p className="text-slate-500 text-[10px] mt-1">Trades will appear here when signals are executed</p>
         </GlassCard>
       </motion.div>
     );
@@ -117,14 +117,14 @@ export default function ActiveTradesPage() {
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200',
                 isActive
                   ? 'bg-trading-ai/10 text-trading-ai-light border border-trading-ai/25'
-                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               )}
             >
               {label}
               {count > 0 && (
                 <span className={cn(
                   'text-[9px] font-mono px-1.5 py-0.5 rounded-md',
-                  isActive ? 'bg-trading-ai/15 text-trading-ai-light' : 'bg-trading-bg-secondary text-slate-500'
+                  isActive ? 'bg-trading-ai/15 text-trading-ai-light' : 'bg-slate-50 text-slate-600'
                 )}>
                   {count}
                 </span>
@@ -152,7 +152,7 @@ export default function ActiveTradesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] border-b border-trading-border/30">
+              <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] border-b border-slate-200">
                 <th className="text-left py-3.5 px-3 md:px-4">Ticker</th>
                 <th className="text-center py-3.5 px-2 hidden md:table-cell">Exch</th>
                 <th className="text-center py-3.5 px-2 hidden lg:table-cell">TF</th>
@@ -179,13 +179,13 @@ export default function ActiveTradesPage() {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.25, delay: idx * 0.03 }}
                     className={cn(
-                      'border-b border-trading-border/20 hover:bg-white/[0.015] transition-colors',
+                      'border-b border-slate-200 hover:bg-slate-50 transition-colors',
                       trade.alert_sent && 'bg-trading-alert/[0.03]'
                     )}
                   >
                     <td className="py-3 px-3 md:px-4">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-white text-sm">{trade.ticker}</span>
+                        <span className="font-mono font-bold text-slate-900 text-sm">{trade.ticker}</span>
                         {trade.alert_sent && (
                           <span className="w-1.5 h-1.5 rounded-full bg-trading-alert animate-pulse-live" />
                         )}
@@ -203,7 +203,7 @@ export default function ActiveTradesPage() {
                       </span>
                     </td>
                     <td className="py-3 px-2 text-center hidden lg:table-cell">
-                      <span className="text-[9px] font-mono text-slate-600 bg-trading-bg-secondary px-1.5 py-0.5 rounded-md border border-trading-border/20">
+                      <span className="text-[9px] font-mono text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded-md border border-slate-200">
                         {trade.timeframe || '1D'}
                       </span>
                     </td>
@@ -216,11 +216,11 @@ export default function ActiveTradesPage() {
                         {(trade.direction === 'LONG' || trade.direction === 'BUY') ? 'L' : 'S'}
                       </div>
                     </td>
-                    <td className="py-3 px-2 text-right font-mono text-slate-300 text-xs tabular-nums">{trade.entry_price.toFixed(2)}</td>
+                    <td className="py-3 px-2 text-right font-mono text-slate-600 text-xs tabular-nums">{trade.entry_price.toFixed(2)}</td>
                     <td className="py-3 px-2 text-right font-mono text-trading-bear/70 text-xs tabular-nums hidden lg:table-cell">{trade.stop_loss.toFixed(2)}</td>
                     <td className="py-3 px-2 text-right font-mono text-trading-bull/70 text-xs tabular-nums hidden lg:table-cell">{trade.target.toFixed(2)}</td>
                     <td className="py-3 px-2 text-center font-mono text-trading-info text-xs tabular-nums hidden lg:table-cell">{trade.prrr.toFixed(1)}</td>
-                    <td className="py-3 px-2 text-right font-mono font-semibold text-white text-xs tabular-nums hidden md:table-cell">{trade.current_price.toFixed(2)}</td>
+                    <td className="py-3 px-2 text-right font-mono font-semibold text-slate-900 text-xs tabular-nums hidden md:table-cell">{trade.current_price.toFixed(2)}</td>
                     <td className="py-3 px-2 text-center font-mono text-trading-ai text-xs tabular-nums hidden lg:table-cell">{trade.crrr.toFixed(2)}</td>
                     <td className={cn('py-3 px-2 text-right font-mono font-bold text-xs tabular-nums', isProfit ? 'text-trading-bull' : 'text-trading-bear')}>
                       <div className="flex items-center justify-end gap-1">
@@ -245,11 +245,11 @@ export default function ActiveTradesPage() {
         </div>
 
         {/* Summary Row */}
-        <div className="flex items-center justify-between py-4 px-4 border-t border-trading-border/20 bg-trading-bg-secondary/20">
+        <div className="flex items-center justify-between py-4 px-4 border-t border-slate-200 bg-slate-50">
           <div className="flex items-center gap-6">
             <div>
               <span className="text-[9px] text-slate-500 uppercase tracking-wider">Positions </span>
-              <span className="text-xs font-mono font-bold text-white">{totalPositions}</span>
+              <span className="text-xs font-mono font-bold text-slate-900">{totalPositions}</span>
             </div>
             <div>
               <span className="text-[9px] text-slate-500 uppercase tracking-wider">Avg RRR </span>
@@ -266,7 +266,7 @@ export default function ActiveTradesPage() {
       </GlassCard>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 text-[10px] text-slate-600">
+      <div className="flex items-center gap-4 text-[10px] text-slate-500">
         <div className="flex items-center gap-1.5">
           <StatusBadge status="OPEN" size="sm" />
           <span>Active</span>
