@@ -434,30 +434,22 @@ async def cmd_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if issues:
         report += "\n\u26a0\ufe0f Issues:\n" + "\n".join(issues) + "\n"
 
-    # Run AI analysis if API key available
+    # Run AI analysis via Grok/Kimi
     ai_analysis = ""
     try:
-        if settings.ANTHROPIC_API_KEY:
-            import anthropic
-            client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        from mcp_server.ai_provider import call_ai
 
-            prompt = (
-                f"Analyze this Indian stock market trading signal in 4-5 bullet points. "
-                f"Be concise and actionable.\n\n"
-                f"Signal: {signal.direction} {signal.ticker}\n"
-                f"Entry: Rs.{signal.entry_price} | SL: Rs.{signal.stop_loss} | Target: Rs.{signal.target}\n"
-                f"RRR: {signal.rrr}\n\n"
-                f"Cover: 1) Is the RRR acceptable? 2) Key support/resistance near these levels "
-                f"3) Risk assessment 4) Verdict: TAKE / SKIP / WAIT with brief reason"
-            )
+        prompt = (
+            f"Analyze this Indian stock market trading signal in 4-5 bullet points. "
+            f"Be concise and actionable.\n\n"
+            f"Signal: {signal.direction} {signal.ticker}\n"
+            f"Entry: Rs.{signal.entry_price} | SL: Rs.{signal.stop_loss} | Target: Rs.{signal.target}\n"
+            f"RRR: {signal.rrr}\n\n"
+            f"Cover: 1) Is the RRR acceptable? 2) Key support/resistance near these levels "
+            f"3) Risk assessment 4) Verdict: TAKE / SKIP / WAIT with brief reason"
+        )
 
-            response = client.messages.create(
-                model=settings.AI_REPORT_MODEL,  # Uses haiku by default
-                max_tokens=300,
-                timeout=15.0,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            ai_analysis = response.content[0].text.strip()
+        ai_analysis = call_ai(prompt=prompt, max_tokens=300)
     except Exception as e:
         logger.warning("AI analysis failed for /analyze: %s", e)
         ai_analysis = "(AI analysis unavailable)"

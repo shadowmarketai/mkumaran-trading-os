@@ -48,11 +48,22 @@ class Settings:
     KITE_TOTP_KEY: str = os.getenv("KITE_TOTP_KEY", "")
     KITE_REDIRECT_URL: str = os.getenv("KITE_REDIRECT_URL", "https://money.shadowmarket.ai/api/kite_callback")
 
-    # Claude AI
+    # Claude AI (legacy — kept for backward compatibility)
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 
-    # OpenAI (GPT second opinion for borderline signals)
+    # OpenAI (legacy — kept for backward compatibility)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+
+    # Grok (xAI) — primary AI provider
+    GROK_API_KEY: str = os.getenv("GROK_API_KEY", "")
+    GROK_MODEL: str = os.getenv("GROK_MODEL", "grok-3-mini")
+
+    # Kimi (Moonshot) — secondary AI provider
+    KIMI_API_KEY: str = os.getenv("KIMI_API_KEY", "")
+    KIMI_MODEL: str = os.getenv("KIMI_MODEL", "moonshot-v1-8k")
+
+    # AI provider routing
+    AI_PRIMARY_PROVIDER: str = os.getenv("AI_PRIMARY_PROVIDER", "grok")  # "grok" or "kimi"
 
     # Angel One SmartAPI
     ANGEL_API_KEY: str = os.getenv("ANGEL_API_KEY", "")

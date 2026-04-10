@@ -119,11 +119,9 @@ def validate_signal(
             "boosts": confidence_boosts,
         }
 
-    # ── Gate 3: Call Claude AI ────────────────────────────────
+    # ── Gate 3: Call AI (Grok/Kimi) ──────────────────────────
     try:
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=api_key)
+        from mcp_server.ai_provider import call_ai
 
         # Determine RRR threshold based on asset class
         rrr_threshold = "2:1 for MCX/NFO/CDS (leveraged), 3:1 for equity"
@@ -156,15 +154,7 @@ Respond ONLY in JSON:
 
 Thresholds: >= 70 = ALERT (execute), 50-69 = WATCHLIST (monitor), < 50 = SKIP"""
 
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=300,
-            timeout=30.0,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        # Parse response
-        text = response.content[0].text.strip()
+        text = call_ai(prompt=prompt, max_tokens=300)
 
         # Try to extract JSON from response
         if "{" in text and "}" in text:

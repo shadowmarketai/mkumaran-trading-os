@@ -1,10 +1,10 @@
 """
 Wall Street Tools -- 10 AI-powered analysis functions for MKUMARAN Trading OS.
-Each function wraps a Wall Street prompt template and calls Claude AI.
+Each function wraps a Wall Street prompt template and calls AI (Grok/Kimi).
 """
 import logging
 import json
-from mcp_server.config import settings
+from mcp_server.ai_provider import call_ai, call_ai_second_opinion
 from mcp_server.prompts import (
     GOLDMAN_SCREEN_PROMPT,
     MORGAN_STANLEY_DCF_PROMPT,
@@ -21,46 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 def _call_claude(prompt: str, max_tokens: int = 500) -> str:
-    """Call Claude API with a prompt. Returns raw text response."""
-    if not settings.ANTHROPIC_API_KEY:
-        return '{"error": "ANTHROPIC_API_KEY not configured"}'
-
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=max_tokens,
-            timeout=30.0,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.content[0].text.strip()
-    except Exception as e:
-        logger.error("Claude API call failed: %s", e)
-        return f'{{"error": "{e}"}}'
+    """Call primary AI provider (Grok/Kimi). Legacy name kept for compatibility."""
+    return call_ai(prompt=prompt, max_tokens=max_tokens)
 
 
-def _call_gpt(prompt: str, max_tokens: int = 500, model: str = "gpt-4o-mini") -> str:
-    """Call OpenAI GPT API. Returns raw text response. Empty string on failure."""
-    from .config import settings as _settings
-
-    if not _settings.OPENAI_API_KEY:
-        return ""
-    try:
-        from openai import OpenAI
-
-        client = OpenAI(api_key=_settings.OPENAI_API_KEY)
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
-            temperature=0.3,
-        )
-        return resp.choices[0].message.content.strip()
-    except Exception as e:
-        logger.warning("GPT call failed: %s", e)
-        return ""
+def _call_gpt(prompt: str, max_tokens: int = 500, model: str = "") -> str:
+    """Call secondary AI provider for second opinion. Legacy name kept for compatibility."""
+    return call_ai_second_opinion(prompt=prompt, max_tokens=max_tokens)
 
 
 async def generate_ai_report(report_type: str, data: dict) -> str:

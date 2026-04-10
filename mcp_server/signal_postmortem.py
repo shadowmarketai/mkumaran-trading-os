@@ -258,12 +258,12 @@ def _try_claude_narrative(
     if not api_key:
         return None
     try:
-        from anthropic import Anthropic
+        from mcp_server.ai_provider import call_ai
     except Exception:
         return None
 
     try:
-        client = Anthropic(api_key=api_key)
+        # AI provider handles client internally
 
         summary = {
             "ticker": sig.ticker,

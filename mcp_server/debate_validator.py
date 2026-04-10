@@ -13,7 +13,6 @@ Signal Flow:
 Fallback chain: debate fails → single-pass → BLOCK (fail-safe preserved).
 """
 
-import json
 import logging
 from dataclasses import dataclass, field
 
@@ -124,24 +123,18 @@ def _build_memory_context(similar_trades: list[dict]) -> str:
 
 def _call_claude(client, system_prompt: str, user_prompt: str) -> dict:
     """
-    Make a single Claude API call and parse JSON response.
+    Make a single AI call (Grok/Kimi) and parse JSON response.
 
+    The `client` parameter is ignored — we use the unified ai_provider.
     Returns parsed dict or raises on failure.
-    Timeout: 30s per call to prevent pipeline hangs.
     """
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    from mcp_server.ai_provider import call_ai_with_system
+    return call_ai_with_system(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
         max_tokens=400,
-        timeout=30.0,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
+        temperature=0.3,
     )
-    text = response.content[0].text.strip()
-
-    if "{" in text and "}" in text:
-        json_str = text[text.index("{"):text.rindex("}") + 1]
-        return json.loads(json_str)
-    raise ValueError(f"Non-JSON response: {text[:200]}")
 
 
 def _call_bull_analyst(client, ctx: str, memory_ctx: str, bear_argument: str = "") -> DebateMessage:
@@ -379,12 +372,9 @@ def _run_full_debate(
     if not settings.ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY not set")
 
-    api_key = settings.ANTHROPIC_API_KEY.strip()
-    if len(api_key) < 20 or not api_key.startswith("sk-"):
-        raise ValueError("ANTHROPIC_API_KEY appears invalid")
-
-    import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
+    # Client is no longer needed — ai_provider handles it internally
+    # But we pass None to maintain function signatures
+    client = None
 
     ctx = _build_signal_context(
         ticker=ticker, direction=direction, pattern=pattern, rrr=rrr,

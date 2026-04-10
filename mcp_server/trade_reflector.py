@@ -67,10 +67,10 @@ class TradeReflector:
 
     def _generate_lesson(self, record: TradeRecord) -> str:
         """Generate lesson using Claude API (1 API call)."""
-        import anthropic
+        from mcp_server.ai_provider import call_ai
 
         api_key = settings.ANTHROPIC_API_KEY.strip()
-        client = anthropic.Anthropic(api_key=api_key)
+        # AI provider handles client internally
 
         prompt = (
             f"You are a trading coach reviewing a closed trade. Generate a concise lesson (1-2 sentences).\n\n"
