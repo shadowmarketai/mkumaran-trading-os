@@ -29,9 +29,9 @@ import type { Signal, ScannerResult, SectorStrength } from '../types';
 // --- Scanner Heatmap ---
 function ScannerCell({ scanner }: { scanner: ScannerResult }) {
   const colorMap: Record<string, string> = {
-    BULL: 'bg-trading-bull/10 text-trading-bull border-trading-bull/12',
-    BEAR: 'bg-trading-bear/10 text-trading-bear border-trading-bear/12',
-    NEUTRAL: 'bg-trading-bg-secondary/60 text-slate-500 border-trading-border/20',
+    BULL: 'bg-trading-bull-dim text-trading-bull border-emerald-200',
+    BEAR: 'bg-red-50 text-trading-bear border-red-200',
+    NEUTRAL: 'bg-slate-50 text-slate-500 border-slate-200',
   };
 
   return (
@@ -39,7 +39,7 @@ function ScannerCell({ scanner }: { scanner: ScannerResult }) {
       className={cn('p-2 rounded-xl border text-center transition-all hover:scale-[1.02]', colorMap[scanner.direction])}
       title={`${scanner.name}: ${scanner.count} stocks`}
     >
-      <p className="text-[9px] font-medium truncate text-slate-400">{scanner.name}</p>
+      <p className="text-[9px] font-medium truncate text-slate-500">{scanner.name}</p>
       <p className="text-lg font-mono font-bold tabular-nums">{scanner.count}</p>
       <p className="text-[8px] opacity-50 font-mono">{scanner.group}</p>
     </div>
@@ -58,7 +58,7 @@ function ScoreBar({ bullPct, bearPct }: { bullPct: number; bearPct: number }) {
           BEAR {(bearPct ?? 0).toFixed(1)}% <ArrowDownRight size={10} />
         </span>
       </div>
-      <div className="h-2 bg-trading-bg-secondary rounded-full overflow-hidden flex border border-trading-border/20">
+      <div className="h-2 bg-slate-50 rounded-full overflow-hidden flex border border-slate-200">
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${bullPct}%` }}
@@ -79,8 +79,8 @@ function ScoreBar({ bullPct, bearPct }: { bullPct: number; bearPct: number }) {
 // --- Sector Badge ---
 function SectorBadge({ sector, strength }: { sector: string; strength: SectorStrength }) {
   return (
-    <div className="flex items-center justify-between px-3 py-2.5 bg-trading-bg-secondary/40 rounded-xl border border-trading-border/20">
-      <span className="text-xs text-slate-400">{sector}</span>
+    <div className="flex items-center justify-between px-3 py-2.5 bg-slate-50 rounded-xl border border-slate-200">
+      <span className="text-xs text-slate-500">{sector}</span>
       <StatusBadge status={strength} size="sm" />
     </div>
   );
@@ -138,7 +138,7 @@ function NewsWidget() {
           <Newspaper size={14} className="text-trading-ai" />
           <h3 className="stat-label">Market News</h3>
           {highItems.length > 0 && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-trading-bear/10 text-trading-bear text-[9px] font-mono font-bold border border-trading-bear/20">
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-red-50 text-trading-bear text-[9px] font-mono font-bold border border-red-200">
               <AlertTriangle size={9} />
               {highItems.length} HIGH
             </span>
@@ -153,19 +153,19 @@ function NewsWidget() {
           <div
             key={item.url || `${item.title}-${idx}`}
             className={cn(
-              'flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/[0.02] transition-colors',
-              item.impact === 'HIGH' ? 'bg-trading-bear/[0.03]' : '',
+              'flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-slate-50 transition-colors',
+              item.impact === 'HIGH' ? 'bg-red-50/50' : '',
             )}
           >
             <span className={cn(
               'w-1.5 h-1.5 rounded-full flex-shrink-0',
               item.impact === 'HIGH' ? 'bg-trading-bear' : 'bg-trading-alert',
             )} />
-            <span className="text-[11px] text-slate-300 truncate flex-1">{item.title}</span>
-            <span className="text-[9px] text-slate-600 font-mono flex-shrink-0">{item.source}</span>
+            <span className="text-[11px] text-slate-600 truncate flex-1">{item.title}</span>
+            <span className="text-[9px] text-slate-400 font-mono flex-shrink-0">{item.source}</span>
             {item.url && (
               <a href={item.url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
-                <ExternalLink size={9} className="text-slate-600 hover:text-slate-400 transition-colors" />
+                <ExternalLink size={9} className="text-slate-400 hover:text-slate-600 transition-colors" />
               </a>
             )}
           </div>
@@ -222,7 +222,7 @@ export default function OverviewPage() {
     return (
       <div className="flex flex-col items-center justify-center py-24">
         <div className="relative">
-          <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-2xl bg-violet-50 text-trading-ai flex items-center justify-center">
             <Loader2 size={24} className="text-trading-ai animate-spin" />
           </div>
           <div className="absolute inset-0 rounded-2xl bg-trading-ai/5 animate-ping" />
@@ -235,7 +235,7 @@ export default function OverviewPage() {
   if (mwaError) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <div className="w-12 h-12 rounded-2xl bg-trading-alert/10 flex items-center justify-center mb-4">
+        <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
           <AlertCircle size={24} className="text-trading-alert" />
         </div>
         <p className="text-slate-500 text-xs">{mwaError}</p>
@@ -288,8 +288,8 @@ export default function OverviewPage() {
                 className={cn(
                   'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all',
                   scanning
-                    ? 'bg-trading-bg-secondary text-slate-500 cursor-not-allowed'
-                    : 'bg-trading-ai/12 text-trading-ai-light hover:bg-trading-ai/18 border border-trading-ai/25'
+                    ? 'bg-slate-50 text-slate-500 cursor-not-allowed'
+                    : 'bg-violet-50 text-trading-ai-light hover:bg-trading-ai/18 border border-violet-200'
                 )}
               >
                 {scanning ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
@@ -300,27 +300,27 @@ export default function OverviewPage() {
               <ScoreBar bullPct={mwa.bull_pct} bearPct={mwa.bear_pct} />
 
               <div className="grid grid-cols-2 gap-2">
-                <div className="text-center p-3 rounded-xl bg-trading-bull/[0.04] border border-trading-bull/10">
+                <div className="text-center p-3 rounded-xl bg-trading-bull-dim border border-emerald-200">
                   <p className="text-2xl font-mono font-bold text-trading-bull tabular-nums">{mwa.bull_score}</p>
                   <p className="stat-label mt-1">Bull Score</p>
                 </div>
-                <div className="text-center p-3 rounded-xl bg-trading-bear/[0.04] border border-trading-bear/10">
+                <div className="text-center p-3 rounded-xl bg-red-50 border border-red-200">
                   <p className="text-2xl font-mono font-bold text-trading-bear tabular-nums">{mwa.bear_score}</p>
                   <p className="stat-label mt-1">Bear Score</p>
                 </div>
               </div>
 
               {/* FII / DII */}
-              <div className="pt-3 border-t border-trading-border/20 space-y-2">
+              <div className="pt-3 border-t border-slate-200 space-y-2">
                 <h4 className="stat-label">Institutional Flow</h4>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-trading-bg-secondary/40 border border-trading-border/20">
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                     <span className="text-[10px] text-slate-500">FII</span>
                     <span className={cn('text-xs font-mono font-bold tabular-nums', (mwa.fii_net ?? 0) >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
                       {(mwa.fii_net ?? 0) >= 0 ? '+' : ''}{(mwa.fii_net ?? 0).toFixed(0)} Cr
                     </span>
                   </div>
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-trading-bg-secondary/40 border border-trading-border/20">
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                     <span className="text-[10px] text-slate-500">DII</span>
                     <span className={cn('text-xs font-mono font-bold tabular-nums', (mwa.dii_net ?? 0) >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
                       {(mwa.dii_net ?? 0) >= 0 ? '+' : ''}{(mwa.dii_net ?? 0).toFixed(0)} Cr
@@ -331,7 +331,7 @@ export default function OverviewPage() {
 
               {/* Promoted Stocks */}
               {mwa.promoted_stocks && mwa.promoted_stocks.length > 0 && (
-                <div className="pt-3 border-t border-trading-border/20">
+                <div className="pt-3 border-t border-slate-200">
                   <h4 className="stat-label mb-2">Promoted Stocks</h4>
                   <div className="flex flex-wrap gap-1.5">
                     {mwa.promoted_stocks.map((stock) => (
@@ -352,16 +352,16 @@ export default function OverviewPage() {
           <GlassCard className="lg:col-span-2">
             <div className="flex items-center justify-between mb-4">
               <h3 className="stat-label">{scannerEntries.length}-Scanner Heatmap</h3>
-              <span className="text-[9px] text-slate-600 font-mono">{scannerLayers.length} layers</span>
+              <span className="text-[9px] text-slate-400 font-mono">{scannerLayers.length} layers</span>
             </div>
             {scannerEntries.length > 0 ? (
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                 {scannerLayers.map(([layer, scanners]) => (
                   <div key={layer}>
-                    <p className="text-[9px] text-slate-600 uppercase tracking-[0.12em] mb-1.5 flex items-center gap-1.5">
-                      <span className={cn('w-1.5 h-1.5 rounded-full', layerColors[layer] || 'bg-slate-600')} />
+                    <p className="text-[9px] text-slate-400 uppercase tracking-[0.12em] mb-1.5 flex items-center gap-1.5">
+                      <span className={cn('w-1.5 h-1.5 rounded-full', layerColors[layer] || 'bg-slate-400')} />
                       {layer}
-                      <span className="text-slate-600">({scanners.length})</span>
+                      <span className="text-slate-400">({scanners.length})</span>
                     </p>
                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-1.5">
                       {scanners.map((scanner) => (
@@ -372,14 +372,14 @@ export default function OverviewPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-slate-600 text-xs text-center py-8">No scanner data available</p>
+              <p className="text-slate-500 text-xs text-center py-8">No scanner data available</p>
             )}
           </GlassCard>
         </div>
       ) : (
         <GlassCard className="text-center py-14">
-          <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mx-auto mb-3">
-            <Compass size={24} className="text-slate-600" />
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3">
+            <Compass size={24} className="text-slate-400" />
           </div>
           <p className="text-slate-500 text-xs mb-4">No MWA data. Run the scanner to see market breadth.</p>
           <button
@@ -388,8 +388,8 @@ export default function OverviewPage() {
             className={cn(
               'inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold transition-all',
               scanning
-                ? 'bg-trading-bg-secondary text-slate-500 cursor-not-allowed'
-                : 'bg-trading-ai/12 text-trading-ai-light hover:bg-trading-ai/18 border border-trading-ai/25'
+                ? 'bg-slate-50 text-slate-500 cursor-not-allowed'
+                : 'bg-violet-50 text-trading-ai-light hover:bg-trading-ai/18 border border-violet-200'
             )}
           >
             {scanning ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
@@ -449,10 +449,10 @@ export default function OverviewPage() {
           <div>
             <h3 className="stat-label mb-4">Today's Signals</h3>
             <GlassCard className="text-center py-14">
-              <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mx-auto mb-3">
-                <Zap size={24} className="text-slate-600" />
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                <Zap size={24} className="text-slate-400" />
               </div>
-              <p className="text-slate-600 text-xs">No signals generated yet today</p>
+              <p className="text-slate-500 text-xs">No signals generated yet today</p>
             </GlassCard>
           </div>
         ) : null;

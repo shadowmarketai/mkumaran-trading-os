@@ -70,9 +70,9 @@ export default function PaperTradingPage() {
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 2, repeat: Infinity, ease: [0.16, 1, 0.3, 1] }}
-          className="w-12 h-12 rounded-2xl bg-trading-ai/10"
+          className="w-12 h-12 rounded-2xl bg-violet-50"
         />
-        <p className="text-slate-400 text-sm mt-4">Loading paper trading status...</p>
+        <p className="text-slate-500 text-sm mt-4">Loading paper trading status...</p>
       </div>
     );
   }
@@ -81,7 +81,7 @@ export default function PaperTradingPage() {
     return (
       <div className="flex flex-col items-center justify-center py-24">
         <AlertCircle size={48} className="text-trading-alert mb-4" />
-        <p className="text-slate-400 text-sm">Failed to load status: {error}</p>
+        <p className="text-slate-500 text-sm">Failed to load status: {error}</p>
       </div>
     );
   }
@@ -95,7 +95,7 @@ export default function PaperTradingPage() {
     >
       {/* Paper Mode Banner */}
       {status.paper_mode && (
-        <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-trading-ai/10 border border-trading-ai/20 text-trading-ai text-sm">
+        <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-50 border border-violet-200 text-trading-ai text-sm">
           <ShieldAlert size={16} />
           Paper Mode Active — no real orders are sent
         </div>
@@ -150,7 +150,7 @@ export default function PaperTradingPage() {
                 value={form.ticker}
                 onChange={(e) => setForm({ ...form, ticker: e.target.value.toUpperCase() })}
                 placeholder="NSE:RELIANCE"
-                className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40"
+                className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-trading-ai/40"
               />
             </div>
 
@@ -168,7 +168,7 @@ export default function PaperTradingPage() {
                         ? dir === 'BUY'
                           ? 'bg-trading-bull/20 text-trading-bull border border-trading-bull/30'
                           : 'bg-trading-bear/20 text-trading-bear border border-trading-bear/30'
-                        : 'bg-trading-bg-secondary text-slate-500 border border-trading-border/20 hover:text-slate-300'
+                        : 'bg-slate-50 text-slate-500 border border-slate-200 hover:text-slate-900'
                     )}
                   >
                     {dir}
@@ -185,7 +185,7 @@ export default function PaperTradingPage() {
                   min={1}
                   value={form.qty}
                   onChange={(e) => setForm({ ...form, qty: Number(e.target.value) })}
-                  className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm text-white font-mono tabular-nums focus:outline-none focus:border-trading-ai/40"
+                  className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono tabular-nums focus:outline-none focus:border-trading-ai/40"
                 />
               </div>
               <div>
@@ -196,7 +196,7 @@ export default function PaperTradingPage() {
                   min={0}
                   value={form.price || ''}
                   onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
-                  className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm text-white font-mono tabular-nums focus:outline-none focus:border-trading-ai/40"
+                  className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono tabular-nums focus:outline-none focus:border-trading-ai/40"
                 />
               </div>
             </div>
@@ -210,7 +210,7 @@ export default function PaperTradingPage() {
                   min={0}
                   value={form.stop_loss || ''}
                   onChange={(e) => setForm({ ...form, stop_loss: Number(e.target.value) || undefined })}
-                  className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm text-white font-mono tabular-nums focus:outline-none focus:border-trading-ai/40"
+                  className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono tabular-nums focus:outline-none focus:border-trading-ai/40"
                 />
               </div>
               <div>
@@ -221,7 +221,7 @@ export default function PaperTradingPage() {
                   min={0}
                   value={form.target || ''}
                   onChange={(e) => setForm({ ...form, target: Number(e.target.value) || undefined })}
-                  className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm text-white font-mono tabular-nums focus:outline-none focus:border-trading-ai/40"
+                  className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono tabular-nums focus:outline-none focus:border-trading-ai/40"
                 />
               </div>
             </div>
@@ -232,7 +232,7 @@ export default function PaperTradingPage() {
               className={cn(
                 'w-full py-2.5 rounded-xl text-sm font-bold transition-all',
                 status.kill_switch_active
-                  ? 'bg-trading-bg-secondary text-slate-500 cursor-not-allowed'
+                  ? 'bg-slate-50 text-slate-500 cursor-not-allowed'
                   : form.direction === 'BUY'
                     ? 'bg-trading-bull/20 text-trading-bull hover:bg-trading-bull/30 border border-trading-bull/30'
                     : 'bg-trading-bear/20 text-trading-bear hover:bg-trading-bear/30 border border-trading-bear/30'
@@ -244,7 +244,7 @@ export default function PaperTradingPage() {
             {orderMsg && (
               <div className={cn(
                 'text-xs px-3 py-2 rounded-xl',
-                orderMsg.ok ? 'bg-trading-bull/10 text-trading-bull' : 'bg-trading-bear/10 text-trading-bear'
+                orderMsg.ok ? 'bg-trading-bull/10 text-trading-bull' : 'bg-red-50 text-trading-bear'
               )}>
                 {orderMsg.text}
               </div>
@@ -268,7 +268,7 @@ export default function PaperTradingPage() {
                   </button>
                   <button
                     onClick={() => setConfirmCloseAll(false)}
-                    className="px-3 py-1 rounded-xl text-xs text-slate-400 hover:text-white"
+                    className="px-3 py-1 rounded-xl text-xs text-slate-500 hover:text-slate-900"
                   >
                     Cancel
                   </button>
@@ -287,7 +287,7 @@ export default function PaperTradingPage() {
 
           {status.positions.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 px-4">
-              <Layers size={40} className="text-slate-600 mb-3" />
+              <Layers size={40} className="text-slate-400 mb-3" />
               <p className="text-slate-500 text-sm">No open positions</p>
               <p className="text-slate-500 text-xs mt-1">Place an order to get started</p>
             </div>
@@ -295,7 +295,7 @@ export default function PaperTradingPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-[9px]">
                 <thead>
-                  <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] border-b border-trading-border/20">
+                  <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] border-b border-slate-200">
                     <th className="text-left py-3 px-4">Order ID</th>
                     <th className="text-left py-3 px-4">Ticker</th>
                     <th className="text-center py-3 px-4">Dir</th>
@@ -307,20 +307,20 @@ export default function PaperTradingPage() {
                     <th className="text-center py-3 px-4">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-trading-border/15">
+                <tbody className="divide-y divide-slate-200">
                   {status.positions.map((pos, idx) => (
                     <motion.tr
                       key={pos.order_id}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.2, delay: idx * 0.05, ease: [0.16, 1, 0.3, 1] }}
-                      className="hover:bg-white/[0.015] transition-colors"
+                      className="hover:bg-slate-50 transition-colors"
                     >
                       <td className="py-3 px-4">
-                        <span className="font-mono text-[9px] text-slate-400 tabular-nums">{pos.order_id}</span>
+                        <span className="font-mono text-[9px] text-slate-500 tabular-nums">{pos.order_id}</span>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="font-mono font-bold text-white">{pos.ticker}</span>
+                        <span className="font-mono font-bold text-slate-900">{pos.ticker}</span>
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span className={cn(
@@ -330,8 +330,8 @@ export default function PaperTradingPage() {
                           {pos.direction}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-300 tabular-nums">{pos.qty}</td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-300 tabular-nums">
+                      <td className="py-3 px-4 text-right font-mono text-slate-600 tabular-nums">{pos.qty}</td>
+                      <td className="py-3 px-4 text-right font-mono text-slate-600 tabular-nums">
                         {pos.entry_price.toFixed(2)}
                       </td>
                       <td className="py-3 px-4 text-right font-mono text-trading-bear hidden md:table-cell tabular-nums">
@@ -341,10 +341,10 @@ export default function PaperTradingPage() {
                         {pos.trail_active ? (
                           <span className="text-[9px] text-trading-bull">ON</span>
                         ) : (
-                          <span className="text-[9px] text-slate-600">OFF</span>
+                          <span className="text-[9px] text-slate-400">OFF</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-center font-mono text-slate-400 hidden lg:table-cell tabular-nums">
+                      <td className="py-3 px-4 text-center font-mono text-slate-500 hidden lg:table-cell tabular-nums">
                         {pos.partial_exits}
                       </td>
                       <td className="py-3 px-4 text-center">

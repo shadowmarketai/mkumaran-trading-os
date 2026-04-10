@@ -45,7 +45,7 @@ function RankChange({ current, prev }: { current: number; prev: number | null })
 function ScoreBar({ score }: { score: number }) {
   const pct = Math.min(score * 100, 100);
   return (
-    <div className="w-20 h-1.5 bg-trading-card rounded-full overflow-hidden">
+    <div className="w-20 h-1.5 bg-white rounded-full overflow-hidden">
       <div
         className="h-full rounded-full bg-gradient-to-r from-trading-ai to-trading-ai-light"
         style={{ width: `${pct}%` }}
@@ -74,7 +74,7 @@ function RankingsTable({ rankings }: { rankings: MomentumStock[] }) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-[9px] uppercase tracking-[0.12em] text-slate-500 border-b border-trading-border/20">
+          <tr className="text-[9px] uppercase tracking-[0.12em] text-slate-500 border-b border-slate-200">
             <th className="py-2.5 px-2 md:px-3 text-left">#</th>
             <th className="py-2.5 px-2 text-center w-12"></th>
             <th className="py-2.5 px-2 md:px-3 text-left">Symbol</th>
@@ -94,21 +94,21 @@ function RankingsTable({ rankings }: { rankings: MomentumStock[] }) {
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0 }}
-                className="border-b border-trading-border/20 hover:bg-white/[0.015] transition-colors"
+                className="border-b border-slate-200 hover:bg-slate-50 transition-colors"
               >
-                <td className="py-2.5 px-2 md:px-3 font-mono font-bold text-white tabular-nums">{stock.rank}</td>
+                <td className="py-2.5 px-2 md:px-3 font-mono font-bold text-slate-900 tabular-nums">{stock.rank}</td>
                 <td className="py-2.5 px-2 text-center">
                   <RankChange current={stock.rank} prev={stock.prev_rank} />
                 </td>
-                <td className="py-2.5 px-2 md:px-3 font-medium text-white">{stock.ticker}</td>
+                <td className="py-2.5 px-2 md:px-3 font-medium text-slate-900">{stock.ticker}</td>
                 <td className="py-2.5 px-3 hidden md:table-cell">
-                  <span className="text-xs text-slate-400 bg-trading-card/50 px-2 py-0.5 rounded">
+                  <span className="text-xs text-slate-500 bg-white/50 px-2 py-0.5 rounded">
                     {stock.sector}
                   </span>
                 </td>
                 <td className="py-2.5 px-2 md:px-3">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs text-white tabular-nums">{stock.score.toFixed(3)}</span>
+                    <span className="font-mono text-xs text-slate-900 tabular-nums">{stock.score.toFixed(3)}</span>
                     <ScoreBar score={stock.score} />
                   </div>
                 </td>
@@ -116,7 +116,7 @@ function RankingsTable({ rankings }: { rankings: MomentumStock[] }) {
                 <td className="py-2.5 px-3 text-right hidden md:table-cell"><ReturnCell value={stock.ret_6m} /></td>
                 <td className="py-2.5 px-2 md:px-3 text-right"><ReturnCell value={stock.ret_12m} /></td>
                 <td className="py-2.5 px-3 text-right hidden md:table-cell">
-                  <span className="font-mono text-xs text-slate-400 tabular-nums">{stock.volatility.toFixed(1)}%</span>
+                  <span className="font-mono text-xs text-slate-500 tabular-nums">{stock.volatility.toFixed(1)}%</span>
                 </td>
               </motion.tr>
             ))}
@@ -146,7 +146,7 @@ function SignalCard({ signal }: { signal: RebalanceSignal }) {
           ) : (
             <XCircle size={14} className="text-trading-bear" />
           )}
-          <span className="font-medium text-white">{signal.ticker}</span>
+          <span className="font-medium text-slate-900">{signal.ticker}</span>
         </div>
         <span
           className={cn(
@@ -159,9 +159,9 @@ function SignalCard({ signal }: { signal: RebalanceSignal }) {
           {signal.action}
         </span>
       </div>
-      <p className="text-xs text-slate-400">{signal.reason}</p>
+      <p className="text-xs text-slate-500">{signal.reason}</p>
       <div className="flex items-center gap-2 mt-1.5">
-        <span className="text-[10px] text-slate-500 bg-trading-card/50 px-1.5 py-0.5 rounded">
+        <span className="text-[10px] text-slate-500 bg-white/50 px-1.5 py-0.5 rounded">
           {signal.sector}
         </span>
         {signal.score > 0 && (
@@ -206,10 +206,10 @@ export default function MomentumPage() {
   if (loading && !data) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center mb-4">
+        <div className="w-12 h-12 rounded-2xl bg-violet-50 text-trading-ai flex items-center justify-center mb-4">
           <Loader2 size={24} className="text-trading-ai animate-spin" />
         </div>
-        <p className="text-slate-400 text-sm">Loading momentum data...</p>
+        <p className="text-slate-500 text-sm">Loading momentum data...</p>
       </div>
     );
   }
@@ -217,10 +217,10 @@ export default function MomentumPage() {
   if (error && !data) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mb-4">
+        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
           <AlertCircle size={24} className="text-trading-alert" />
         </div>
-        <p className="text-slate-400 text-sm">Failed to load: {error}</p>
+        <p className="text-slate-500 text-sm">Failed to load: {error}</p>
         <button onClick={refresh} className="mt-4 text-trading-ai text-sm hover:underline">
           Retry
         </button>
@@ -239,7 +239,7 @@ export default function MomentumPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Rocket size={20} className="text-trading-ai" />
-          <h2 className="text-lg font-semibold text-white">Momentum Ranking</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Momentum Ranking</h2>
           {data?.ranked_at && (
             <span className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
               <Clock size={10} />
@@ -257,8 +257,8 @@ export default function MomentumPage() {
                 className={cn(
                   'px-2 py-1 rounded-xl text-xs font-mono transition-colors',
                   topN === n
-                    ? 'bg-trading-card text-white border border-trading-ai/30'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-trading-bg-secondary/50',
+                    ? 'bg-white text-slate-900 border border-trading-ai/30'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50',
                 )}
               >
                 Top {n}
@@ -266,7 +266,7 @@ export default function MomentumPage() {
             ))}
           </div>
 
-          <div className="w-px h-5 bg-trading-border/30 hidden sm:block" />
+          <div className="w-px h-5 bg-slate-200 hidden sm:block" />
 
           <button
             onClick={() => triggerRebalance(topN)}
@@ -275,7 +275,7 @@ export default function MomentumPage() {
               'flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-medium transition-all',
               rebalancing
                 ? 'bg-trading-ai/20 text-trading-ai-light cursor-wait'
-                : 'bg-trading-ai/12 text-trading-ai-light hover:bg-trading-ai/18 border border-trading-ai/25',
+                : 'bg-violet-50 text-trading-ai-light hover:bg-trading-ai/18 border border-violet-200',
             )}
           >
             {rebalancing ? (
@@ -298,11 +298,11 @@ export default function MomentumPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <GlassCard className="!p-3 text-center">
             <p className="stat-label">Ranked</p>
-            <p className="text-xl font-mono font-bold text-white tabular-nums">{rankings.length}</p>
+            <p className="text-xl font-mono font-bold text-slate-900 tabular-nums">{rankings.length}</p>
           </GlassCard>
           <GlassCard className="!p-3 text-center">
             <p className="stat-label">Holdings</p>
-            <p className="text-xl font-mono font-bold text-white tabular-nums">{holdings.length}</p>
+            <p className="text-xl font-mono font-bold text-slate-900 tabular-nums">{holdings.length}</p>
           </GlassCard>
           <GlassCard className="!p-3 text-center" glowColor="bull">
             <p className="stat-label">Buy Signals</p>
@@ -318,18 +318,18 @@ export default function MomentumPage() {
       {/* Rankings Table */}
       {rankings.length > 0 ? (
         <GlassCard className="!p-0 overflow-hidden">
-          <div className="px-4 py-3 border-b border-trading-border/30 flex items-center gap-2">
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
             <TrendingUp size={14} className="text-trading-ai" />
-            <span className="text-sm font-medium text-white">Top {rankings.length} by Momentum Score</span>
+            <span className="text-sm font-medium text-slate-900">Top {rankings.length} by Momentum Score</span>
           </div>
           <RankingsTable rankings={rankings} />
         </GlassCard>
       ) : (
         <GlassCard className="text-center py-12">
-          <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mx-auto mb-3">
-            <Rocket size={24} className="text-slate-600" />
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3">
+            <Rocket size={24} className="text-slate-400" />
           </div>
-          <p className="text-slate-400 text-sm mb-1">No momentum rankings yet</p>
+          <p className="text-slate-500 text-sm mb-1">No momentum rankings yet</p>
           <p className="text-slate-500 text-xs">
             Click "Trigger Rebalance" to scan the NSE universe and generate rankings.
           </p>
@@ -340,7 +340,7 @@ export default function MomentumPage() {
       {signals.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-white">Rebalance Signals</span>
+            <span className="text-sm font-medium text-slate-900">Rebalance Signals</span>
             <span className="text-[10px] text-slate-500 font-mono tabular-nums">
               {buySignals.length} BUY / {sellSignals.length} SELL
             </span>
@@ -361,7 +361,7 @@ export default function MomentumPage() {
             {holdings.map((ticker) => (
               <span
                 key={ticker}
-                className="px-2.5 py-1 rounded-xl text-xs font-medium text-white bg-trading-card border border-trading-border/20"
+                className="px-2.5 py-1 rounded-xl text-xs font-medium text-slate-900 bg-white border border-slate-200"
               >
                 {ticker}
               </span>
@@ -372,14 +372,14 @@ export default function MomentumPage() {
 
       {/* Error display */}
       {error && (
-        <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-trading-bear/10 border border-trading-bear/20">
+        <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 border border-red-200">
           <AlertCircle size={14} className="text-trading-bear" />
           <span className="text-xs text-trading-bear">{error}</span>
         </div>
       )}
 
       {/* Footer */}
-      <p className="text-center text-[10px] text-slate-600">
+      <p className="text-center text-[10px] text-slate-400">
         Score = 0.4 x 12M + 0.3 x 6M + 0.2 x 3M + 0.1 x InvVol | Min-max normalized | Rebalance monthly
       </p>
     </motion.div>

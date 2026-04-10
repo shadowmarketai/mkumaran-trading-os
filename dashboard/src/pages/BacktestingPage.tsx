@@ -50,8 +50,8 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   const data = payload[0];
   return (
     <div className="glass-card p-3 text-xs space-y-1">
-      <p className="text-slate-400">{label}</p>
-      <p className="font-mono tabular-nums text-white">
+      <p className="text-slate-600">{label}</p>
+      <p className="font-mono tabular-nums text-slate-900">
         Equity: <span className="text-trading-bull font-bold">{data.value.toLocaleString('en-IN')}</span>
       </p>
       {data.payload.drawdown < 0 && (
@@ -199,7 +199,7 @@ function ComparisonTable({ data }: { data: BacktestCompareResult }) {
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-trading-border/20">
+            <tr className="border-b border-slate-200">
               <th className="text-left py-2 px-3 text-[9px] text-slate-500 uppercase tracking-[0.12em] cursor-pointer select-none font-medium" onClick={() => handleSort('strategy')}>Strategy <SortIcon col="strategy" /></th>
               <th className="text-right py-2 px-3 text-[9px] text-slate-500 uppercase tracking-[0.12em] cursor-pointer select-none font-medium" onClick={() => handleSort('total_trades')}>Trades <SortIcon col="total_trades" /></th>
               <th className="text-right py-2 px-3 text-[9px] text-slate-500 uppercase tracking-[0.12em] cursor-pointer select-none font-medium" onClick={() => handleSort('win_rate')}>Win Rate <SortIcon col="win_rate" /></th>
@@ -217,30 +217,30 @@ function ComparisonTable({ data }: { data: BacktestCompareResult }) {
                 <tr
                   key={s.strategy}
                   className={cn(
-                    'border-b border-trading-border/20 transition-colors text-[9px]',
-                    isBest ? 'bg-trading-ai/5' : 'hover:bg-white/[0.015]'
+                    'border-b border-slate-200 transition-colors text-[9px]',
+                    isBest ? 'bg-trading-ai/5' : 'hover:bg-slate-50'
                   )}
                 >
                   <td className="py-2.5 px-3">
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: STRATEGY_COLORS[s.strategy] || '#94A3B8' }} />
                       {isBest && <Trophy size={12} className="text-trading-alert" />}
-                      <span className={cn('font-mono font-medium tabular-nums', meta?.color || 'text-white')}>
+                      <span className={cn('font-mono font-medium tabular-nums', meta?.color || 'text-slate-900')}>
                         {meta?.label || s.strategy}
                       </span>
                     </div>
                   </td>
-                  <td className="text-right py-2.5 px-3 font-mono tabular-nums text-slate-300">{s.total_trades}</td>
+                  <td className="text-right py-2.5 px-3 font-mono tabular-nums text-slate-600">{s.total_trades}</td>
                   <td className={cn('text-right py-2.5 px-3 font-mono font-medium tabular-nums', s.win_rate === bestValues['win_rate'] ? 'text-trading-bull' : s.win_rate >= 50 ? 'text-trading-bull' : 'text-trading-bear')}>
                     {s.win_rate.toFixed(1)}%
                   </td>
                   <td className={cn('text-right py-2.5 px-3 font-mono tabular-nums', s.max_drawdown === bestValues['max_drawdown'] ? 'text-trading-bull' : 'text-trading-bear')}>
                     {s.max_drawdown.toFixed(1)}%
                   </td>
-                  <td className={cn('text-right py-2.5 px-3 font-mono tabular-nums', s.profit_factor === bestValues['profit_factor'] ? 'text-trading-bull font-medium' : s.profit_factor >= 1.5 ? 'text-trading-bull' : 'text-slate-300')}>
+                  <td className={cn('text-right py-2.5 px-3 font-mono tabular-nums', s.profit_factor === bestValues['profit_factor'] ? 'text-trading-bull font-medium' : s.profit_factor >= 1.5 ? 'text-trading-bull' : 'text-slate-600')}>
                     {s.profit_factor.toFixed(2)}
                   </td>
-                  <td className={cn('text-right py-2.5 px-3 font-mono tabular-nums', s.sharpe_ratio === bestValues['sharpe_ratio'] ? 'text-trading-bull font-medium' : s.sharpe_ratio >= 1.0 ? 'text-trading-bull' : 'text-slate-300')}>
+                  <td className={cn('text-right py-2.5 px-3 font-mono tabular-nums', s.sharpe_ratio === bestValues['sharpe_ratio'] ? 'text-trading-bull font-medium' : s.sharpe_ratio >= 1.0 ? 'text-trading-bull' : 'text-slate-600')}>
                     {s.sharpe_ratio.toFixed(2)}
                   </td>
                   <td className={cn('text-right py-2.5 px-3 font-mono font-medium tabular-nums', s.total_return === bestValues['total_return'] ? 'text-trading-bull' : s.total_return >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
@@ -306,11 +306,11 @@ export default function BacktestingPage() {
     >
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
           <FlaskConical size={22} className="text-trading-ai" />
           Multi-Engine Backtesting
         </h2>
-        <p className="text-sm text-slate-400 mt-0.5">
+        <p className="text-sm text-slate-500 mt-0.5">
           Test 6 strategies: RRMS, SMC, Wyckoff, VSA, Harmonic, Confluence
         </p>
       </div>
@@ -327,7 +327,7 @@ export default function BacktestingPage() {
               value={form.ticker}
               onChange={(e) => setForm({ ...form, ticker: e.target.value })}
               placeholder="e.g., RELIANCE"
-              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2.5 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40 focus:ring-1 focus:ring-trading-ai/20"
+              className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2.5 text-sm font-mono text-slate-900 placeholder-slate-400 focus:outline-none focus:border-trading-ai/40 focus:ring-1 focus:ring-trading-ai/20"
             />
           </div>
           <div>
@@ -337,7 +337,7 @@ export default function BacktestingPage() {
             <select
               value={form.strategy}
               onChange={(e) => setForm({ ...form, strategy: e.target.value })}
-              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40 focus:ring-1 focus:ring-trading-ai/20"
+              className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2.5 text-sm font-mono text-slate-900 focus:outline-none focus:border-trading-ai/40 focus:ring-1 focus:ring-trading-ai/20"
             >
               {strategies.map((s) => (
                 <option key={s.value} value={s.value}>{s.label}</option>
@@ -355,7 +355,7 @@ export default function BacktestingPage() {
               placeholder="180"
               min="30"
               max="365"
-              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2.5 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40 focus:ring-1 focus:ring-trading-ai/20"
+              className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2.5 text-sm font-mono text-slate-900 placeholder-slate-400 focus:outline-none focus:border-trading-ai/40 focus:ring-1 focus:ring-trading-ai/20"
             />
           </div>
           <button
@@ -364,7 +364,7 @@ export default function BacktestingPage() {
             className={cn(
               'flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all',
               isRunning
-                ? 'bg-trading-bg-secondary text-slate-400 cursor-wait'
+                ? 'bg-slate-50 text-slate-500 cursor-wait'
                 : 'gradient-ai text-white hover:opacity-90'
             )}
           >
@@ -380,8 +380,8 @@ export default function BacktestingPage() {
             className={cn(
               'flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all border',
               comparing
-                ? 'bg-trading-bg-secondary text-slate-400 cursor-wait border-trading-border/20'
-                : 'bg-trading-ai/12 text-trading-ai-light border border-trading-ai/25 hover:bg-trading-ai/18'
+                ? 'bg-slate-50 text-slate-500 cursor-wait border-slate-200'
+                : 'bg-violet-50 text-trading-ai-light border border-violet-200 hover:bg-trading-ai/18'
             )}
           >
             {comparing ? (
@@ -424,13 +424,13 @@ export default function BacktestingPage() {
         >
           {/* Result Header */}
           <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-400">Results for</span>
-            <span className="font-mono font-bold text-white text-lg tabular-nums">{result.ticker}</span>
+            <span className="text-sm text-slate-500">Results for</span>
+            <span className="font-mono font-bold text-slate-900 text-lg tabular-nums">{result.ticker}</span>
             <span className={cn(
               'text-xs px-2 py-0.5 rounded-xl border font-mono',
               STRATEGY_META[result.strategy]
-                ? `${STRATEGY_META[result.strategy].color} bg-trading-bg-secondary border-trading-border/20`
-                : 'text-trading-ai-light bg-trading-ai/10 border-trading-ai/20'
+                ? `${STRATEGY_META[result.strategy].color} bg-slate-50 border-slate-200`
+                : 'text-trading-ai-light bg-violet-50 border-violet-200'
             )}>
               {STRATEGY_META[result.strategy]?.label || result.strategy}
             </span>
@@ -521,8 +521,8 @@ export default function BacktestingPage() {
               Trade Statistics
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="text-center p-3 rounded-xl bg-slate-800/50">
-                <p className="text-2xl font-mono font-bold tabular-nums text-white">{result.total_trades || 0}</p>
+              <div className="text-center p-3 rounded-xl bg-slate-100">
+                <p className="text-2xl font-mono font-bold tabular-nums text-slate-900">{result.total_trades || 0}</p>
                 <p className="stat-label mt-1">Total Trades</p>
               </div>
               <div className="text-center p-3 rounded-xl bg-trading-bull/5 border border-trading-bull/10">
@@ -560,13 +560,13 @@ export default function BacktestingPage() {
                 <h3 className="stat-label">
                   Pattern Breakdown
                 </h3>
-                {showPatterns ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+                {showPatterns ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
               </button>
               {showPatterns && (
                 <div className="mt-4 space-y-2">
                   {Object.entries(result.per_pattern).map(([pattern, stats]) => (
-                    <div key={pattern} className="flex items-center justify-between px-3 py-2 bg-trading-bg-secondary rounded-xl border border-trading-border/20">
-                      <span className="text-xs font-mono tabular-nums text-slate-300">{pattern}</span>
+                    <div key={pattern} className="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
+                      <span className="text-xs font-mono tabular-nums text-slate-600">{pattern}</span>
                       <div className="flex items-center gap-4">
                         <span className="text-xs text-slate-500">{stats.total} trades</span>
                         <span className={cn('text-xs font-mono font-medium tabular-nums', stats.win_rate >= 50 ? 'text-trading-bull' : 'text-trading-bear')}>
@@ -585,8 +585,8 @@ export default function BacktestingPage() {
       {/* Empty State */}
       {!result && !isRunning && !error && !compareResult && !comparing && (
         <GlassCard className="flex flex-col items-center justify-center py-16">
-          <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mb-4">
-            <FlaskConical size={24} className="text-slate-600" />
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+            <FlaskConical size={24} className="text-slate-400" />
           </div>
           <p className="text-slate-500 text-sm">Configure parameters and run a backtest to see results</p>
           <p className="text-slate-500 text-xs mt-1">Use "Compare All" to see all 6 strategies side by side</p>
@@ -596,10 +596,10 @@ export default function BacktestingPage() {
       {/* Loading State */}
       {(isRunning || comparing) && (
         <GlassCard className="flex flex-col items-center justify-center py-16">
-          <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center mb-4">
+          <div className="w-12 h-12 rounded-2xl bg-violet-50 text-trading-ai flex items-center justify-center mb-4">
             <Loader2 size={24} className="text-trading-ai animate-spin" />
           </div>
-          <p className="text-slate-400 text-sm">
+          <p className="text-slate-500 text-sm">
             {comparing ? `Comparing all strategies for ${form.ticker.toUpperCase()}...` : `Running backtest for ${form.ticker.toUpperCase()}...`}
           </p>
           <p className="text-slate-500 text-xs mt-1">

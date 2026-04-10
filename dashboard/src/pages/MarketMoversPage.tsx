@@ -67,21 +67,21 @@ function StockRow({ stock, rank, category }: { stock: MarketMoverStock; rank: nu
       initial={{ opacity: 0, x: -6 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: rank * 0.015, ease: [0.16, 1, 0.3, 1] }}
-      className="border-b border-trading-border/10 hover:bg-white/[0.015] transition-colors"
+      className="border-b border-slate-200 hover:bg-slate-50 transition-colors"
     >
-      <td className="py-2.5 px-2 md:px-3 font-mono text-[10px] text-slate-600 tabular-nums">{rank}</td>
+      <td className="py-2.5 px-2 md:px-3 font-mono text-[10px] text-slate-400 tabular-nums">{rank}</td>
       <td className="py-2.5 px-2 md:px-3">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-white text-sm">{stock.ticker}</span>
+          <span className="font-medium text-slate-900 text-sm">{stock.ticker}</span>
           <span className={cn(
             'px-1.5 py-0.5 rounded-md text-[8px] font-mono font-bold border',
-            EXCHANGE_COLORS[stock.exchange] || 'bg-slate-700/30 text-slate-500 border-slate-600/20',
+            EXCHANGE_COLORS[stock.exchange] || 'bg-slate-100 text-slate-500 border-slate-200',
           )}>
             {stock.exchange}
           </span>
         </div>
       </td>
-      <td className="py-2.5 px-2 md:px-3 text-right font-mono text-xs text-white tabular-nums">
+      <td className="py-2.5 px-2 md:px-3 text-right font-mono text-xs text-slate-900 tabular-nums">
         {stock.ltp.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
       </td>
       <td className="py-2.5 px-2 md:px-3 text-right">
@@ -127,7 +127,7 @@ export default function MarketMoversPage() {
   if (loading && !data) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-2xl bg-violet-50 text-trading-ai flex items-center justify-center">
           <Loader2 size={24} className="text-trading-ai animate-spin" />
         </div>
         <p className="text-slate-500 text-xs mt-4 font-mono">Loading market movers...</p>
@@ -138,7 +138,7 @@ export default function MarketMoversPage() {
   if (error && !data) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <div className="w-12 h-12 rounded-2xl bg-trading-alert/10 flex items-center justify-center mb-4">
+        <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
           <AlertCircle size={24} className="text-trading-alert" />
         </div>
         <p className="text-slate-500 text-xs">{error}</p>
@@ -157,12 +157,12 @@ export default function MarketMoversPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-trading-ai/10 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-violet-50 flex items-center justify-center">
             <BarChart3 size={16} className="text-trading-ai" />
           </div>
-          <h2 className="text-sm font-bold text-white">Market Movers</h2>
+          <h2 className="text-sm font-bold text-slate-900">Market Movers</h2>
           {data?.fetched_at && (
-            <span className="flex items-center gap-1 text-[9px] text-slate-600 font-mono">
+            <span className="flex items-center gap-1 text-[9px] text-slate-400 font-mono">
               <Clock size={9} /> {formatTime(data.fetched_at)}
             </span>
           )}
@@ -173,8 +173,8 @@ export default function MarketMoversPage() {
           className={cn(
             'flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all',
             loading
-              ? 'bg-trading-ai/12 text-trading-ai-light cursor-wait'
-              : 'bg-trading-ai/12 text-trading-ai-light hover:bg-trading-ai/18 border border-trading-ai/25',
+              ? 'bg-violet-50 text-trading-ai-light cursor-wait'
+              : 'bg-violet-50 text-trading-ai-light hover:bg-trading-ai/18 border border-violet-200',
           )}
         >
           {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
@@ -194,7 +194,7 @@ export default function MarketMoversPage() {
                 'glass-card !p-3 text-center transition-all cursor-pointer border',
                 isActive
                   ? 'border-trading-ai/25 bg-trading-ai/[0.04]'
-                  : 'border-transparent hover:border-trading-border/30',
+                  : 'border-transparent hover:border-slate-200',
               )}
             >
               <div className={cn('flex items-center justify-center gap-1.5 mb-1', tab.color)}>
@@ -202,7 +202,7 @@ export default function MarketMoversPage() {
                 <span className="text-[9px] uppercase tracking-[0.1em] font-semibold">{tab.label}</span>
               </div>
               {isActive && (
-                <p className="text-lg font-mono font-bold text-white tabular-nums">{stocks.length}</p>
+                <p className="text-lg font-mono font-bold text-slate-900 tabular-nums">{stocks.length}</p>
               )}
             </button>
           );
@@ -211,7 +211,7 @@ export default function MarketMoversPage() {
 
       {/* Exchange filter */}
       <div className="flex items-center gap-2">
-        <span className="text-[9px] text-slate-600 uppercase tracking-[0.12em]">Exchange:</span>
+        <span className="text-[9px] text-slate-400 uppercase tracking-[0.12em]">Exchange:</span>
         {EXCHANGES.map((ex) => (
           <button
             key={ex}
@@ -219,15 +219,15 @@ export default function MarketMoversPage() {
             className={cn(
               'px-2.5 py-1 rounded-lg text-[10px] font-mono transition-all',
               exchange === ex
-                ? 'bg-trading-card text-white border border-trading-ai/20'
-                : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]',
+                ? 'bg-white text-slate-900 border border-trading-ai/20'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50',
             )}
           >
             {ex}
           </button>
         ))}
         {data?.total_universe && (
-          <span className="ml-auto text-[9px] text-slate-600 font-mono tabular-nums">
+          <span className="ml-auto text-[9px] text-slate-400 font-mono tabular-nums">
             Universe: {data.total_universe}
           </span>
         )}
@@ -236,15 +236,15 @@ export default function MarketMoversPage() {
       {/* Table */}
       {stocks.length > 0 ? (
         <GlassCard className="!p-0 overflow-hidden">
-          <div className={cn('px-4 py-3 border-b border-trading-border/20 flex items-center gap-2', activeTab.color)}>
+          <div className={cn('px-4 py-3 border-b border-slate-200 flex items-center gap-2', activeTab.color)}>
             {activeTab.icon}
-            <span className="text-sm font-medium text-white">{activeTab.label}</span>
-            <span className="text-[10px] text-slate-600 font-mono ml-1 tabular-nums">({stocks.length})</span>
+            <span className="text-sm font-medium text-slate-900">{activeTab.label}</span>
+            <span className="text-[10px] text-slate-400 font-mono ml-1 tabular-nums">({stocks.length})</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[9px] uppercase tracking-[0.12em] text-slate-500 border-b border-trading-border/20">
+                <tr className="text-[9px] uppercase tracking-[0.12em] text-slate-500 border-b border-slate-200">
                   <th className="py-2.5 px-2 md:px-3 text-left w-10">#</th>
                   <th className="py-2.5 px-2 md:px-3 text-left">Stock</th>
                   <th className="py-2.5 px-2 md:px-3 text-right">LTP</th>
@@ -268,11 +268,11 @@ export default function MarketMoversPage() {
         </GlassCard>
       ) : (
         <GlassCard className="text-center py-14">
-          <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mx-auto mb-3">
-            <BarChart3 size={24} className="text-slate-600" />
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3">
+            <BarChart3 size={24} className="text-slate-400" />
           </div>
           <p className="text-slate-500 text-xs mb-1">No data available</p>
-          <p className="text-slate-600 text-[10px]">Click Refresh to fetch latest market movers.</p>
+          <p className="text-slate-500 text-[10px]">Click Refresh to fetch latest market movers.</p>
         </GlassCard>
       )}
 
@@ -283,7 +283,7 @@ export default function MarketMoversPage() {
         </div>
       )}
 
-      <p className="text-center text-[9px] text-slate-600">
+      <p className="text-center text-[9px] text-slate-400">
         Data refreshes every 5 minutes during market hours | Source: yfinance | All segments: NSE, MCX, CDS
       </p>
     </motion.div>

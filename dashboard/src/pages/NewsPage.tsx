@@ -25,8 +25,8 @@ type CategoryFilter = 'ALL' | 'POLICY' | 'MACRO' | 'GEOPOLITICAL' | 'REGULATORY'
 const impactConfig: Record<string, { color: string; bg: string; border: string; label: string }> = {
   HIGH: {
     color: 'text-trading-bear',
-    bg: 'bg-trading-bear/10',
-    border: 'border-trading-bear/20',
+    bg: 'bg-red-50',
+    border: 'border-red-200',
     label: 'HIGH',
   },
   MEDIUM: {
@@ -36,7 +36,7 @@ const impactConfig: Record<string, { color: string; bg: string; border: string; 
     label: 'MEDIUM',
   },
   LOW: {
-    color: 'text-slate-400',
+    color: 'text-slate-500',
     bg: 'bg-slate-500/10',
     border: 'border-slate-500/30',
     label: 'LOW',
@@ -89,14 +89,14 @@ function NewsCard({ item }: { item: NewsItem }) {
       exit={{ opacity: 0, y: -8 }}
       transition={{ ease: [0.16, 1, 0.3, 1] }}
       className={cn(
-        'glass-card p-4 border-l-2 hover:bg-trading-card/30 transition-colors',
-        item.impact === 'HIGH' ? 'border-l-trading-bear' : item.impact === 'MEDIUM' ? 'border-l-trading-alert' : 'border-l-slate-600',
+        'glass-card p-4 border-l-2 hover:bg-slate-50 transition-colors',
+        item.impact === 'HIGH' ? 'border-l-trading-bear' : item.impact === 'MEDIUM' ? 'border-l-trading-alert' : 'border-l-slate-300',
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           {/* Title */}
-          <h3 className="text-sm font-medium text-white leading-snug mb-1.5">
+          <h3 className="text-sm font-medium text-slate-900 leading-snug mb-1.5">
             {item.url ? (
               <a
                 href={item.url}
@@ -114,7 +114,7 @@ function NewsCard({ item }: { item: NewsItem }) {
 
           {/* Summary */}
           {item.summary && (
-            <p className="text-xs text-slate-400 leading-relaxed mb-2 line-clamp-2">{item.summary}</p>
+            <p className="text-xs text-slate-500 leading-relaxed mb-2 line-clamp-2">{item.summary}</p>
           )}
 
           {/* Badges row */}
@@ -217,10 +217,10 @@ export default function NewsPage() {
   if (loading && items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-2xl bg-violet-50 text-trading-ai flex items-center justify-center">
           <Loader2 size={24} className="text-trading-ai animate-spin" />
         </div>
-        <p className="text-slate-400 text-sm mt-4">Fetching news feeds...</p>
+        <p className="text-slate-500 text-sm mt-4">Fetching news feeds...</p>
       </div>
     );
   }
@@ -229,8 +229,8 @@ export default function NewsPage() {
     return (
       <div className="flex flex-col items-center justify-center py-24">
         <AlertCircle size={48} className="text-trading-alert mb-4" />
-        <p className="text-slate-400 text-sm">Failed to load news: {error}</p>
-        <button onClick={refresh} className="mt-4 px-3 py-1.5 rounded-xl bg-trading-ai/12 text-trading-ai-light border border-trading-ai/25 text-sm hover:bg-trading-ai/18 transition-colors">
+        <p className="text-slate-500 text-sm">Failed to load news: {error}</p>
+        <button onClick={refresh} className="mt-4 px-3 py-1.5 rounded-xl bg-violet-50 text-trading-ai-light border border-violet-200 text-sm hover:bg-trading-ai/18 transition-colors">
           Retry
         </button>
       </div>
@@ -248,9 +248,9 @@ export default function NewsPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Newspaper size={20} className="text-trading-ai" />
-          <h2 className="text-lg font-semibold text-white">News & Macro Events</h2>
+          <h2 className="text-lg font-semibold text-slate-900">News & Macro Events</h2>
           {highCount > 0 && (
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-trading-bear/10 text-trading-bear text-xs font-mono font-bold border border-trading-bear/20">
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-trading-bear text-xs font-mono font-bold border border-red-200">
               <AlertTriangle size={12} />
               {highCount} HIGH
             </span>
@@ -259,7 +259,7 @@ export default function NewsPage() {
         <button
           onClick={refresh}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-trading-ai/12 text-trading-ai-light border border-trading-ai/25 text-xs hover:bg-trading-ai/18 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-50 text-trading-ai-light border border-violet-200 text-xs hover:bg-trading-ai/18 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           Refresh
@@ -280,8 +280,8 @@ export default function NewsPage() {
                 className={cn(
                   'px-2.5 py-1 rounded-xl text-xs font-medium transition-colors border',
                   impactFilter === f.value
-                    ? 'bg-trading-card text-white border-trading-ai/25'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-trading-bg-secondary/50 border-transparent',
+                    ? 'bg-white text-slate-900 border-trading-ai/25'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 border-transparent',
                 )}
               >
                 {f.label}
@@ -292,7 +292,7 @@ export default function NewsPage() {
             ))}
           </div>
 
-          <div className="w-px h-5 bg-trading-border/20 hidden sm:block" />
+          <div className="w-px h-5 bg-slate-200 hidden sm:block" />
 
           {/* Category filter */}
           <div className="flex items-center gap-1.5">
@@ -304,8 +304,8 @@ export default function NewsPage() {
                 className={cn(
                   'px-2.5 py-1 rounded-xl text-xs font-medium transition-colors border',
                   categoryFilter === f.value
-                    ? 'bg-trading-card text-white border-trading-ai/25'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-trading-bg-secondary/50 border-transparent',
+                    ? 'bg-white text-slate-900 border-trading-ai/25'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 border-transparent',
                 )}
               >
                 {f.label}
@@ -313,7 +313,7 @@ export default function NewsPage() {
             ))}
           </div>
 
-          <div className="w-px h-5 bg-trading-border/20 hidden sm:block" />
+          <div className="w-px h-5 bg-slate-200 hidden sm:block" />
 
           {/* Time range */}
           <div className="flex items-center gap-1.5">
@@ -325,8 +325,8 @@ export default function NewsPage() {
                 className={cn(
                   'px-2 py-1 rounded-xl text-xs font-mono transition-colors border tabular-nums',
                   hoursBack === h.value
-                    ? 'bg-trading-card text-white border-trading-ai/25'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-trading-bg-secondary/50 border-transparent',
+                    ? 'bg-white text-slate-900 border-trading-ai/25'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 border-transparent',
                 )}
               >
                 {h.label}
@@ -345,7 +345,7 @@ export default function NewsPage() {
             ))
           ) : (
             <GlassCard className="text-center py-12">
-              <Newspaper size={32} className="mx-auto mb-2 text-slate-600" />
+              <Newspaper size={32} className="mx-auto mb-2 text-slate-400" />
               <p className="text-slate-500 text-sm">
                 No news items match the current filters
               </p>
@@ -355,7 +355,7 @@ export default function NewsPage() {
       </div>
 
       {/* Footer */}
-      <p className="text-center text-[10px] text-slate-600 font-mono tabular-nums">
+      <p className="text-center text-[10px] text-slate-400 font-mono tabular-nums">
         Sources: MoneyControl, Economic Times, Livemint
         {items.some((i) => i.source.startsWith('newsapi:')) && ' + NewsAPI'}
         {' | '}Auto-refreshes every 5 minutes

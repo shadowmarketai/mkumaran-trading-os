@@ -130,11 +130,11 @@ export default function PayoffPage() {
     >
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
           <LineChartIcon size={22} className="text-trading-ai" />
           Options Payoff Calculator
         </h2>
-        <p className="text-sm text-slate-400 mt-0.5">
+        <p className="text-sm text-slate-500 mt-0.5">
           Multi-leg P&L visualization with strategy presets
         </p>
       </div>
@@ -149,7 +149,7 @@ export default function PayoffPage() {
             <button
               key={key}
               onClick={() => applyPreset(key)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-trading-ai/12 text-trading-ai-light border border-trading-ai/25 hover:border-trading-ai hover:text-trading-ai-light transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-violet-50 text-trading-ai-light border border-violet-200 hover:border-trading-ai hover:text-trading-ai-light transition-all"
             >
               <Zap size={12} />
               {preset.label}
@@ -166,7 +166,7 @@ export default function PayoffPage() {
           </h3>
           <button
             onClick={addLeg}
-            className="flex items-center gap-1 text-xs text-trading-ai-light hover:text-white transition-colors"
+            className="flex items-center gap-1 text-xs text-trading-ai-light hover:text-trading-ai transition-colors"
           >
             <Plus size={14} /> Add Leg
           </button>
@@ -179,7 +179,7 @@ export default function PayoffPage() {
                 value={leg.action}
                 onChange={(e) => updateLeg(i, 'action', e.target.value)}
                 className={cn(
-                  'bg-trading-bg-secondary border rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums focus:outline-none',
+                  'bg-slate-50 border rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums focus:outline-none',
                   leg.action === 'BUY'
                     ? 'border-trading-bull/30 text-trading-bull'
                     : 'border-trading-bear/30 text-trading-bear'
@@ -191,7 +191,7 @@ export default function PayoffPage() {
               <select
                 value={leg.option_type}
                 onChange={(e) => updateLeg(i, 'option_type', e.target.value)}
-                className="bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums text-white focus:outline-none focus:border-trading-ai/40"
+                className="bg-slate-50 border border-trading-border/60 rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums text-slate-900 focus:outline-none focus:border-trading-ai/40"
               >
                 <option value="CE">CE</option>
                 <option value="PE">PE</option>
@@ -201,14 +201,14 @@ export default function PayoffPage() {
                 value={leg.strike}
                 onChange={(e) => updateLeg(i, 'strike', parseFloat(e.target.value) || 0)}
                 placeholder="Strike"
-                className="bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums text-white focus:outline-none focus:border-trading-ai/40"
+                className="bg-slate-50 border border-trading-border/60 rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums text-slate-900 focus:outline-none focus:border-trading-ai/40"
               />
               <input
                 type="number"
                 value={leg.premium}
                 onChange={(e) => updateLeg(i, 'premium', parseFloat(e.target.value) || 0)}
                 placeholder="Premium"
-                className="bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums text-white focus:outline-none focus:border-trading-ai/40"
+                className="bg-slate-50 border border-trading-border/60 rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums text-slate-900 focus:outline-none focus:border-trading-ai/40"
               />
               <input
                 type="number"
@@ -216,11 +216,11 @@ export default function PayoffPage() {
                 onChange={(e) => updateLeg(i, 'qty', parseInt(e.target.value) || 1)}
                 placeholder="Qty"
                 min="1"
-                className="bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums text-white focus:outline-none focus:border-trading-ai/40"
+                className="bg-slate-50 border border-trading-border/60 rounded-xl px-2 py-1.5 text-xs font-mono tabular-nums text-slate-900 focus:outline-none focus:border-trading-ai/40"
               />
               <button
                 onClick={() => removeLeg(i)}
-                className="flex items-center justify-center p-1.5 rounded-xl text-slate-500 hover:text-trading-bear hover:bg-trading-bear/10 transition-colors"
+                className="flex items-center justify-center p-1.5 rounded-xl text-slate-500 hover:text-trading-bear hover:bg-red-50 transition-colors"
               >
                 <Trash2 size={14} />
               </button>
@@ -233,7 +233,7 @@ export default function PayoffPage() {
           disabled={loading || legs.length === 0}
           className={cn(
             'mt-4 flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-medium transition-all w-full',
-            loading ? 'bg-trading-bg-secondary text-slate-400' : 'gradient-ai text-white hover:opacity-90'
+            loading ? 'bg-slate-50 text-slate-500' : 'gradient-ai text-white hover:opacity-90'
           )}
         >
           {loading ? <Loader2 size={16} className="animate-spin" /> : <LineChartIcon size={16} />}
@@ -353,8 +353,8 @@ export default function PayoffPage() {
       {/* Empty State */}
       {!payoff && !loading && !error && (
         <GlassCard className="flex flex-col items-center justify-center py-16">
-          <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center mb-4">
-            <LineChartIcon size={24} className="text-slate-600" />
+          <div className="w-12 h-12 rounded-2xl bg-violet-50 text-trading-ai flex items-center justify-center mb-4">
+            <LineChartIcon size={24} className="text-slate-400" />
           </div>
           <p className="text-slate-500 text-sm">Add option legs and click Calculate to see the payoff diagram</p>
           <p className="text-slate-500 text-xs mt-1">Use presets for common strategies like Iron Condor or Straddle</p>

@@ -98,10 +98,10 @@ export default function WatchlistPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-2xl bg-violet-50 text-trading-ai flex items-center justify-center">
           <Loader2 size={24} className="text-trading-ai animate-spin" />
         </div>
-        <p className="text-slate-400 text-sm mt-4">Loading watchlist...</p>
+        <p className="text-slate-500 text-sm mt-4">Loading watchlist...</p>
       </div>
     );
   }
@@ -110,7 +110,7 @@ export default function WatchlistPage() {
     return (
       <div className="flex flex-col items-center justify-center py-24">
         <AlertCircle size={48} className="text-trading-alert mb-4" />
-        <p className="text-slate-400 text-sm">Failed to load watchlist: {error}</p>
+        <p className="text-slate-500 text-sm">Failed to load watchlist: {error}</p>
       </div>
     );
   }
@@ -125,15 +125,15 @@ export default function WatchlistPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-white">Watchlist</h2>
-          <p className="text-sm text-slate-400 mt-0.5">{filteredItems.length} stocks tracked</p>
+          <h2 className="text-xl font-bold text-slate-900">Watchlist</h2>
+          <p className="text-sm text-slate-500 mt-0.5">{filteredItems.length} stocks tracked</p>
         </div>
         <button
           onClick={() => setShowAddForm(!showAddForm)}
           className={cn(
             'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all',
             showAddForm
-              ? 'bg-trading-bg-secondary text-slate-300'
+              ? 'bg-slate-50 text-slate-600'
               : 'gradient-ai text-white hover:opacity-90'
           )}
         >
@@ -161,7 +161,7 @@ export default function WatchlistPage() {
                     placeholder="e.g., RELIANCE"
                     value={formData.ticker}
                     onChange={(e) => setFormData({ ...formData, ticker: e.target.value })}
-                    className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40"
+                    className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-slate-900 placeholder-slate-400 focus:outline-none focus:border-trading-ai/40"
                   />
                 </div>
                 <div>
@@ -169,7 +169,7 @@ export default function WatchlistPage() {
                   <select
                     value={formData.timeframe}
                     onChange={(e) => setFormData({ ...formData, timeframe: e.target.value })}
-                    className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40"
+                    className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-slate-900 focus:outline-none focus:border-trading-ai/40"
                   >
                     <option value="15m">15m</option>
                     <option value="1H">1H</option>
@@ -185,7 +185,7 @@ export default function WatchlistPage() {
                     placeholder="Optional"
                     value={formData.ltrp}
                     onChange={(e) => setFormData({ ...formData, ltrp: e.target.value })}
-                    className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40"
+                    className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-slate-900 placeholder-slate-400 focus:outline-none focus:border-trading-ai/40"
                   />
                 </div>
                 <div>
@@ -195,7 +195,7 @@ export default function WatchlistPage() {
                     placeholder="Optional"
                     value={formData.pivot_high}
                     onChange={(e) => setFormData({ ...formData, pivot_high: e.target.value })}
-                    className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40"
+                    className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono text-slate-900 placeholder-slate-400 focus:outline-none focus:border-trading-ai/40"
                   />
                 </div>
                 <button
@@ -212,7 +212,7 @@ export default function WatchlistPage() {
 
       {/* Tier Tabs + Search */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-1 bg-trading-bg-secondary/50 p-1 rounded-xl">
+        <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl">
           {tiers.map((tier) => (
             <button
               key={tier.value}
@@ -220,8 +220,8 @@ export default function WatchlistPage() {
               className={cn(
                 'px-4 py-1.5 rounded-md text-sm font-medium transition-all',
                 selectedTier === tier.value
-                  ? 'bg-trading-card text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900'
               )}
             >
               {tier.label}
@@ -237,12 +237,12 @@ export default function WatchlistPage() {
             placeholder="Search ticker or name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-trading-bg-secondary border border-trading-border/60 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40 w-full sm:w-64"
+            className="bg-slate-50 border border-trading-border/60 rounded-xl pl-9 pr-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-trading-ai/40 w-full sm:w-64"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
             >
               <X size={14} />
             </button>
@@ -255,7 +255,7 @@ export default function WatchlistPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] border-b border-trading-border/20">
+              <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] border-b border-slate-200">
                 <th className="text-left py-3 px-2 md:px-3">Ticker</th>
                 <th className="text-left py-3 px-3 hidden md:table-cell">Name</th>
                 <th className="text-center py-3 px-2 hidden md:table-cell">Exch</th>
@@ -270,7 +270,7 @@ export default function WatchlistPage() {
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-trading-border/15">
+            <tbody className="divide-y divide-slate-200">
               <AnimatePresence>
                 {filteredItems.map((item, idx) => (
                   <motion.tr
@@ -280,14 +280,14 @@ export default function WatchlistPage() {
                     exit={{ opacity: 0 }}
                     transition={{ delay: idx * 0.03, ease: [0.16, 1, 0.3, 1] }}
                     className={cn(
-                      'hover:bg-white/[0.015] transition-colors',
+                      'hover:bg-slate-50 transition-colors',
                       !item.active && 'opacity-50'
                     )}
                   >
                     <td className="py-2.5 px-2 md:px-3">
-                      <span className="font-mono font-bold text-white tabular-nums">{item.ticker}</span>
+                      <span className="font-mono font-bold text-slate-900 tabular-nums">{item.ticker}</span>
                     </td>
-                    <td className="py-2.5 px-3 text-slate-400 hidden md:table-cell">{item.name}</td>
+                    <td className="py-2.5 px-3 text-slate-500 hidden md:table-cell">{item.name}</td>
                     <td className="py-2.5 px-2 text-center hidden md:table-cell">
                       <span className={cn(
                         'text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border',
@@ -300,22 +300,22 @@ export default function WatchlistPage() {
                       </span>
                     </td>
                     <td className="py-2.5 px-2 text-center hidden lg:table-cell">
-                      <span className="text-xs font-mono bg-trading-bg-secondary px-1.5 py-0.5 rounded tabular-nums">{item.timeframe}</span>
+                      <span className="text-xs font-mono bg-slate-50 px-1.5 py-0.5 rounded tabular-nums">{item.timeframe}</span>
                     </td>
                     <td className="py-2.5 px-2 text-center">
                       <span className={cn(
                         'text-xs font-mono font-bold px-2 py-0.5 rounded tabular-nums',
                         item.tier === 1 ? 'bg-trading-bull/10 text-trading-bull' :
                         item.tier === 2 ? 'bg-trading-alert/10 text-trading-alert' :
-                        'bg-trading-bg-secondary text-slate-400'
+                        'bg-slate-50 text-slate-500'
                       )}>
                         T{item.tier}
                       </span>
                     </td>
-                    <td className="py-2.5 px-2 text-right font-mono text-slate-300 hidden lg:table-cell tabular-nums">
+                    <td className="py-2.5 px-2 text-right font-mono text-slate-600 hidden lg:table-cell tabular-nums">
                       {item.ltrp ? item.ltrp.toFixed(2) : '--'}
                     </td>
-                    <td className="py-2.5 px-2 text-right font-mono text-slate-300 hidden lg:table-cell tabular-nums">
+                    <td className="py-2.5 px-2 text-right font-mono text-slate-600 hidden lg:table-cell tabular-nums">
                       {item.pivot_high ? item.pivot_high.toFixed(2) : '--'}
                     </td>
                     <td className="py-2.5 px-2 text-center">
@@ -323,7 +323,7 @@ export default function WatchlistPage() {
                         onClick={() => handleToggle(item.id)}
                         className={cn(
                           'p-1 rounded-xl transition-colors',
-                          item.active ? 'text-trading-bull hover:bg-trading-bull/10' : 'text-slate-600 hover:bg-trading-bg-secondary'
+                          item.active ? 'text-trading-bull hover:bg-trading-bull/10' : 'text-slate-400 hover:bg-slate-50'
                         )}
                       >
                         {item.active ? <Eye size={16} /> : <EyeOff size={16} />}
@@ -338,7 +338,7 @@ export default function WatchlistPage() {
                     <td className="py-2.5 px-2 text-center">
                       <button
                         onClick={() => handleRemove(item.id)}
-                        className="p-1 rounded-xl text-slate-600 hover:text-trading-bear hover:bg-trading-bear/10 transition-colors"
+                        className="p-1 rounded-xl text-slate-400 hover:text-trading-bear hover:bg-red-50 transition-colors"
                       >
                         <Trash2 size={14} />
                       </button>

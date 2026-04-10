@@ -174,13 +174,13 @@ function ToolCard({ tool }: ToolCardProps) {
             {tool.icon}
           </div>
           <div className="text-left">
-            <h3 className="text-sm font-semibold text-white">{tool.name}</h3>
+            <h3 className="text-sm font-semibold text-slate-900">{tool.name}</h3>
             <p className="text-xs text-slate-500">{tool.firm}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-600 hidden sm:block">{tool.description.slice(0, 50)}...</span>
-          {expanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+          <span className="text-xs text-slate-400 hidden sm:block">{tool.description.slice(0, 50)}...</span>
+          {expanded ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
         </div>
       </button>
 
@@ -194,8 +194,8 @@ function ToolCard({ tool }: ToolCardProps) {
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
-            <div className="pt-4 mt-4 border-t border-trading-border/20 space-y-5">
-              <p className="text-sm text-slate-400">{tool.description}</p>
+            <div className="pt-4 mt-4 border-t border-slate-200 space-y-5">
+              <p className="text-sm text-slate-500">{tool.description}</p>
 
               {/* Input Fields */}
               {tool.fields.length > 0 && (
@@ -211,7 +211,7 @@ function ToolCard({ tool }: ToolCardProps) {
                           onChange={(e) => setFormValues({ ...formValues, [field.name]: e.target.value })}
                           placeholder={field.placeholder}
                           rows={3}
-                          className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono tabular-nums text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40 resize-none"
+                          className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono tabular-nums text-slate-900 placeholder-slate-400 focus:outline-none focus:border-trading-ai/40 resize-none"
                         />
                       ) : (
                         <input
@@ -219,7 +219,7 @@ function ToolCard({ tool }: ToolCardProps) {
                           value={formValues[field.name] || ''}
                           onChange={(e) => setFormValues({ ...formValues, [field.name]: e.target.value })}
                           placeholder={field.placeholder}
-                          className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono tabular-nums text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40"
+                          className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2 text-sm font-mono tabular-nums text-slate-900 placeholder-slate-400 focus:outline-none focus:border-trading-ai/40"
                         />
                       )}
                     </div>
@@ -233,7 +233,7 @@ function ToolCard({ tool }: ToolCardProps) {
                 disabled={loading}
                 className={cn(
                   'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all',
-                  loading ? 'bg-trading-ai/12 text-slate-400 cursor-wait border border-trading-ai/25' : 'gradient-ai text-white hover:opacity-90'
+                  loading ? 'bg-violet-50 text-slate-500 cursor-wait border border-violet-200' : 'gradient-ai text-white hover:opacity-90'
                 )}
               >
                 {loading ? (
@@ -251,7 +251,7 @@ function ToolCard({ tool }: ToolCardProps) {
 
               {/* Error */}
               {error && (
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-trading-bear/10 border border-trading-bear/20">
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200">
                   <AlertCircle size={14} className="text-trading-bear" />
                   <p className="text-sm text-trading-bear">{error}</p>
                 </div>
@@ -262,10 +262,10 @@ function ToolCard({ tool }: ToolCardProps) {
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="p-4 rounded-lg bg-trading-bg-secondary border border-trading-border/20"
+                  className="p-4 rounded-lg bg-slate-50 border border-slate-200"
                 >
                   <h4 className="stat-label mb-2">Result</h4>
-                  <pre className="text-xs font-mono tabular-nums text-slate-300 whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
+                  <pre className="text-xs font-mono tabular-nums text-slate-600 whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
                     {JSON.stringify(result, null, 2)}
                   </pre>
                 </motion.div>
@@ -288,11 +288,11 @@ export default function WallStreetPage() {
     >
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
           <Brain size={22} className="text-trading-ai" />
           Wall Street AI Tools
         </h2>
-        <p className="text-sm text-slate-400 mt-0.5">
+        <p className="text-sm text-slate-500 mt-0.5">
           10 institutional-grade AI analysis tools powered by Wall Street methodologies
         </p>
       </div>

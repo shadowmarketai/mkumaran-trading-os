@@ -83,13 +83,13 @@ function PatternCard({ pattern }: { pattern: EnginePattern }) {
           <span className={cn('text-sm font-medium', dirColor)}>{pattern.name}</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-12 h-1.5 bg-trading-bg-secondary rounded-full overflow-hidden">
+          <div className="w-12 h-1.5 bg-slate-50 rounded-full overflow-hidden">
             <div
               className={cn('h-full rounded-full', isBull ? 'bg-trading-bull' : 'bg-trading-bear')}
               style={{ width: `${pattern.confidence * 100}%` }}
             />
           </div>
-          <span className="text-[10px] font-mono tabular-nums text-slate-400">
+          <span className="text-[10px] font-mono tabular-nums text-slate-500">
             {(pattern.confidence * 100).toFixed(0)}%
           </span>
         </div>
@@ -122,7 +122,7 @@ function EngineResultCard({ engine, result }: { engine: EngineConfig; result: En
       </div>
 
       {totalPatterns === 0 ? (
-        <p className="text-xs text-slate-600 text-center py-4">No patterns detected</p>
+        <p className="text-xs text-slate-500 text-center py-4">No patterns detected</p>
       ) : (
         <div className="space-y-5">
           {bullPatterns.length > 0 && (
@@ -198,11 +198,11 @@ export default function EnginesPage() {
     >
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
           <Cpu size={22} className="text-trading-ai" />
           Advanced Pattern Engines
         </h2>
-        <p className="text-sm text-slate-400 mt-0.5">
+        <p className="text-sm text-slate-500 mt-0.5">
           Detect SMC, Wyckoff, VSA, and Harmonic patterns on any stock
         </p>
       </div>
@@ -220,7 +220,7 @@ export default function EnginesPage() {
               onChange={(e) => setTicker(e.target.value)}
               placeholder="e.g., RELIANCE"
               onKeyDown={(e) => e.key === 'Enter' && handleScan()}
-              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2.5 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-trading-ai/40"
+              className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2.5 text-sm font-mono text-slate-900 placeholder-slate-400 focus:outline-none focus:border-trading-ai/40"
             />
           </div>
           <div className="w-28">
@@ -233,7 +233,7 @@ export default function EnginesPage() {
               onChange={(e) => setDays(e.target.value)}
               min="30"
               max="365"
-              className="w-full bg-trading-bg-secondary border border-trading-border/60 rounded-xl px-3 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-trading-ai/40"
+              className="w-full bg-slate-50 border border-trading-border/60 rounded-xl px-3 py-2.5 text-sm font-mono text-slate-900 focus:outline-none focus:border-trading-ai/40"
             />
           </div>
           <button
@@ -241,7 +241,7 @@ export default function EnginesPage() {
             disabled={loading || !ticker.trim()}
             className={cn(
               'flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all border',
-              loading ? 'bg-trading-ai/12 text-slate-400 cursor-wait border-trading-ai/25' : 'gradient-ai text-white hover:opacity-90'
+              loading ? 'bg-violet-50 text-slate-500 cursor-wait border-violet-200' : 'gradient-ai text-white hover:opacity-90'
             )}
           >
             {loading ? (
@@ -264,9 +264,9 @@ export default function EnginesPage() {
       {/* Summary Strip */}
       {totalDetected > 0 && (
         <div className="flex items-center gap-3 px-1">
-          <span className="text-sm text-slate-400">
-            <span className="font-mono tabular-nums font-bold text-white">{totalDetected}</span> patterns detected for{' '}
-            <span className="font-mono tabular-nums font-bold text-white">{ticker.toUpperCase()}</span>
+          <span className="text-sm text-slate-500">
+            <span className="font-mono tabular-nums font-bold text-slate-900">{totalDetected}</span> patterns detected for{' '}
+            <span className="font-mono tabular-nums font-bold text-slate-900">{ticker.toUpperCase()}</span>
           </span>
           <span className="text-xs text-trading-bull font-mono tabular-nums">{bullTotal} bull</span>
           <span className="text-xs text-trading-bear font-mono tabular-nums">{bearTotal} bear</span>
@@ -289,8 +289,8 @@ export default function EnginesPage() {
       {/* Empty State */}
       {Object.keys(results).length === 0 && !loading && !error && (
         <GlassCard className="flex flex-col items-center justify-center py-16">
-          <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mb-4">
-            <Cpu size={24} className="text-slate-600" />
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+            <Cpu size={24} className="text-slate-400" />
           </div>
           <p className="text-slate-500 text-sm">Enter a ticker and click "Detect Patterns" to scan with all 4 engines</p>
           <div className="flex items-center gap-3 mt-4">
@@ -306,10 +306,10 @@ export default function EnginesPage() {
       {/* Loading State */}
       {loading && (
         <GlassCard className="flex flex-col items-center justify-center py-16">
-          <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center mb-4">
+          <div className="w-12 h-12 rounded-2xl bg-violet-50 text-trading-ai flex items-center justify-center mb-4">
             <Loader2 size={24} className="text-trading-ai animate-spin" />
           </div>
-          <p className="text-slate-400 text-sm">Running 4 engines on {ticker.toUpperCase()}...</p>
+          <p className="text-slate-500 text-sm">Running 4 engines on {ticker.toUpperCase()}...</p>
           <p className="text-slate-500 text-xs mt-1">SMC + Wyckoff + VSA + Harmonic</p>
         </GlassCard>
       )}

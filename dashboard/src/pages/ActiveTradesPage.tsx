@@ -116,7 +116,7 @@ export default function ActiveTradesPage() {
               className={cn(
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-trading-ai/10 text-trading-ai-light border border-trading-ai/25'
+                  ? 'bg-violet-50 text-trading-ai-light border border-violet-200'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               )}
             >

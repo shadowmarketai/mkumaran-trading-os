@@ -106,7 +106,7 @@ export default function SignalMonitorPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
-        <div className="w-12 h-12 rounded-2xl bg-trading-ai/10 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-2xl bg-violet-50 text-trading-ai flex items-center justify-center">
           <Loader2 size={24} className="text-trading-ai animate-spin" />
         </div>
         <p className="text-slate-500 text-xs mt-4 font-mono">Loading signal monitor...</p>
@@ -128,12 +128,12 @@ export default function SignalMonitorPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-trading-ai/10 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-violet-50 flex items-center justify-center">
             <Shield size={16} className="text-trading-ai" />
           </div>
-          <h2 className="text-sm font-bold text-white">Signal Monitor</h2>
+          <h2 className="text-sm font-bold text-slate-900">Signal Monitor</h2>
           {marketOpen ? (
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-trading-bull/10 border border-trading-bull/20">
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-trading-bull-dim border border-emerald-200">
               <span className="relative flex h-1.5 w-1.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-trading-bull opacity-75" />
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-trading-bull" />
@@ -141,13 +141,13 @@ export default function SignalMonitorPage() {
               <span className="text-[9px] font-bold text-trading-bull uppercase tracking-wider">Live</span>
             </span>
           ) : (
-            <span className="text-[10px] text-slate-600 font-mono">Market closed</span>
+            <span className="text-[10px] text-slate-400 font-mono">Market closed</span>
           )}
-          <span className="text-[9px] text-slate-600 font-mono">Polling 10s</span>
+          <span className="text-[9px] text-slate-400 font-mono">Polling 10s</span>
         </div>
         <div className="flex items-center gap-3">
           {lastChecked && (
-            <span className="text-[10px] text-slate-600 flex items-center gap-1 font-mono">
+            <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
               <Clock size={10} /> {lastChecked}
             </span>
           )}
@@ -157,8 +157,8 @@ export default function SignalMonitorPage() {
             className={cn(
               'flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all',
               checking
-                ? 'bg-trading-bg-secondary text-slate-500 cursor-not-allowed'
-                : 'bg-trading-ai/12 text-trading-ai-light hover:bg-trading-ai/18 border border-trading-ai/25'
+                ? 'bg-slate-50 text-slate-500 cursor-not-allowed'
+                : 'bg-violet-50 text-trading-ai-light hover:bg-trading-ai/18 border border-violet-200'
             )}
           >
             {checking ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
@@ -168,7 +168,7 @@ export default function SignalMonitorPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 p-3 rounded-xl bg-trading-bear/6 border border-trading-bear/12">
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
           <AlertCircle size={14} className="text-trading-bear" />
           <span className="text-xs text-trading-bear">{error}</span>
         </div>
@@ -206,9 +206,9 @@ export default function SignalMonitorPage() {
                   ) : (
                     <XCircle size={14} className="text-trading-bear" />
                   )}
-                  <span className="font-mono font-bold text-white text-sm">{c.ticker}</span>
+                  <span className="font-mono font-bold text-slate-900 text-sm">{c.ticker}</span>
                   <span className="text-[10px] text-slate-500">{c.direction}</span>
-                  <span className="text-[10px] text-slate-600">{c.status.replace('_', ' ')}</span>
+                  <span className="text-[10px] text-slate-400">{c.status.replace('_', ' ')}</span>
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-[10px] text-slate-500 font-mono tabular-nums">
@@ -217,7 +217,7 @@ export default function SignalMonitorPage() {
                   <span className={cn('text-xs font-mono font-bold tabular-nums', c.pnl_pct >= 0 ? 'text-trading-bull' : 'text-trading-bear')}>
                     {c.pnl_pct >= 0 ? '+' : ''}{c.pnl_pct.toFixed(1)}%
                   </span>
-                  <span className="text-[10px] text-slate-600 font-mono">{c.days_held}d</span>
+                  <span className="text-[10px] text-slate-400 font-mono">{c.days_held}d</span>
                 </div>
               </div>
             ))}
@@ -228,13 +228,13 @@ export default function SignalMonitorPage() {
       {/* Open Signals Table */}
       {totalOpen > 0 ? (
         <GlassCard className="!p-0 overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-trading-border/20">
+          <div className="px-5 py-3.5 border-b border-slate-200">
             <h3 className="stat-label">Open Signals Being Monitored</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] border-b border-trading-border/20">
+                <tr className="text-[9px] text-slate-500 uppercase tracking-[0.12em] border-b border-slate-200">
                   <th className="text-left py-3 px-2 w-6"></th>
                   <th className="text-left py-3 px-2">Ticker</th>
                   <th className="text-center py-3 px-2">Exch</th>
@@ -266,16 +266,16 @@ export default function SignalMonitorPage() {
                       transition={{ duration: 0.2, delay: idx * 0.03 }}
                       onClick={() => toggleChart(sig.id)}
                       className={cn(
-                        'cursor-pointer transition-colors border-b border-trading-border/10',
-                        isExpanded ? 'bg-white/[0.02]' : 'hover:bg-white/[0.015]',
+                        'cursor-pointer transition-colors border-b border-slate-200',
+                        isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50',
                         isNew && 'ring-1 ring-trading-bull/20'
                       )}
                     >
                       <td className="py-3 px-2">
-                        {isExpanded ? <ChevronUp size={12} className="text-slate-500" /> : <ChevronDown size={12} className="text-slate-600" />}
+                        {isExpanded ? <ChevronUp size={12} className="text-slate-500" /> : <ChevronDown size={12} className="text-slate-400" />}
                       </td>
                       <td className="py-3 px-2">
-                        <span className="font-mono font-bold text-white text-sm">{sig.ticker}</span>
+                        <span className="font-mono font-bold text-slate-900 text-sm">{sig.ticker}</span>
                       </td>
                       <td className="py-3 px-2 text-center">
                         <span className={cn(
@@ -296,19 +296,19 @@ export default function SignalMonitorPage() {
                           {isLong ? 'LONG' : 'SHORT'}
                         </div>
                       </td>
-                      <td className="py-3 px-2 text-right font-mono text-slate-300 text-xs tabular-nums">{sig.entry_price.toFixed(2)}</td>
+                      <td className="py-3 px-2 text-right font-mono text-slate-600 text-xs tabular-nums">{sig.entry_price.toFixed(2)}</td>
                       <td className="py-3 px-2 text-right font-mono text-trading-bear/70 text-xs tabular-nums">{sig.stop_loss.toFixed(2)}</td>
                       <td className="py-3 px-2 text-right font-mono text-trading-bull/70 text-xs tabular-nums">{sig.target.toFixed(2)}</td>
                       <td className="py-3 px-2 text-center font-mono text-trading-info text-xs tabular-nums">{sig.rrr.toFixed(1)}</td>
                       <td className="py-3 px-2 text-center">
-                        <span className="text-[10px] text-slate-400 bg-trading-bg-secondary px-2 py-0.5 rounded-md border border-trading-border/20">
+                        <span className="text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
                           {sig.pattern}
                         </span>
                       </td>
                       <td className="py-3 px-2 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <Brain size={11} className="text-trading-ai/60" />
-                          <div className="w-10 h-1.5 bg-trading-bg-secondary rounded-full overflow-hidden border border-trading-border/20">
+                          <div className="w-10 h-1.5 bg-slate-50 rounded-full overflow-hidden border border-slate-200">
                             <div className="h-full rounded-full gradient-ai" style={{ width: `${confidencePct}%` }} />
                           </div>
                           <span className="text-[9px] font-mono text-trading-ai-light tabular-nums">{confidencePct}%</span>
@@ -337,7 +337,7 @@ export default function SignalMonitorPage() {
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                    className="border-t border-trading-border/20 p-4"
+                    className="border-t border-slate-200 p-4"
                   >
                     <CandlestickChart
                       ticker={chartTicker}
@@ -358,11 +358,11 @@ export default function SignalMonitorPage() {
         </GlassCard>
       ) : (
         <GlassCard className="flex flex-col items-center justify-center py-16">
-          <div className="w-12 h-12 rounded-2xl bg-slate-800/50 flex items-center justify-center mb-4">
-            <Shield size={24} className="text-slate-600" />
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+            <Shield size={24} className="text-slate-400" />
           </div>
           <p className="text-slate-500 text-xs">No open signals being monitored</p>
-          <p className="text-slate-600 text-[10px] mt-1">Signals from MWA scan will appear here</p>
+          <p className="text-slate-500 text-[10px] mt-1">Signals from MWA scan will appear here</p>
         </GlassCard>
       )}
 
