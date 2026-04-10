@@ -65,6 +65,19 @@ class Settings:
     # AI provider routing
     AI_PRIMARY_PROVIDER: str = os.getenv("AI_PRIMARY_PROVIDER", "grok")  # "grok" or "kimi"
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+
+    # Email OTP (SMTP)
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASS: str = os.getenv("SMTP_PASS", "")
+
+    # Mobile OTP (MSG91)
+    MSG91_AUTH_KEY: str = os.getenv("MSG91_AUTH_KEY", "")
+
     # Angel One SmartAPI
     ANGEL_API_KEY: str = os.getenv("ANGEL_API_KEY", "")
     ANGEL_API_SECRET: str = os.getenv("ANGEL_API_SECRET", "")

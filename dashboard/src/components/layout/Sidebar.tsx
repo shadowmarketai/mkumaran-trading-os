@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Target, Eye, FlaskConical, Cpu, Activity,
   Brain, Newspaper, Rocket, Calculator, LineChart, FileText, Shield,
-  BarChart3, X, ChevronLeft, ChevronRight, Wifi, WifiOff,
+  BarChart3, X, ChevronLeft, ChevronRight, Wifi, WifiOff, Settings,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../../lib/utils';
@@ -25,10 +25,11 @@ const navItems: NavItem[] = [
   { to: '/momentum', label: 'Momentum', icon: <Rocket size={18} />, group: 'intel' },
   { to: '/options', label: 'Options Greeks', icon: <Calculator size={18} />, group: 'options' },
   { to: '/payoff', label: 'Payoff Calc', icon: <LineChart size={18} />, group: 'options' },
+  { to: '/settings', label: 'Settings', icon: <Settings size={18} />, group: 'account' },
 ];
 
 const groupLabels: Record<string, string> = {
-  core: 'DASHBOARD', trading: 'TRADING', analysis: 'ANALYSIS', intel: 'INTELLIGENCE', options: 'OPTIONS',
+  core: 'DASHBOARD', trading: 'TRADING', analysis: 'ANALYSIS', intel: 'INTELLIGENCE', options: 'OPTIONS', account: 'ACCOUNT',
 };
 
 function groupItems(items: NavItem[]): [string, NavItem[]][] {

@@ -589,7 +589,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Paths that never require auth
 AUTH_PUBLIC_PATHS = {
-    "/auth/login", "/api/auth/login", "/api/info", "/health", "/docs",
+    "/auth/login", "/api/auth/login", "/api/auth/google",
+    "/api/auth/email/send-otp", "/api/auth/email/verify-otp",
+    "/api/auth/mobile/send-otp", "/api/auth/mobile/verify-otp",
+    "/api/auth/config",
+    "/api/info", "/health", "/docs",
     "/openapi.json", "/redoc",
     "/api/tv_webhook", "/api/telegram_webhook",
     "/api/kite_callback", "/api/kite_login_url",
@@ -781,6 +785,159 @@ async def auth_me(request: Request):
         return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
 
     return {"email": user.get("sub", ""), "role": user.get("role", ""), "auth_enabled": True}
+
+
+# ── Multi-Auth: Google, Email OTP, Mobile OTP ─────────────────
+
+@app.post("/api/auth/google")
+@limiter.limit("10/minute")
+async def auth_google(request: Request):
+    """Google OAuth2 Sign-In."""
+    body = await request.json()
+    id_token = body.get("credential", "")
+    if not id_token:
+        return JSONResponse(status_code=400, content={"detail": "Missing Google credential"})
+    try:
+        from mcp_server.auth_providers import google_sign_in
+        db = SessionLocal()
+        try:
+            result = await google_sign_in(db, id_token)
+            return result
+        finally:
+            db.close()
+    except ValueError as e:
+        return JSONResponse(status_code=401, content={"detail": str(e)})
+
+
+@app.post("/api/auth/email/send-otp")
+@limiter.limit("3/minute")
+async def auth_email_send_otp(request: Request):
+    """Send OTP to email address."""
+    body = await request.json()
+    email = body.get("email", "").strip()
+    if not email or "@" not in email:
+        return JSONResponse(status_code=400, content={"detail": "Valid email required"})
+    try:
+        from mcp_server.auth_providers import send_email_otp
+        result = await send_email_otp(email)
+        return result
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"detail": str(e)})
+
+
+@app.post("/api/auth/email/verify-otp")
+@limiter.limit("5/minute")
+async def auth_email_verify_otp(request: Request):
+    """Verify email OTP and login."""
+    body = await request.json()
+    email = body.get("email", "").strip()
+    otp = body.get("otp", "").strip()
+    if not email or not otp:
+        return JSONResponse(status_code=400, content={"detail": "Email and OTP required"})
+    try:
+        from mcp_server.auth_providers import verify_email_otp
+        db = SessionLocal()
+        try:
+            result = await verify_email_otp(db, email, otp)
+            return result
+        finally:
+            db.close()
+    except ValueError as e:
+        return JSONResponse(status_code=401, content={"detail": str(e)})
+
+
+@app.post("/api/auth/mobile/send-otp")
+@limiter.limit("3/minute")
+async def auth_mobile_send_otp(request: Request):
+    """Send OTP to Indian mobile number."""
+    body = await request.json()
+    phone = body.get("phone", "").strip()
+    if not phone or len(phone.replace("+", "").replace(" ", "")) < 10:
+        return JSONResponse(status_code=400, content={"detail": "Valid Indian mobile number required"})
+    try:
+        from mcp_server.auth_providers import send_mobile_otp
+        result = await send_mobile_otp(phone)
+        return result
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"detail": str(e)})
+
+
+@app.post("/api/auth/mobile/verify-otp")
+@limiter.limit("5/minute")
+async def auth_mobile_verify_otp(request: Request):
+    """Verify mobile OTP and login."""
+    body = await request.json()
+    phone = body.get("phone", "").strip()
+    otp = body.get("otp", "").strip()
+    if not phone or not otp:
+        return JSONResponse(status_code=400, content={"detail": "Phone and OTP required"})
+    try:
+        from mcp_server.auth_providers import verify_mobile_otp
+        db = SessionLocal()
+        try:
+            result = await verify_mobile_otp(db, phone, otp)
+            return result
+        finally:
+            db.close()
+    except ValueError as e:
+        return JSONResponse(status_code=401, content={"detail": str(e)})
+
+
+# ── BYOK: User API Keys ──────────────────────────────────────
+
+@app.post("/api/settings/api-keys")
+async def save_api_keys(request: Request):
+    """Save user's own LLM API keys."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    body = await request.json()
+    from mcp_server.auth_providers import save_user_api_keys
+    db = SessionLocal()
+    try:
+        result = await save_user_api_keys(db, int(user.get("sub", 0)), body)
+        return result
+    finally:
+        db.close()
+
+
+@app.get("/api/settings/api-keys")
+async def get_api_keys(request: Request):
+    """Get user's saved API keys (masked)."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    from mcp_server.auth_providers import get_user_api_keys
+    db = SessionLocal()
+    try:
+        keys = await get_user_api_keys(db, int(user.get("sub", 0)))
+        # Mask keys for display
+        masked = {}
+        for k, v in keys.items():
+            if k == "preferred_provider":
+                masked[k] = v
+            elif v and len(v) > 8:
+                masked[k] = v[:4] + "****" + v[-4:]
+            else:
+                masked[k] = "****" if v else ""
+        return {"keys": masked, "has_keys": bool(keys)}
+    finally:
+        db.close()
+
+
+@app.get("/api/auth/config")
+async def auth_config():
+    """Return auth configuration for frontend (which methods are available)."""
+    import os
+    return {
+        "google_enabled": bool(os.getenv("GOOGLE_CLIENT_ID")),
+        "google_client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
+        "email_otp_enabled": bool(os.getenv("SMTP_USER")),
+        "mobile_otp_enabled": bool(os.getenv("MSG91_AUTH_KEY")),
+        "password_enabled": True,
+    }
 
 
 # ============================================================
