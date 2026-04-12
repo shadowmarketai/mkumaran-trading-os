@@ -28,10 +28,12 @@ def upgrade() -> None:
         sa.Column("auth_provider", sa.String(20), server_default="email"),
         # email, phone, google
         sa.Column("google_id", sa.String(50), nullable=True),
+        sa.Column("city", sa.String(100), nullable=True),
+        sa.Column("trading_experience", sa.String(20), nullable=True),
+        sa.Column("trading_segments", sa.String(200), nullable=True),
         sa.Column("is_verified", sa.Boolean(), server_default="false"),
         sa.Column("is_active", sa.Boolean(), server_default="true"),
         sa.Column("role", sa.String(20), server_default="user"),
-        # user, admin
         sa.Column("last_login", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("NOW()")),
     )

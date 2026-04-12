@@ -24,6 +24,11 @@ export default function LoginPage() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [city, setCity] = useState('');
+  const [tradingExp, setTradingExp] = useState('');
+  const [segments, setSegments] = useState<string[]>([]);
+  const [regPhone, setRegPhone] = useState(''); // phone during email reg
+  const [regEmail, setRegEmail] = useState(''); // email during phone reg
   const [otp, setOtp] = useState('');
   const [verifyToken, setVerifyToken] = useState('');
   const [error, setError] = useState('');
@@ -127,7 +132,12 @@ export default function LoginPage() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const res = await axios.post('/api/auth/register', { verify_token: verifyToken, password, name });
+      const res = await axios.post('/api/auth/register', {
+        verify_token: verifyToken, password, name, city, trading_experience: tradingExp,
+        segments: segments.join(','),
+        phone: authMethod === 'email' ? regPhone : phone,
+        email: authMethod === 'mobile' ? regEmail : email,
+      });
       localStorage.setItem('mkumaran_auth_token', res.data.access_token);
       localStorage.setItem('mkumaran_auth_email', res.data.email);
       navigate('/overview', { replace: true });
@@ -322,22 +332,83 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* ─── REGISTER: Step 3 — Set Password ─── */}
+            {/* ─── REGISTER: Step 3 — Profile Details ─── */}
             {pageMode === 'register' && regStep === 'password' && (
-              <form onSubmit={handleRegister} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Your Name</label>
-                  <input type="text" value={name} onChange={(e) => setName(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
-                    placeholder="John Doe" autoFocus />
+              <form onSubmit={handleRegister} className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Full Name *</label>
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                      placeholder="John Doe" required autoFocus />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">City</label>
+                    <input type="text" value={city} onChange={(e) => setCity(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                      placeholder="Mumbai" />
+                  </div>
                 </div>
+
+                {/* Collect the other contact method */}
+                {authMethod === 'email' && (
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Mobile Number</label>
+                    <div className="flex gap-2">
+                      <span className="flex items-center px-2.5 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-500 font-mono">+91</span>
+                      <input type="tel" value={regPhone} onChange={(e) => setRegPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        className="flex-1 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                        placeholder="9876543210" maxLength={10} />
+                    </div>
+                  </div>
+                )}
+                {authMethod === 'mobile' && (
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Email Address</label>
+                    <input type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                      placeholder="you@example.com" />
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Set Password</label>
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Trading Experience</label>
+                  <select value={tradingExp} onChange={(e) => setTradingExp(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm focus:outline-none focus:border-trading-ai/50 transition-all">
+                    <option value="">Select experience</option>
+                    <option value="beginner">Beginner (0-1 years)</option>
+                    <option value="intermediate">Intermediate (1-3 years)</option>
+                    <option value="experienced">Experienced (3-5 years)</option>
+                    <option value="expert">Expert (5+ years)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Trading Segments</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['NSE Equity', 'F&O', 'Commodity', 'Forex', 'Options'].map((seg) => (
+                      <button key={seg} type="button"
+                        onClick={() => setSegments((prev) => prev.includes(seg) ? prev.filter((s) => s !== seg) : [...prev, seg])}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all border',
+                          segments.includes(seg)
+                            ? 'bg-trading-ai-bg text-trading-ai border-violet-200'
+                            : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'
+                        )}>
+                        {seg}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Set Password *</label>
                   <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
                     placeholder="Minimum 6 characters" required minLength={6} />
                 </div>
-                <button type="submit" disabled={loading}
+
+                <button type="submit" disabled={loading || !name.trim()}
                   className="w-full py-3 rounded-xl font-semibold text-sm gradient-ai shadow-brand hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2 text-white">
                   {loading ? <><Loader2 size={14} className="animate-spin" />Creating...</> : <><User size={14} />Create Account</>}
                 </button>

@@ -192,15 +192,18 @@ async def verify_registration_otp(identifier: str, otp: str, method: str) -> dic
 
 # ── REGISTER (after OTP verified) ────────────────────────────
 
-async def register_user(db_session, verify_token: str, password: str, name: str = "") -> dict:
-    """Complete registration after OTP verification."""
+async def register_user(
+    db_session, verify_token: str, password: str, name: str = "",
+    city: str = "", trading_experience: str = "", segments: str = "",
+    extra_phone: str = "", extra_email: str = "",
+) -> dict:
+    """Complete registration after OTP verification with full profile."""
     from sqlalchemy import text
 
-    # Check verify token
     entry = _otp_store.get(f"verified:{verify_token}")
     if not entry:
         raise ValueError("Verification expired. Start registration again.")
-    if time.time() - entry["ts"] > 900:  # 15 min
+    if time.time() - entry["ts"] > 900:
         del _otp_store[f"verified:{verify_token}"]
         raise ValueError("Verification expired.")
 
@@ -210,8 +213,9 @@ async def register_user(db_session, verify_token: str, password: str, name: str 
 
     if method == "email":
         email = identifier.lower().strip()
-        phone = None
-        # Check if email already registered
+        phone = extra_phone.strip() if extra_phone else None
+        if phone:
+            phone = _normalize_phone(phone)
         existing = db_session.execute(
             text("SELECT id FROM app_users WHERE email = :e"), {"e": email}
         ).first()
@@ -219,25 +223,29 @@ async def register_user(db_session, verify_token: str, password: str, name: str 
             raise ValueError("Email already registered. Please login.")
     else:
         phone = _normalize_phone(identifier)
-        email = f"{phone.replace('+', '')}@phone.shadowmarket.ai"
+        email = extra_email.lower().strip() if extra_email else f"{phone.replace('+', '')}@phone.shadowmarket.ai"
         existing = db_session.execute(
             text("SELECT id FROM app_users WHERE phone = :p"), {"p": phone}
         ).first()
         if existing:
             raise ValueError("Phone already registered. Please login.")
 
-    # Create user
     pw_hash = _hash_pw(password)
     db_session.execute(
-        text("""INSERT INTO app_users (email, phone, password_hash, name, auth_provider, is_verified, role, created_at)
-                VALUES (:email, :phone, :pw, :name, :provider, true, 'user', NOW())"""),
+        text("""INSERT INTO app_users
+                (email, phone, password_hash, name, city, trading_experience,
+                 trading_segments, auth_provider, is_verified, role, created_at)
+                VALUES (:email, :phone, :pw, :name, :city, :exp, :segs, :provider, true, 'user', NOW())"""),
         {"email": email, "phone": phone, "pw": pw_hash,
-         "name": name or email.split("@")[0], "provider": method}
+         "name": name or email.split("@")[0], "city": city or None,
+         "exp": trading_experience or None, "segs": segments or None,
+         "provider": method}
     )
     db_session.commit()
 
     token = _create_token(email, role="user", name=name)
-    logger.info("User registered: %s via %s", email, method)
+    logger.info("User registered: %s via %s (city=%s, exp=%s, segs=%s)",
+                email, method, city, trading_experience, segments)
 
     return {
         "access_token": token,

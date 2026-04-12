@@ -861,7 +861,14 @@ async def auth_register(request: Request):
         from mcp_server.auth_providers import register_user
         db = SessionLocal()
         try:
-            return await register_user(db, verify_token, password, name)
+            return await register_user(
+                db, verify_token, password, name,
+                city=body.get("city", ""),
+                trading_experience=body.get("trading_experience", ""),
+                segments=body.get("segments", ""),
+                extra_phone=body.get("phone", ""),
+                extra_email=body.get("email", ""),
+            )
         finally:
             db.close()
     except ValueError as e:
