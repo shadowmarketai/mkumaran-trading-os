@@ -590,9 +590,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Paths that never require auth
 AUTH_PUBLIC_PATHS = {
     "/auth/login", "/api/auth/login", "/api/auth/google",
-    "/api/auth/email/send-otp", "/api/auth/email/verify-otp",
-    "/api/auth/mobile/send-otp", "/api/auth/mobile/verify-otp",
-    "/api/auth/config",
+    "/api/auth/send-otp", "/api/auth/verify-otp",
+    "/api/auth/register", "/api/auth/user-login",
+    "/api/auth/reset-password", "/api/auth/config",
     "/api/info", "/health", "/docs",
     "/openapi.json", "/redoc",
     "/api/tv_webhook", "/api/telegram_webhook",
@@ -787,88 +787,125 @@ async def auth_me(request: Request):
     return {"email": user.get("sub", ""), "role": user.get("role", ""), "auth_enabled": True}
 
 
-# ── Multi-Auth: Google, Email OTP, Mobile OTP ─────────────────
+# ── Multi-Auth: Register, Login, Google, OTP ──────────────────
 
 @app.post("/api/auth/google")
 @limiter.limit("10/minute")
 async def auth_google(request: Request):
-    """Google OAuth2 Sign-In."""
+    """Google OAuth2 — auto-register on first use, login after."""
     body = await request.json()
     id_token = body.get("credential", "")
     if not id_token:
         return JSONResponse(status_code=400, content={"detail": "Missing Google credential"})
     try:
         from mcp_server.auth_providers import google_sign_in
-        result = await google_sign_in(id_token)
-        return result
+        db = SessionLocal()
+        try:
+            return await google_sign_in(db, id_token)
+        finally:
+            db.close()
     except ValueError as e:
         return JSONResponse(status_code=401, content={"detail": str(e)})
 
 
-@app.post("/api/auth/email/send-otp")
+@app.post("/api/auth/send-otp")
 @limiter.limit("3/minute")
-async def auth_email_send_otp(request: Request):
-    """Send OTP to email address."""
+async def auth_send_otp(request: Request):
+    """Send OTP for registration or forgot password."""
     body = await request.json()
-    email = body.get("email", "").strip()
-    if not email or "@" not in email:
-        return JSONResponse(status_code=400, content={"detail": "Valid email required"})
+    method = body.get("method", "email")  # email or mobile
+    identifier = body.get("email", "") or body.get("phone", "")
+    if not identifier:
+        return JSONResponse(status_code=400, content={"detail": "Email or phone required"})
     try:
-        from mcp_server.auth_providers import send_email_otp
-        result = await send_email_otp(email)
-        return result
+        if method == "mobile":
+            from mcp_server.auth_providers import send_mobile_otp
+            return await send_mobile_otp(identifier)
+        else:
+            from mcp_server.auth_providers import send_email_otp
+            return await send_email_otp(identifier)
     except ValueError as e:
         return JSONResponse(status_code=400, content={"detail": str(e)})
 
 
-@app.post("/api/auth/email/verify-otp")
+@app.post("/api/auth/verify-otp")
 @limiter.limit("5/minute")
-async def auth_email_verify_otp(request: Request):
-    """Verify email OTP and login."""
+async def auth_verify_otp(request: Request):
+    """Verify OTP — returns verify_token for registration."""
     body = await request.json()
-    email = body.get("email", "").strip()
+    identifier = body.get("email", "") or body.get("phone", "")
     otp = body.get("otp", "").strip()
-    if not email or not otp:
-        return JSONResponse(status_code=400, content={"detail": "Email and OTP required"})
+    method = body.get("method", "email")
+    if not identifier or not otp:
+        return JSONResponse(status_code=400, content={"detail": "Identifier and OTP required"})
     try:
-        from mcp_server.auth_providers import verify_email_otp
-        result = await verify_email_otp(email, otp)
-        return result
+        from mcp_server.auth_providers import verify_registration_otp
+        return await verify_registration_otp(identifier, otp, method)
     except ValueError as e:
         return JSONResponse(status_code=401, content={"detail": str(e)})
 
 
-@app.post("/api/auth/mobile/send-otp")
-@limiter.limit("3/minute")
-async def auth_mobile_send_otp(request: Request):
-    """Send OTP to Indian mobile number."""
+@app.post("/api/auth/register")
+@limiter.limit("5/minute")
+async def auth_register(request: Request):
+    """Complete registration — requires verify_token from OTP step."""
     body = await request.json()
-    phone = body.get("phone", "").strip()
-    if not phone or len(phone.replace("+", "").replace(" ", "")) < 10:
-        return JSONResponse(status_code=400, content={"detail": "Valid Indian mobile number required"})
+    verify_token = body.get("verify_token", "")
+    password = body.get("password", "")
+    name = body.get("name", "")
+    if not verify_token or not password:
+        return JSONResponse(status_code=400, content={"detail": "verify_token and password required"})
+    if len(password) < 6:
+        return JSONResponse(status_code=400, content={"detail": "Password must be at least 6 characters"})
     try:
-        from mcp_server.auth_providers import send_mobile_otp
-        result = await send_mobile_otp(phone)
-        return result
+        from mcp_server.auth_providers import register_user
+        db = SessionLocal()
+        try:
+            return await register_user(db, verify_token, password, name)
+        finally:
+            db.close()
     except ValueError as e:
         return JSONResponse(status_code=400, content={"detail": str(e)})
 
 
-@app.post("/api/auth/mobile/verify-otp")
+@app.post("/api/auth/user-login")
 @limiter.limit("5/minute")
-async def auth_mobile_verify_otp(request: Request):
-    """Verify mobile OTP and login."""
+async def auth_user_login(request: Request):
+    """Login with email/phone + password."""
     body = await request.json()
-    phone = body.get("phone", "").strip()
-    otp = body.get("otp", "").strip()
-    if not phone or not otp:
-        return JSONResponse(status_code=400, content={"detail": "Phone and OTP required"})
+    identifier = body.get("email", "") or body.get("phone", "")
+    password = body.get("password", "")
+    if not identifier or not password:
+        return JSONResponse(status_code=400, content={"detail": "Email/phone and password required"})
     try:
-        from mcp_server.auth_providers import verify_mobile_otp
-        result = await verify_mobile_otp(phone, otp)
-        return result
+        from mcp_server.auth_providers import login_user
+        db = SessionLocal()
+        try:
+            return await login_user(db, identifier, password)
+        finally:
+            db.close()
     except ValueError as e:
         return JSONResponse(status_code=401, content={"detail": str(e)})
+
+
+@app.post("/api/auth/reset-password")
+@limiter.limit("3/minute")
+async def auth_reset_password(request: Request):
+    """Reset password after OTP verification."""
+    body = await request.json()
+    verify_token = body.get("verify_token", "")
+    new_password = body.get("password", "")
+    if not verify_token or not new_password:
+        return JSONResponse(status_code=400, content={"detail": "verify_token and password required"})
+    try:
+        from mcp_server.auth_providers import reset_password
+        db = SessionLocal()
+        try:
+            return await reset_password(db, verify_token, new_password)
+        finally:
+            db.close()
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"detail": str(e)})
 
 
 # ── BYOK: User API Keys ──────────────────────────────────────

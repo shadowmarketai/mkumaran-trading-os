@@ -1,27 +1,31 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Activity, Mail, Loader2, ArrowLeft, Phone, KeyRound } from 'lucide-react';
+import { Activity, Mail, Loader2, ArrowLeft, Phone, KeyRound, User, Lock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import axios from 'axios';
 
-type AuthMode = 'password' | 'email_otp' | 'mobile_otp';
+type PageMode = 'login' | 'register' | 'forgot';
+type RegStep = 'identity' | 'otp' | 'password';
+type AuthMethod = 'email' | 'mobile';
 
 interface AuthConfig {
   google_enabled: boolean;
   google_client_id: string;
   email_otp_enabled: boolean;
   mobile_otp_enabled: boolean;
-  password_enabled: boolean;
 }
 
 export default function LoginPage() {
-  const [mode, setMode] = useState<AuthMode>('password');
+  const [pageMode, setPageMode] = useState<PageMode>('login');
+  const [authMethod, setAuthMethod] = useState<AuthMethod>('email');
+  const [regStep, setRegStep] = useState<RegStep>('identity');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [otp, setOtp] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
+  const [verifyToken, setVerifyToken] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState<AuthConfig | null>(null);
@@ -32,97 +36,108 @@ export default function LoginPage() {
     axios.get('/api/auth/config').then((r) => setConfig(r.data)).catch(() => {});
   }, []);
 
-  // Load Google Sign-In script
+  // Google Sign-In
   useEffect(() => {
-    if (!config?.google_enabled || !config.google_client_id) return;
+    if (!config?.google_enabled) return;
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.onload = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const g = (window as any).google;
-      g?.accounts?.id?.initialize({
-        client_id: config.google_client_id,
-        callback: handleGoogleResponse,
-      });
-      g?.accounts?.id?.renderButton(
-        document.getElementById('google-signin-btn'),
-        { theme: 'outline', size: 'large', width: '100%', text: 'signin_with', shape: 'pill' }
-      );
+      g?.accounts?.id?.initialize({ client_id: config.google_client_id, callback: handleGoogle });
+      g?.accounts?.id?.renderButton(document.getElementById('google-btn'),
+        { theme: 'outline', size: 'large', width: '100%', text: 'signin_with', shape: 'pill' });
     };
     document.body.appendChild(script);
-    return () => { document.body.removeChild(script); };
+    return () => { try { document.body.removeChild(script); } catch {} };
   }, [config]);
 
-  const handleGoogleResponse = async (response: { credential: string }) => {
-    setLoading(true);
-    setError('');
+  const handleGoogle = async (resp: { credential: string }) => {
+    setLoading(true); setError('');
     try {
-      const res = await axios.post('/api/auth/google', { credential: response.credential });
+      const res = await axios.post('/api/auth/google', { credential: resp.credential });
       localStorage.setItem('mkumaran_auth_token', res.data.access_token);
       localStorage.setItem('mkumaran_auth_email', res.data.email);
       navigate('/overview', { replace: true });
       window.location.reload();
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg || 'Google sign-in failed');
-    } finally {
-      setLoading(false);
-    }
+      setError((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Google sign-in failed');
+    } finally { setLoading(false); }
   };
 
-  const handlePasswordLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+  // LOGIN with email/phone + password
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault(); setError(''); setLoading(true);
     try {
-      await login(email, password);
+      // Try new user-login first
+      const res = await axios.post('/api/auth/user-login', {
+        email: authMethod === 'email' ? email : undefined,
+        phone: authMethod === 'mobile' ? phone : undefined,
+        password,
+      });
+      localStorage.setItem('mkumaran_auth_token', res.data.access_token);
+      localStorage.setItem('mkumaran_auth_email', res.data.email);
       navigate('/overview', { replace: true });
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg || 'Login failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSendOtp = async () => {
-    setError('');
-    setLoading(true);
-    try {
-      if (mode === 'email_otp') {
-        await axios.post('/api/auth/email/send-otp', { email });
-      } else {
-        await axios.post('/api/auth/mobile/send-otp', { phone });
+      window.location.reload();
+    } catch {
+      // Fallback to admin login
+      try {
+        await login(email, password);
+        navigate('/overview', { replace: true });
+      } catch (err2: unknown) {
+        setError((err2 as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Invalid credentials');
       }
-      setOtpSent(true);
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg || 'Failed to send OTP');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+  // REGISTER step 1: send OTP
+  const handleSendOtp = async () => {
+    setError(''); setLoading(true);
     try {
-      const endpoint = mode === 'email_otp' ? '/api/auth/email/verify-otp' : '/api/auth/mobile/verify-otp';
-      const payload = mode === 'email_otp' ? { email, otp } : { phone, otp };
-      const res = await axios.post(endpoint, payload);
+      await axios.post('/api/auth/send-otp', {
+        method: authMethod,
+        email: authMethod === 'email' ? email : undefined,
+        phone: authMethod === 'mobile' ? phone : undefined,
+      });
+      setRegStep('otp');
+    } catch (err: unknown) {
+      setError((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to send OTP');
+    } finally { setLoading(false); }
+  };
+
+  // REGISTER step 2: verify OTP
+  const handleVerifyOtp = async () => {
+    setError(''); setLoading(true);
+    try {
+      const res = await axios.post('/api/auth/verify-otp', {
+        method: authMethod,
+        email: authMethod === 'email' ? email : undefined,
+        phone: authMethod === 'mobile' ? phone : undefined,
+        otp,
+      });
+      setVerifyToken(res.data.verify_token);
+      setRegStep('password');
+    } catch (err: unknown) {
+      setError((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Verification failed');
+    } finally { setLoading(false); }
+  };
+
+  // REGISTER step 3: set password
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault(); setError(''); setLoading(true);
+    try {
+      const res = await axios.post('/api/auth/register', { verify_token: verifyToken, password, name });
       localStorage.setItem('mkumaran_auth_token', res.data.access_token);
       localStorage.setItem('mkumaran_auth_email', res.data.email);
       navigate('/overview', { replace: true });
       window.location.reload();
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg || 'Verification failed');
-    } finally {
-      setLoading(false);
-    }
+      setError((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Registration failed');
+    } finally { setLoading(false); }
   };
+
+  const resetForm = () => { setError(''); setOtp(''); setVerifyToken(''); setRegStep('identity'); };
 
   return (
     <div className="min-h-screen flex bg-[#FAFBFC] relative overflow-hidden">
@@ -144,27 +159,20 @@ export default function LoginPage() {
             </div>
           </Link>
           <h2 className="text-4xl font-bold leading-tight mb-6 text-slate-900">
-            Trade with<br />
-            <span className="bg-gradient-to-r from-trading-ai via-violet-500 to-trading-bull bg-clip-text text-transparent">Confidence</span>
+            {pageMode === 'register' ? 'Join the' : 'Trade with'}<br />
+            <span className="bg-gradient-to-r from-trading-ai via-violet-500 to-trading-bull bg-clip-text text-transparent">
+              {pageMode === 'register' ? 'Platform' : 'Confidence'}
+            </span>
           </h2>
           <p className="text-slate-500 text-sm leading-relaxed max-w-md">
             AI-powered market analytics for Indian markets. 40+ scanners, real-time monitoring, institutional-grade patterns.
           </p>
         </div>
-        <div className="space-y-4">
-          {['Multi-Scanner MWA Engine', 'AI Confidence Scoring', 'Risk-First Architecture'].map((f) => (
-            <div key={f} className="flex items-center gap-3">
-              <div className="w-1.5 h-1.5 rounded-full bg-trading-ai flex-shrink-0" />
-              <p className="text-sm font-medium text-slate-700">{f}</p>
-            </div>
-          ))}
-        </div>
       </div>
 
-      {/* Right Panel — Login */}
+      {/* Right Panel */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-6 relative z-10 bg-white">
         <div className="w-full max-w-sm">
-          {/* Mobile header */}
           <div className="lg:hidden text-center mb-8">
             <Link to="/" className="inline-flex items-center gap-2 mb-4">
               <ArrowLeft size={14} className="text-slate-400" /><span className="text-xs text-slate-400">Back</span>
@@ -176,137 +184,222 @@ export default function LoginPage() {
           </div>
 
           <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-elevated">
-            <h2 className="text-lg font-bold text-slate-900 mb-1">Welcome</h2>
-            <p className="text-xs text-slate-400 mb-6">Sign in to your trading dashboard</p>
-
-            {error && (
-              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-xs">{error}</div>
-            )}
-
-            {/* Google Sign-In */}
-            {config?.google_enabled && (
-              <>
-                <div id="google-signin-btn" className="w-full mb-4" />
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex-1 h-px bg-slate-200" />
-                  <span className="text-[10px] text-slate-400 uppercase tracking-wider">or</span>
-                  <div className="flex-1 h-px bg-slate-200" />
-                </div>
-              </>
-            )}
-
-            {/* Auth Mode Tabs */}
+            {/* Page Mode Toggle */}
             <div className="flex gap-1 mb-5 bg-slate-50 p-1 rounded-xl">
-              {[
-                { key: 'password' as AuthMode, label: 'Email', icon: Mail },
-                ...(config?.email_otp_enabled ? [{ key: 'email_otp' as AuthMode, label: 'Email OTP', icon: KeyRound }] : []),
-                ...(config?.mobile_otp_enabled ? [{ key: 'mobile_otp' as AuthMode, label: 'Mobile', icon: Phone }] : []),
-              ].map(({ key, label, icon: Icon }) => (
-                <button
-                  key={key}
-                  onClick={() => { setMode(key); setOtpSent(false); setError(''); setOtp(''); }}
-                  className={cn(
-                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-medium transition-all',
-                    mode === key ? 'bg-white shadow-soft text-trading-ai' : 'text-slate-400 hover:text-slate-600'
-                  )}
-                >
-                  <Icon size={13} />{label}
+              {(['login', 'register'] as PageMode[]).map((m) => (
+                <button key={m} onClick={() => { setPageMode(m); resetForm(); }}
+                  className={cn('flex-1 py-2 rounded-lg text-xs font-semibold transition-all capitalize',
+                    pageMode === m ? 'bg-white shadow-soft text-trading-ai' : 'text-slate-400 hover:text-slate-600')}>
+                  {m === 'login' ? 'Sign In' : 'Register'}
                 </button>
               ))}
             </div>
 
-            {/* Password Login */}
-            {mode === 'password' && (
-              <form onSubmit={handlePasswordLogin} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Email</label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 focus:ring-1 focus:ring-trading-ai/25 transition-all"
-                    placeholder="you@example.com" required autoFocus />
+            <h2 className="text-lg font-bold text-slate-900 mb-1">
+              {pageMode === 'login' ? 'Welcome back' : regStep === 'password' ? 'Set your password' : regStep === 'otp' ? 'Verify OTP' : 'Create account'}
+            </h2>
+            <p className="text-xs text-slate-400 mb-5">
+              {pageMode === 'login' ? 'Sign in with your email or phone' : regStep === 'password' ? 'Choose a strong password' : regStep === 'otp' ? `Enter the code sent to your ${authMethod}` : 'Verify your email or phone to get started'}
+            </p>
+
+            {error && <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-xs">{error}</div>}
+
+            {/* Google (show on both login & register) */}
+            {config?.google_enabled && regStep === 'identity' && (
+              <>
+                <div id="google-btn" className="w-full mb-4" />
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex-1 h-px bg-slate-200" /><span className="text-[10px] text-slate-400 uppercase">or</span><div className="flex-1 h-px bg-slate-200" />
                 </div>
+              </>
+            )}
+
+            {/* Auth Method Tabs (email vs mobile) */}
+            {regStep === 'identity' && (
+              <div className="flex gap-1 mb-4 bg-slate-50 p-1 rounded-xl">
+                <button onClick={() => setAuthMethod('email')}
+                  className={cn('flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-medium transition-all',
+                    authMethod === 'email' ? 'bg-white shadow-soft text-trading-ai' : 'text-slate-400')}>
+                  <Mail size={13} />Email
+                </button>
+                {(config?.mobile_otp_enabled || pageMode === 'login') && (
+                  <button onClick={() => setAuthMethod('mobile')}
+                    className={cn('flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-medium transition-all',
+                      authMethod === 'mobile' ? 'bg-white shadow-soft text-trading-ai' : 'text-slate-400')}>
+                    <Phone size={13} />Mobile
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* ─── LOGIN FORM ─── */}
+            {pageMode === 'login' && (
+              <form onSubmit={handleLogin} className="space-y-4">
+                {authMethod === 'email' ? (
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Email</label>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 focus:ring-1 focus:ring-trading-ai/25 transition-all"
+                      placeholder="you@example.com" required autoFocus />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Mobile</label>
+                    <div className="flex gap-2">
+                      <span className="flex items-center px-3 py-3 rounded-xl bg-slate-100 border border-slate-200 text-sm text-slate-500 font-mono">+91</span>
+                      <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                        placeholder="9876543210" required maxLength={10} />
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Password</label>
                   <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 focus:ring-1 focus:ring-trading-ai/25 transition-all"
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
                     placeholder="Enter password" required />
                 </div>
                 <button type="submit" disabled={loading}
                   className="w-full py-3 rounded-xl font-semibold text-sm gradient-ai shadow-brand hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2 text-white">
                   {loading ? <><Loader2 size={14} className="animate-spin" />Signing in...</> : 'Sign In'}
                 </button>
+                <button type="button" onClick={() => { setPageMode('forgot'); resetForm(); }}
+                  className="w-full text-xs text-slate-400 hover:text-trading-ai transition-colors">
+                  Forgot password?
+                </button>
               </form>
             )}
 
-            {/* Email OTP */}
-            {mode === 'email_otp' && (
-              <form onSubmit={otpSent ? handleVerifyOtp : (e) => { e.preventDefault(); handleSendOtp(); }} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Email</label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={otpSent}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all disabled:opacity-60"
-                    placeholder="you@example.com" required />
-                </div>
-                {otpSent && (
+            {/* ─── REGISTER: Step 1 — Enter Email/Phone ─── */}
+            {pageMode === 'register' && regStep === 'identity' && (
+              <div className="space-y-4">
+                {authMethod === 'email' ? (
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Enter OTP</label>
-                    <input type="text" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-center text-lg font-mono tracking-[0.5em] placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
-                      placeholder="000000" required maxLength={6} autoFocus />
-                    <p className="text-[10px] text-slate-400 mt-1">Check your email for the 6-digit code</p>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Email</label>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                      placeholder="you@example.com" required autoFocus />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Mobile</label>
+                    <div className="flex gap-2">
+                      <span className="flex items-center px-3 py-3 rounded-xl bg-slate-100 border border-slate-200 text-sm text-slate-500 font-mono">+91</span>
+                      <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                        placeholder="9876543210" required maxLength={10} />
+                    </div>
                   </div>
                 )}
-                <button type="submit" disabled={loading}
+                <button onClick={handleSendOtp} disabled={loading || (!email && !phone)}
+                  className="w-full py-3 rounded-xl font-semibold text-sm gradient-ai shadow-brand hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2 text-white">
+                  {loading ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                  Send Verification Code
+                </button>
+              </div>
+            )}
+
+            {/* ─── REGISTER: Step 2 — Enter OTP ─── */}
+            {(pageMode === 'register' || pageMode === 'forgot') && regStep === 'otp' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Verification Code</label>
+                  <input type="text" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-center text-lg font-mono tracking-[0.5em] placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                    placeholder="000000" required maxLength={6} autoFocus />
+                  <p className="text-[10px] text-slate-400 mt-1.5">
+                    Sent to {authMethod === 'email' ? email : `+91 ${phone}`}
+                  </p>
+                </div>
+                <button onClick={handleVerifyOtp} disabled={loading || otp.length < 6}
                   className="w-full py-3 rounded-xl font-semibold text-sm gradient-ai shadow-brand hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2 text-white">
                   {loading ? <Loader2 size={14} className="animate-spin" /> : null}
-                  {otpSent ? 'Verify OTP' : 'Send OTP'}
+                  Verify Code
                 </button>
-                {otpSent && (
-                  <button type="button" onClick={() => { setOtpSent(false); setOtp(''); }}
-                    className="w-full text-xs text-slate-400 hover:text-trading-ai transition-colors">
-                    Change email
-                  </button>
-                )}
-              </form>
+                <button onClick={resetForm} className="w-full text-xs text-slate-400 hover:text-trading-ai transition-colors">
+                  Change {authMethod}
+                </button>
+              </div>
             )}
 
-            {/* Mobile OTP */}
-            {mode === 'mobile_otp' && (
-              <form onSubmit={otpSent ? handleVerifyOtp : (e) => { e.preventDefault(); handleSendOtp(); }} className="space-y-4">
+            {/* ─── REGISTER: Step 3 — Set Password ─── */}
+            {pageMode === 'register' && regStep === 'password' && (
+              <form onSubmit={handleRegister} className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Mobile Number</label>
-                  <div className="flex gap-2">
-                    <span className="flex items-center px-3 py-3 rounded-xl bg-slate-100 border border-slate-200 text-sm text-slate-500 font-mono">+91</span>
-                    <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} disabled={otpSent}
-                      className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all disabled:opacity-60"
-                      placeholder="9876543210" required maxLength={10} />
-                  </div>
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Your Name</label>
+                  <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                    placeholder="John Doe" autoFocus />
                 </div>
-                {otpSent && (
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Enter OTP</label>
-                    <input type="text" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-center text-lg font-mono tracking-[0.5em] placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
-                      placeholder="000000" required maxLength={6} autoFocus />
-                    <p className="text-[10px] text-slate-400 mt-1">SMS sent to your mobile</p>
-                  </div>
-                )}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">Set Password</label>
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                    placeholder="Minimum 6 characters" required minLength={6} />
+                </div>
                 <button type="submit" disabled={loading}
                   className="w-full py-3 rounded-xl font-semibold text-sm gradient-ai shadow-brand hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2 text-white">
-                  {loading ? <Loader2 size={14} className="animate-spin" /> : null}
-                  {otpSent ? 'Verify OTP' : 'Send OTP'}
+                  {loading ? <><Loader2 size={14} className="animate-spin" />Creating...</> : <><User size={14} />Create Account</>}
                 </button>
-                {otpSent && (
-                  <button type="button" onClick={() => { setOtpSent(false); setOtp(''); }}
-                    className="w-full text-xs text-slate-400 hover:text-trading-ai transition-colors">
-                    Change number
-                  </button>
-                )}
               </form>
             )}
 
-            <p className="text-center text-[10px] text-slate-400 mt-6">
-              Don't have an account? <Link to="/" className="text-trading-ai hover:text-violet-700 transition-colors">View Plans</Link>
-            </p>
+            {/* ─── FORGOT: Step 3 — New Password ─── */}
+            {pageMode === 'forgot' && regStep === 'password' && (
+              <form onSubmit={async (e) => {
+                e.preventDefault(); setError(''); setLoading(true);
+                try {
+                  await axios.post('/api/auth/reset-password', { verify_token: verifyToken, password });
+                  setPageMode('login'); resetForm();
+                } catch (err: unknown) {
+                  setError((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Reset failed');
+                } finally { setLoading(false); }
+              }} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">New Password</label>
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                    placeholder="Minimum 6 characters" required minLength={6} autoFocus />
+                </div>
+                <button type="submit" disabled={loading}
+                  className="w-full py-3 rounded-xl font-semibold text-sm gradient-ai shadow-brand hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2 text-white">
+                  {loading ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
+                  Reset Password
+                </button>
+              </form>
+            )}
+
+            {/* Forgot password entry */}
+            {pageMode === 'forgot' && regStep === 'identity' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">
+                    {authMethod === 'email' ? 'Email' : 'Mobile'}
+                  </label>
+                  {authMethod === 'email' ? (
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                      placeholder="you@example.com" required autoFocus />
+                  ) : (
+                    <div className="flex gap-2">
+                      <span className="flex items-center px-3 py-3 rounded-xl bg-slate-100 border border-slate-200 text-sm text-slate-500 font-mono">+91</span>
+                      <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                        placeholder="9876543210" required maxLength={10} />
+                    </div>
+                  )}
+                </div>
+                <button onClick={handleSendOtp} disabled={loading || (!email && !phone)}
+                  className="w-full py-3 rounded-xl font-semibold text-sm gradient-ai shadow-brand hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2 text-white">
+                  {loading ? <Loader2 size={14} className="animate-spin" /> : null}
+                  Send Reset Code
+                </button>
+                <button onClick={() => { setPageMode('login'); resetForm(); }}
+                  className="w-full text-xs text-slate-400 hover:text-trading-ai transition-colors">
+                  Back to login
+                </button>
+              </div>
+            )}
           </div>
 
           <p className="text-center text-[9px] text-slate-400 mt-6 max-w-xs mx-auto">
