@@ -343,37 +343,37 @@ export default function LoginPage() {
                       placeholder="John Doe" required autoFocus />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">City</label>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">City *</label>
                     <input type="text" value={city} onChange={(e) => setCity(e.target.value)}
                       className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
-                      placeholder="Mumbai" />
+                      placeholder="Mumbai" required />
                   </div>
                 </div>
 
                 {/* Collect the other contact method */}
                 {authMethod === 'email' && (
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Mobile Number</label>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Mobile Number *</label>
                     <div className="flex gap-2">
                       <span className="flex items-center px-2.5 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-500 font-mono">+91</span>
                       <input type="tel" value={regPhone} onChange={(e) => setRegPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                         className="flex-1 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
-                        placeholder="9876543210" maxLength={10} />
+                        placeholder="9876543210" maxLength={10} required />
                     </div>
                   </div>
                 )}
                 {authMethod === 'mobile' && (
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Email Address</label>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Email Address *</label>
                     <input type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)}
                       className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
-                      placeholder="you@example.com" />
+                      placeholder="you@example.com" required />
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Trading Experience</label>
-                  <select value={tradingExp} onChange={(e) => setTradingExp(e.target.value)}
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Trading Experience *</label>
+                  <select value={tradingExp} onChange={(e) => setTradingExp(e.target.value)} required
                     className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm focus:outline-none focus:border-trading-ai/50 transition-all">
                     <option value="">Select experience</option>
                     <option value="beginner">Beginner (0-1 years)</option>
@@ -384,7 +384,7 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Trading Segments</label>
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">Trading Segments *</label>
                   <div className="flex flex-wrap gap-2">
                     {['NSE Equity', 'F&O', 'Commodity', 'Forex', 'Options'].map((seg) => (
                       <button key={seg} type="button"
@@ -408,7 +408,7 @@ export default function LoginPage() {
                     placeholder="Minimum 6 characters" required minLength={6} />
                 </div>
 
-                <button type="submit" disabled={loading || !name.trim()}
+                <button type="submit" disabled={loading || !name.trim() || !city.trim() || !tradingExp || segments.length === 0 || (authMethod === 'email' ? !regPhone : !regEmail)}
                   className="w-full py-3 rounded-xl font-semibold text-sm gradient-ai shadow-brand hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2 text-white">
                   {loading ? <><Loader2 size={14} className="animate-spin" />Creating...</> : <><User size={14} />Create Account</>}
                 </button>

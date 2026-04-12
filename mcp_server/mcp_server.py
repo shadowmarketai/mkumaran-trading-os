@@ -852,11 +852,22 @@ async def auth_register(request: Request):
     body = await request.json()
     verify_token = body.get("verify_token", "")
     password = body.get("password", "")
-    name = body.get("name", "")
+    name = body.get("name", "").strip()
+    city = body.get("city", "").strip()
+    trading_exp = body.get("trading_experience", "").strip()
+    segs = body.get("segments", "").strip()
     if not verify_token or not password:
         return JSONResponse(status_code=400, content={"detail": "verify_token and password required"})
     if len(password) < 6:
         return JSONResponse(status_code=400, content={"detail": "Password must be at least 6 characters"})
+    if not name:
+        return JSONResponse(status_code=400, content={"detail": "Full name is required"})
+    if not city:
+        return JSONResponse(status_code=400, content={"detail": "City is required"})
+    if not trading_exp:
+        return JSONResponse(status_code=400, content={"detail": "Trading experience is required"})
+    if not segs:
+        return JSONResponse(status_code=400, content={"detail": "Select at least one trading segment"})
     try:
         from mcp_server.auth_providers import register_user
         db = SessionLocal()
