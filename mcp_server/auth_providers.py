@@ -2,22 +2,21 @@
 MKUMARAN Trading OS — Multi-Auth Providers
 
 Supports:
-1. Email + Password (existing)
+1. Email + Password (existing admin auth)
 2. Google OAuth2 Sign-In
 3. Email OTP (6-digit code via SMTP)
 4. Mobile OTP (6-digit code via MSG91)
 
-All methods return a JWT token on success.
+All methods issue JWT via the existing auth.create_access_token().
+No users table needed — works with the existing single/multi admin system.
 """
 
 import hashlib
 import logging
 import os
 import random
-import secrets
 import string
 import time
-from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
@@ -38,52 +37,59 @@ SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
-SMTP_FROM = os.getenv("SMTP_FROM", "noreply@shadowmarket.ai")
+SMTP_FROM = os.getenv("SMTP_FROM", "") or SMTP_USER
 
-# OTP store (in-memory, TTL 10 min) — for production use Redis
+# OTP store (in-memory with TTL)
 _otp_store: dict[str, dict] = {}
 OTP_TTL_SECONDS = 600  # 10 minutes
 OTP_LENGTH = 6
 
 
+# ── JWT Helper (uses existing auth system) ────────────────────
+
+def _create_token(email: str, role: str = "user", name: str = "") -> str:
+    """Create JWT using the existing auth module."""
+    from mcp_server.auth import create_access_token
+    return create_access_token({"sub": email, "role": role, "name": name})
+
+
 # ── OTP Generation ───────────────────────────────────────────
 
 def _generate_otp() -> str:
-    """Generate a 6-digit numeric OTP."""
     return "".join(random.choices(string.digits, k=OTP_LENGTH))
 
 
-def _store_otp(key: str, otp: str, method: str) -> None:
-    """Store OTP with TTL."""
-    _otp_store[key] = {
-        "otp": otp,
-        "method": method,
-        "created_at": time.time(),
-        "attempts": 0,
-    }
+def _store_otp(key: str, otp: str) -> None:
+    _otp_store[key] = {"otp": otp, "created_at": time.time(), "attempts": 0}
+    logger.info("OTP stored for %s (total in store: %d)", key[:15], len(_otp_store))
 
 
 def _verify_otp(key: str, otp: str) -> tuple[bool, str]:
-    """Verify OTP. Returns (success, message)."""
+    # Clean expired entries first
+    now = time.time()
+    expired = [k for k, v in _otp_store.items() if now - v["created_at"] > OTP_TTL_SECONDS]
+    for k in expired:
+        del _otp_store[k]
+
     entry = _otp_store.get(key)
     if not entry:
-        return False, "No OTP found. Request a new one."
+        logger.warning("OTP not found for key: %s (store has %d entries: %s)",
+                       key, len(_otp_store), list(_otp_store.keys()))
+        return False, "No OTP found. Please request a new one."
 
-    # Check expiry
-    if time.time() - entry["created_at"] > OTP_TTL_SECONDS:
+    if now - entry["created_at"] > OTP_TTL_SECONDS:
         del _otp_store[key]
         return False, "OTP expired. Request a new one."
 
-    # Rate limit: max 5 attempts
     entry["attempts"] += 1
     if entry["attempts"] > 5:
         del _otp_store[key]
         return False, "Too many attempts. Request a new OTP."
 
-    if entry["otp"] != otp:
-        return False, f"Invalid OTP. {5 - entry['attempts']} attempts remaining."
+    if entry["otp"] != otp.strip():
+        remaining = 5 - entry["attempts"]
+        return False, f"Invalid OTP. {remaining} attempts remaining."
 
-    # Success — clean up
     del _otp_store[key]
     return True, "OTP verified"
 
@@ -91,34 +97,34 @@ def _verify_otp(key: str, otp: str) -> tuple[bool, str]:
 # ── Google OAuth2 ─────────────────────────────────────────────
 
 async def verify_google_token(id_token: str) -> dict[str, Any]:
-    """Verify Google ID token and return user info.
-
-    Args:
-        id_token: The credential from Google Sign-In
-
-    Returns:
-        Dict with email, name, picture, google_id
-    """
+    """Verify Google ID token and return user info."""
     if not GOOGLE_CLIENT_ID:
         raise ValueError("GOOGLE_CLIENT_ID not configured")
 
-    # Verify token with Google
-    async with httpx.AsyncClient(timeout=10) as client:
+    # Verify with Google's tokeninfo endpoint
+    async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(
             f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token}"
         )
 
     if resp.status_code != 200:
-        raise ValueError("Invalid Google token")
+        logger.error("Google token verification failed: %s %s", resp.status_code, resp.text[:200])
+        raise ValueError(f"Invalid Google token (HTTP {resp.status_code})")
 
     data = resp.json()
 
+    # Check for error in response
+    if "error" in data:
+        raise ValueError(f"Google token error: {data['error']}")
+
     # Verify audience matches our client ID
-    if data.get("aud") != GOOGLE_CLIENT_ID:
+    aud = data.get("aud", "")
+    if aud != GOOGLE_CLIENT_ID:
+        logger.error("Google audience mismatch: got %s, expected %s", aud, GOOGLE_CLIENT_ID)
         raise ValueError("Token audience mismatch")
 
-    # Verify email is verified
-    if data.get("email_verified") != "true":
+    email_verified = data.get("email_verified")
+    if email_verified not in ("true", True):
         raise ValueError("Email not verified with Google")
 
     return {
@@ -129,47 +135,20 @@ async def verify_google_token(id_token: str) -> dict[str, Any]:
     }
 
 
-async def google_sign_in(db_session, id_token: str) -> dict:
-    """Handle Google Sign-In — create or login user.
-
-    Returns JWT token and user info.
-    """
-    from sqlalchemy import text
-
+async def google_sign_in(id_token: str) -> dict:
+    """Handle Google Sign-In — verify token and issue JWT."""
     google_user = await verify_google_token(id_token)
     email = google_user["email"].lower()
+    name = google_user.get("name", email.split("@")[0])
 
-    # Check if user exists
-    user = db_session.execute(
-        text("SELECT id, email FROM users WHERE email = :email"),
-        {"email": email}
-    ).mappings().first()
+    token = _create_token(email, role="user", name=name)
 
-    if not user:
-        # Auto-create user from Google
-        db_session.execute(
-            text("""INSERT INTO users (email, password_hash, auth_provider, name, avatar_url, created_at)
-                    VALUES (:email, :pw, 'google', :name, :pic, NOW())"""),
-            {
-                "email": email,
-                "pw": f"google:{google_user['google_id']}",
-                "name": google_user.get("name", ""),
-                "pic": google_user.get("picture", ""),
-            }
-        )
-        db_session.commit()
-        user = db_session.execute(
-            text("SELECT id, email FROM users WHERE email = :email"),
-            {"email": email}
-        ).mappings().first()
-
-    # Generate JWT
-    token = _create_jwt(user["id"], email)
-
+    logger.info("Google sign-in: %s (%s)", email, name)
     return {
         "access_token": token,
+        "token_type": "bearer",
         "email": email,
-        "name": google_user.get("name", ""),
+        "name": name,
         "picture": google_user.get("picture", ""),
         "auth_method": "google",
     }
@@ -182,10 +161,10 @@ async def send_email_otp(email: str) -> dict:
     if not SMTP_USER or not SMTP_PASS:
         raise ValueError("Email SMTP not configured")
 
+    email = email.lower().strip()
     otp = _generate_otp()
-    _store_otp(f"email:{email.lower()}", otp, "email")
+    _store_otp(f"email:{email}", otp)
 
-    # Send email
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -203,12 +182,8 @@ async def send_email_otp(email: str) -> dict:
         <span style="font-size:32px;font-weight:700;letter-spacing:8px;color:#7C3AED;font-family:monospace;">{otp}</span>
       </div>
       <p style="color:#94A3B8;font-size:12px;">Valid for 10 minutes. Do not share this code.</p>
-      <p style="color:#CBD5E1;font-size:10px;margin-top:24px;">
-        AI-powered market analytics. Not SEBI-registered investment advice.
-      </p>
     </div>
     """
-
     msg.attach(MIMEText(body, "html"))
 
     try:
@@ -216,43 +191,28 @@ async def send_email_otp(email: str) -> dict:
             server.starttls()
             server.login(SMTP_USER, SMTP_PASS)
             server.send_message(msg)
-
         logger.info("Email OTP sent to %s", email[:5] + "***")
         return {"sent": True, "email": email, "expires_in": OTP_TTL_SECONDS}
     except Exception as e:
         logger.error("Email OTP send failed: %s", e)
-        raise ValueError(f"Failed to send OTP: {e}")
+        raise ValueError(f"Failed to send email: {e}")
 
 
-async def verify_email_otp(db_session, email: str, otp: str) -> dict:
-    """Verify email OTP and return JWT."""
-    from sqlalchemy import text
-
-    email = email.lower()
+async def verify_email_otp(email: str, otp: str) -> dict:
+    """Verify email OTP and return JWT. No database needed."""
+    email = email.lower().strip()
     ok, msg = _verify_otp(f"email:{email}", otp)
     if not ok:
         raise ValueError(msg)
 
-    # Check/create user
-    user = db_session.execute(
-        text("SELECT id, email FROM users WHERE email = :email"),
-        {"email": email}
-    ).mappings().first()
-
-    if not user:
-        db_session.execute(
-            text("""INSERT INTO users (email, password_hash, auth_provider, created_at)
-                    VALUES (:email, :pw, 'email_otp', NOW())"""),
-            {"email": email, "pw": f"otp:{secrets.token_hex(16)}"}
-        )
-        db_session.commit()
-        user = db_session.execute(
-            text("SELECT id, email FROM users WHERE email = :email"),
-            {"email": email}
-        ).mappings().first()
-
-    token = _create_jwt(user["id"], email)
-    return {"access_token": token, "email": email, "auth_method": "email_otp"}
+    token = _create_token(email, role="user")
+    logger.info("Email OTP login: %s", email)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "email": email,
+        "auth_method": "email_otp",
+    }
 
 
 # ── Mobile OTP (MSG91) ───────────────────────────────────────
@@ -262,7 +222,6 @@ async def send_mobile_otp(phone: str) -> dict:
     if not MSG91_AUTH_KEY:
         raise ValueError("MSG91_AUTH_KEY not configured")
 
-    # Normalize phone — ensure +91 prefix
     phone = phone.strip().replace(" ", "").replace("-", "")
     if phone.startswith("0"):
         phone = phone[1:]
@@ -272,39 +231,49 @@ async def send_mobile_otp(phone: str) -> dict:
         else:
             phone = "+91" + phone
 
-    if len(phone) != 13:  # +91 + 10 digits
-        raise ValueError("Invalid Indian mobile number")
+    if len(phone) != 13:
+        raise ValueError("Invalid Indian mobile number (need 10 digits)")
 
     otp = _generate_otp()
-    _store_otp(f"mobile:{phone}", otp, "mobile")
+    _store_otp(f"mobile:{phone}", otp)
 
-    # Send via MSG91 API
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.post(
-            "https://control.msg91.com/api/v5/flow/",
-            headers={"authkey": MSG91_AUTH_KEY, "Content-Type": "application/json"},
-            json={
-                "template_id": MSG91_TEMPLATE_ID,
-                "sender": MSG91_SENDER_ID,
-                "short_url": "0",
-                "mobiles": phone,
-                "OTP": otp,
-            }
-        )
+    # If no template ID, use MSG91 OTP API directly
+    if MSG91_TEMPLATE_ID:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                "https://control.msg91.com/api/v5/flow/",
+                headers={"authkey": MSG91_AUTH_KEY, "Content-Type": "application/json"},
+                json={
+                    "template_id": MSG91_TEMPLATE_ID,
+                    "sender": MSG91_SENDER_ID,
+                    "short_url": "0",
+                    "mobiles": phone,
+                    "OTP": otp,
+                }
+            )
+    else:
+        # Use MSG91 OTP send API (simpler, auto-generates template)
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://control.msg91.com/api/v5/otp",
+                params={
+                    "authkey": MSG91_AUTH_KEY,
+                    "mobile": phone,
+                    "otp": otp,
+                    "sender": MSG91_SENDER_ID,
+                }
+            )
 
     if resp.status_code == 200:
         logger.info("Mobile OTP sent to %s***", phone[:6])
         return {"sent": True, "phone": phone[:6] + "****", "expires_in": OTP_TTL_SECONDS}
     else:
-        logger.error("MSG91 OTP failed: %s", resp.text[:200])
+        logger.error("MSG91 OTP failed (%d): %s", resp.status_code, resp.text[:200])
         raise ValueError("Failed to send SMS OTP")
 
 
-async def verify_mobile_otp(db_session, phone: str, otp: str) -> dict:
-    """Verify mobile OTP and return JWT."""
-    from sqlalchemy import text
-
-    # Normalize phone
+async def verify_mobile_otp(phone: str, otp: str) -> dict:
+    """Verify mobile OTP and return JWT. No database needed."""
     phone = phone.strip().replace(" ", "").replace("-", "")
     if not phone.startswith("+91"):
         phone = "+91" + phone.lstrip("0")
@@ -313,103 +282,68 @@ async def verify_mobile_otp(db_session, phone: str, otp: str) -> dict:
     if not ok:
         raise ValueError(msg)
 
-    # Check/create user by phone
-    user = db_session.execute(
-        text("SELECT id, email FROM users WHERE phone = :phone"),
-        {"phone": phone}
-    ).mappings().first()
-
-    if not user:
-        temp_email = f"{phone.replace('+', '')}@phone.shadowmarket.ai"
-        db_session.execute(
-            text("""INSERT INTO users (email, phone, password_hash, auth_provider, created_at)
-                    VALUES (:email, :phone, :pw, 'mobile_otp', NOW())"""),
-            {"email": temp_email, "phone": phone, "pw": f"otp:{secrets.token_hex(16)}"}
-        )
-        db_session.commit()
-        user = db_session.execute(
-            text("SELECT id, email FROM users WHERE phone = :phone"),
-            {"phone": phone}
-        ).mappings().first()
-
-    token = _create_jwt(user["id"], user["email"])
-    return {"access_token": token, "email": user["email"], "phone": phone[:6] + "****", "auth_method": "mobile_otp"}
-
-
-# ── JWT Helper ────────────────────────────────────────────────
-
-def _create_jwt(user_id: int, email: str) -> str:
-    """Create a JWT token (same format as existing auth system)."""
-    import jwt
-
-    payload = {
-        "sub": str(user_id),
+    email = f"{phone.replace('+', '')}@phone.shadowmarket.ai"
+    token = _create_token(email, role="user")
+    logger.info("Mobile OTP login: %s", phone[:6] + "****")
+    return {
+        "access_token": token,
+        "token_type": "bearer",
         "email": email,
-        "exp": datetime.utcnow() + timedelta(minutes=settings.JWT_EXPIRE_MINUTES),
-        "iat": datetime.utcnow(),
+        "phone": phone[:6] + "****",
+        "auth_method": "mobile_otp",
     }
-    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm="HS256")
 
 
 # ── BYOK (Bring Your Own Key) ────────────────────────────────
 
-async def save_user_api_keys(db_session, user_id: int, keys: dict) -> dict:
-    """Save user's own LLM API keys (encrypted at rest).
-
-    Keys dict: {"grok_key": "...", "kimi_key": "...", "preferred_provider": "grok"}
-    """
+async def save_user_api_keys(db_session, user_email: str, keys: dict) -> dict:
+    """Save user's LLM API keys to user_settings table."""
     from sqlalchemy import text
     import json
 
-    # Simple XOR encryption with JWT secret (not production-grade, but protects at rest)
     raw = json.dumps(keys)
     encrypted = _simple_encrypt(raw, settings.JWT_SECRET_KEY)
 
-    # Upsert into user_settings
-    existing = db_session.execute(
-        text("SELECT id FROM user_settings WHERE user_id = :uid AND setting_key = 'llm_api_keys'"),
-        {"uid": user_id}
-    ).first()
-
-    if existing:
+    try:
         db_session.execute(
-            text("UPDATE user_settings SET setting_value = :val, updated_at = NOW() WHERE user_id = :uid AND setting_key = 'llm_api_keys'"),
-            {"val": encrypted, "uid": user_id}
+            text("""INSERT INTO user_settings (user_id, setting_key, setting_value, created_at, updated_at)
+                    VALUES (0, :key, :val, NOW(), NOW())
+                    ON CONFLICT ON CONSTRAINT uq_user_setting
+                    DO UPDATE SET setting_value = :val, updated_at = NOW()"""),
+            {"key": f"llm_keys:{user_email}", "val": encrypted}
         )
-    else:
-        db_session.execute(
-            text("INSERT INTO user_settings (user_id, setting_key, setting_value, created_at, updated_at) VALUES (:uid, 'llm_api_keys', :val, NOW(), NOW())"),
-            {"uid": user_id, "val": encrypted}
-        )
+        db_session.commit()
+    except Exception:
+        # Table might not exist yet — store in memory as fallback
+        _otp_store[f"byok:{user_email}"] = {"keys": keys, "created_at": time.time()}
 
-    db_session.commit()
-    logger.info("Saved API keys for user %d", user_id)
-
-    return {"saved": True, "providers": list(k for k, v in keys.items() if v and k != "preferred_provider")}
+    return {"saved": True, "providers": [k for k, v in keys.items() if v and k != "preferred_provider"]}
 
 
-async def get_user_api_keys(db_session, user_id: int) -> dict:
-    """Get user's LLM API keys (decrypted). Returns empty dict if none."""
+async def get_user_api_keys(db_session, user_email: str) -> dict:
+    """Get user's LLM API keys."""
     from sqlalchemy import text
     import json
 
-    row = db_session.execute(
-        text("SELECT setting_value FROM user_settings WHERE user_id = :uid AND setting_key = 'llm_api_keys'"),
-        {"uid": user_id}
-    ).first()
-
-    if not row:
-        return {}
-
     try:
-        decrypted = _simple_decrypt(row[0], settings.JWT_SECRET_KEY)
-        return json.loads(decrypted)
+        row = db_session.execute(
+            text("SELECT setting_value FROM user_settings WHERE setting_key = :key"),
+            {"key": f"llm_keys:{user_email}"}
+        ).first()
+
+        if row:
+            decrypted = _simple_decrypt(row[0], settings.JWT_SECRET_KEY)
+            return json.loads(decrypted)
     except Exception:
-        return {}
+        # Fallback to in-memory
+        entry = _otp_store.get(f"byok:{user_email}")
+        if entry:
+            return entry["keys"]
+
+    return {}
 
 
 def _simple_encrypt(text: str, key: str) -> str:
-    """Simple XOR encryption for API keys at rest."""
     import base64
     key_bytes = hashlib.sha256(key.encode()).digest()
     encrypted = bytes(a ^ b for a, b in zip(text.encode(), (key_bytes * (len(text) // len(key_bytes) + 1))[:len(text)]))
@@ -417,7 +351,6 @@ def _simple_encrypt(text: str, key: str) -> str:
 
 
 def _simple_decrypt(encrypted: str, key: str) -> str:
-    """Decrypt XOR-encrypted text."""
     import base64
     key_bytes = hashlib.sha256(key.encode()).digest()
     data = base64.b64decode(encrypted)

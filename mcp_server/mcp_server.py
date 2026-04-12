@@ -799,12 +799,8 @@ async def auth_google(request: Request):
         return JSONResponse(status_code=400, content={"detail": "Missing Google credential"})
     try:
         from mcp_server.auth_providers import google_sign_in
-        db = SessionLocal()
-        try:
-            result = await google_sign_in(db, id_token)
-            return result
-        finally:
-            db.close()
+        result = await google_sign_in(id_token)
+        return result
     except ValueError as e:
         return JSONResponse(status_code=401, content={"detail": str(e)})
 
@@ -836,12 +832,8 @@ async def auth_email_verify_otp(request: Request):
         return JSONResponse(status_code=400, content={"detail": "Email and OTP required"})
     try:
         from mcp_server.auth_providers import verify_email_otp
-        db = SessionLocal()
-        try:
-            result = await verify_email_otp(db, email, otp)
-            return result
-        finally:
-            db.close()
+        result = await verify_email_otp(email, otp)
+        return result
     except ValueError as e:
         return JSONResponse(status_code=401, content={"detail": str(e)})
 
@@ -873,12 +865,8 @@ async def auth_mobile_verify_otp(request: Request):
         return JSONResponse(status_code=400, content={"detail": "Phone and OTP required"})
     try:
         from mcp_server.auth_providers import verify_mobile_otp
-        db = SessionLocal()
-        try:
-            result = await verify_mobile_otp(db, phone, otp)
-            return result
-        finally:
-            db.close()
+        result = await verify_mobile_otp(phone, otp)
+        return result
     except ValueError as e:
         return JSONResponse(status_code=401, content={"detail": str(e)})
 
@@ -896,7 +884,7 @@ async def save_api_keys(request: Request):
     from mcp_server.auth_providers import save_user_api_keys
     db = SessionLocal()
     try:
-        result = await save_user_api_keys(db, int(user.get("sub", 0)), body)
+        result = await save_user_api_keys(db, user.get("sub", ""), body)
         return result
     finally:
         db.close()
@@ -912,7 +900,7 @@ async def get_api_keys(request: Request):
     from mcp_server.auth_providers import get_user_api_keys
     db = SessionLocal()
     try:
-        keys = await get_user_api_keys(db, int(user.get("sub", 0)))
+        keys = await get_user_api_keys(db, user.get("sub", ""))
         # Mask keys for display
         masked = {}
         for k, v in keys.items():
