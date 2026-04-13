@@ -419,6 +419,39 @@ async def lifespan(app: FastAPI):
     price_task = asyncio.create_task(_price_refresh_loop())
     logger.info("Live price refresh background task started")
 
+    # Start index price background refresh (every 60s)
+    async def _index_price_loop():
+        global _index_cache, _index_cache_ts
+        import time as _t
+        while True:
+            try:
+                import yfinance as yf
+                def _fetch():
+                    r = {}
+                    for sym, name in [("^NSEI", "nifty"), ("^NSEBANK", "banknifty")]:
+                        try:
+                            tk = yf.Ticker(sym)
+                            info = tk.fast_info
+                            p = float(getattr(info, "last_price", 0) or 0)
+                            prev = float(getattr(info, "previous_close", 0) or 0)
+                            c = round(p - prev, 2) if prev else 0.0
+                            pct = round((c / prev) * 100, 2) if prev else 0.0
+                            r[f"{name}_price"] = p
+                            r[f"{name}_change"] = c
+                            r[f"{name}_change_pct"] = pct
+                        except Exception:
+                            pass
+                    return r
+                cache = await asyncio.to_thread(_fetch)
+                if cache:
+                    _index_cache = cache
+                    _index_cache_ts = _t.time()
+            except Exception:
+                pass
+            await asyncio.sleep(60)
+    asyncio.create_task(_index_price_loop())
+    logger.info("Index price background refresh started (every 60s)")
+
     # Start auto-scan background task (every 15 min during market hours)
     auto_scan_task = asyncio.create_task(_auto_scan_loop())
     logger.info("Auto-scan background task started (every 15 min during market hours)")
@@ -2642,58 +2675,13 @@ async def api_overview(
     status_map = {"OPEN": "LIVE", "PRE_MARKET": "PRE", "POST_MARKET": "POST"}
     market_status = status_map.get(reason, "CLOSED")
 
-    # Live index prices — cached globally for 60s to avoid blocking
-    import time as _time
-    global _index_cache, _index_cache_ts
-    nifty_price, nifty_change, nifty_change_pct = 0.0, 0.0, 0.0
-    banknifty_price, banknifty_change, banknifty_change_pct = 0.0, 0.0, 0.0
-
-    try:
-        if _index_cache and (_time.time() - _index_cache_ts) < 60:
-            # Use cache
-            nifty_price = _index_cache.get("nifty_price", 0)
-            nifty_change = _index_cache.get("nifty_change", 0)
-            nifty_change_pct = _index_cache.get("nifty_change_pct", 0)
-            banknifty_price = _index_cache.get("banknifty_price", 0)
-            banknifty_change = _index_cache.get("banknifty_change", 0)
-            banknifty_change_pct = _index_cache.get("banknifty_change_pct", 0)
-        else:
-            # Fetch in background thread to not block event loop
-            import yfinance as yf
-
-            def _fetch_indices():
-                results = {}
-                for sym, name in [("^NSEI", "nifty"), ("^NSEBANK", "banknifty")]:
-                    try:
-                        tk = yf.Ticker(sym)
-                        info = tk.fast_info
-                        price = float(getattr(info, "last_price", 0) or 0)
-                        prev = float(getattr(info, "previous_close", 0) or 0)
-                        chg = round(price - prev, 2) if prev else 0.0
-                        pct = round((chg / prev) * 100, 2) if prev else 0.0
-                        results[f"{name}_price"] = price
-                        results[f"{name}_change"] = chg
-                        results[f"{name}_change_pct"] = pct
-                    except Exception:
-                        results[f"{name}_price"] = 0
-                        results[f"{name}_change"] = 0
-                        results[f"{name}_change_pct"] = 0
-                return results
-
-            try:
-                cache = await asyncio.wait_for(asyncio.to_thread(_fetch_indices), timeout=5.0)
-                _index_cache = cache
-                _index_cache_ts = _time.time()
-                nifty_price = cache.get("nifty_price", 0)
-                nifty_change = cache.get("nifty_change", 0)
-                nifty_change_pct = cache.get("nifty_change_pct", 0)
-                banknifty_price = cache.get("banknifty_price", 0)
-                banknifty_change = cache.get("banknifty_change", 0)
-                banknifty_change_pct = cache.get("banknifty_change_pct", 0)
-            except asyncio.TimeoutError:
-                logger.debug("Index price fetch timed out (5s)")
-    except Exception as e:
-        logger.debug("Index price fetch failed: %s", e)
+    # Index prices — use global cache only, never block this endpoint
+    nifty_price = _index_cache.get("nifty_price", 0) if _index_cache else 0
+    nifty_change = _index_cache.get("nifty_change", 0) if _index_cache else 0
+    nifty_change_pct = _index_cache.get("nifty_change_pct", 0) if _index_cache else 0
+    banknifty_price = _index_cache.get("banknifty_price", 0) if _index_cache else 0
+    banknifty_change = _index_cache.get("banknifty_change", 0) if _index_cache else 0
+    banknifty_change_pct = _index_cache.get("banknifty_change_pct", 0) if _index_cache else 0
 
     return {
         "watchlist_count": watchlist_count,
