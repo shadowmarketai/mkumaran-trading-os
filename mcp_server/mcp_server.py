@@ -419,38 +419,8 @@ async def lifespan(app: FastAPI):
     price_task = asyncio.create_task(_price_refresh_loop())
     logger.info("Live price refresh background task started")
 
-    # Start index price background refresh (every 60s)
-    async def _index_price_loop():
-        global _index_cache, _index_cache_ts
-        import time as _t
-        while True:
-            try:
-                import yfinance as yf
-                def _fetch():
-                    r = {}
-                    for sym, name in [("^NSEI", "nifty"), ("^NSEBANK", "banknifty")]:
-                        try:
-                            tk = yf.Ticker(sym)
-                            info = tk.fast_info
-                            p = float(getattr(info, "last_price", 0) or 0)
-                            prev = float(getattr(info, "previous_close", 0) or 0)
-                            c = round(p - prev, 2) if prev else 0.0
-                            pct = round((c / prev) * 100, 2) if prev else 0.0
-                            r[f"{name}_price"] = p
-                            r[f"{name}_change"] = c
-                            r[f"{name}_change_pct"] = pct
-                        except Exception:
-                            pass
-                    return r
-                cache = await asyncio.to_thread(_fetch)
-                if cache:
-                    _index_cache = cache
-                    _index_cache_ts = _t.time()
-            except Exception:
-                pass
-            await asyncio.sleep(60)
-    asyncio.create_task(_index_price_loop())
-    logger.info("Index price background refresh started (every 60s)")
+    # Index prices fetched by auto-scan loop, not separately
+    logger.info("Index prices will be updated during MWA scan cycles")
 
     # Start auto-scan background task (every 15 min during market hours)
     auto_scan_task = asyncio.create_task(_auto_scan_loop())
