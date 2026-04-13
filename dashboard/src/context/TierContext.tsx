@@ -41,8 +41,9 @@ export function TierProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const canAccess = (feature: string): boolean => {
-    if (!tierInfo) return true; // Loading — allow
+    if (!tierInfo) return true; // Loading or error — allow everything
     if (tierInfo.tier === 'admin') return true;
+    if (!tierInfo.features || Object.keys(tierInfo.features).length === 0) return true;
     const feat = tierInfo.features[feature];
     if (!feat) return true; // Unknown feature — allow
     return feat.accessible;

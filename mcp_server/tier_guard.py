@@ -94,68 +94,88 @@ def _get_user_tier(user_email: str) -> str:
     if user_email == settings.ADMIN_EMAIL:
         return "admin"
 
-    db = SessionLocal()
     try:
-        from sqlalchemy import text
-        row = db.execute(
-            text("SELECT subscription_tier FROM app_users WHERE email = :e AND is_active = true"),
-            {"e": user_email}
-        ).first()
-        if row:
-            return row[0] or "free"
+        db = SessionLocal()
+        try:
+            from sqlalchemy import text
+            row = db.execute(
+                text("SELECT subscription_tier FROM app_users WHERE email = :e AND is_active = true"),
+                {"e": user_email}
+            ).first()
+            if row:
+                return row[0] or "free"
+        except Exception:
+            pass
+        finally:
+            db.close()
     except Exception:
         pass
-    finally:
-        db.close()
 
     return "free"
 
 
 def _get_daily_usage(user_email: str, feature: str) -> int:
-    """Get today's usage count for a feature."""
-    db = SessionLocal()
+    """Get today's usage count for a feature. Returns 0 on any error."""
     try:
-        from sqlalchemy import text
-        today = date.today()
-        row = db.execute(
-            text("""SELECT COALESCE(SUM(count), 0) FROM usage_logs
-                    WHERE user_id = 0 AND feature = :f AND period_date = :d
-                    AND setting_key = :e"""),
-            {"f": feature, "d": today, "e": user_email}
-        ).first()
-        return int(row[0]) if row else 0
+        db = SessionLocal()
+        try:
+            from sqlalchemy import text
+            today = date.today()
+            # Simple approach — no dependency on usage_logs table existing
+            row = db.execute(
+                text("SELECT 1 FROM information_schema.tables WHERE table_name = 'usage_logs'")
+            ).first()
+            if not row:
+                return 0
+            result = db.execute(
+                text("""SELECT COALESCE(SUM(count), 0) FROM usage_logs
+                        WHERE feature = :f AND period_date = :d"""),
+                {"f": f"{user_email}:{feature}", "d": today}
+            ).first()
+            return int(result[0]) if result else 0
+        finally:
+            db.close()
     except Exception:
         return 0
-    finally:
-        db.close()
 
 
 def _record_usage(user_email: str, feature: str):
-    """Record a feature usage event."""
-    db = SessionLocal()
+    """Record a feature usage event. Silently fails if table missing."""
     try:
-        from sqlalchemy import text
-        today = date.today()
+        db = SessionLocal()
         try:
-            db.execute(
-                text("""INSERT INTO usage_logs (user_id, feature, count, period_date, setting_key, created_at)
-                        VALUES (0, :f, 1, :d, :e, NOW())"""),
-                {"f": feature, "d": today, "e": user_email}
-            )
+            from sqlalchemy import text
+            today = date.today()
+            # Ensure table exists
+            db.execute(text("""
+                CREATE TABLE IF NOT EXISTS usage_logs (
+                    id SERIAL PRIMARY KEY,
+                    feature VARCHAR(100) NOT NULL,
+                    count INTEGER DEFAULT 1,
+                    period_date DATE NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            # Upsert
+            existing = db.execute(
+                text("SELECT id FROM usage_logs WHERE feature = :f AND period_date = :d"),
+                {"f": f"{user_email}:{feature}", "d": today}
+            ).first()
+            if existing:
+                db.execute(
+                    text("UPDATE usage_logs SET count = count + 1 WHERE id = :id"),
+                    {"id": existing[0]}
+                )
+            else:
+                db.execute(
+                    text("INSERT INTO usage_logs (feature, count, period_date) VALUES (:f, 1, :d)"),
+                    {"f": f"{user_email}:{feature}", "d": today}
+                )
             db.commit()
-        except Exception:
-            db.rollback()
-            # Try update instead
-            db.execute(
-                text("""UPDATE usage_logs SET count = count + 1
-                        WHERE feature = :f AND period_date = :d AND setting_key = :e"""),
-                {"f": feature, "d": today, "e": user_email}
-            )
-            db.commit()
+        finally:
+            db.close()
     except Exception:
         pass
-    finally:
-        db.close()
 
 
 def check_tier(

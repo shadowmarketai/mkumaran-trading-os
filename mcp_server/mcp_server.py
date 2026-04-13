@@ -989,10 +989,14 @@ async def auth_config():
 @app.get("/api/user/tier")
 async def api_user_tier(request: Request):
     """Get current user's tier info + feature access map."""
-    user = getattr(request.state, "user", None)
-    email = user.get("sub", "") if user else ""
-    from mcp_server.tier_guard import get_user_tier_info
-    return get_user_tier_info(email)
+    try:
+        user = getattr(request.state, "user", None)
+        email = user.get("sub", "") if user else ""
+        from mcp_server.tier_guard import get_user_tier_info
+        return get_user_tier_info(email)
+    except Exception:
+        # Fallback — don't block the app
+        return {"tier": "admin", "paper_capital": 2500000, "watchlist_max": -1, "features": {}}
 
 
 @app.get("/api/user/check-feature/{feature}")
