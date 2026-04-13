@@ -190,6 +190,49 @@ async def verify_registration_otp(identifier: str, otp: str, method: str) -> dic
     return {"verified": True, "verify_token": verify_token, "method": method}
 
 
+# ── Ensure table exists ───────────────────────────────────────
+
+_table_checked = False
+
+
+def _ensure_app_users_table(db_session):
+    """Create app_users table if it doesn't exist."""
+    global _table_checked
+    if _table_checked:
+        return
+    from sqlalchemy import text
+    try:
+        db_session.execute(text("SELECT 1 FROM app_users LIMIT 1"))
+        _table_checked = True
+    except Exception:
+        db_session.rollback()
+        db_session.execute(text("""
+            CREATE TABLE IF NOT EXISTS app_users (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255) UNIQUE,
+                phone VARCHAR(15) UNIQUE,
+                password_hash VARCHAR(128) NOT NULL,
+                name VARCHAR(100),
+                avatar_url VARCHAR(500),
+                auth_provider VARCHAR(20) DEFAULT 'email',
+                google_id VARCHAR(50),
+                city VARCHAR(100),
+                trading_experience VARCHAR(20),
+                trading_segments VARCHAR(200),
+                is_verified BOOLEAN DEFAULT false,
+                is_active BOOLEAN DEFAULT true,
+                role VARCHAR(20) DEFAULT 'user',
+                last_login TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )
+        """))
+        db_session.execute(text("CREATE INDEX IF NOT EXISTS idx_app_users_email ON app_users(email)"))
+        db_session.execute(text("CREATE INDEX IF NOT EXISTS idx_app_users_phone ON app_users(phone)"))
+        db_session.commit()
+        _table_checked = True
+        logger.info("Created app_users table")
+
+
 # ── REGISTER (after OTP verified) ────────────────────────────
 
 async def register_user(
@@ -199,6 +242,7 @@ async def register_user(
 ) -> dict:
     """Complete registration after OTP verification with full profile."""
     from sqlalchemy import text
+    _ensure_app_users_table(db_session)
 
     entry = _otp_store.get(f"verified:{verify_token}")
     if not entry:
@@ -262,6 +306,7 @@ async def register_user(
 async def login_user(db_session, identifier: str, password: str) -> dict:
     """Login with email/phone + password."""
     from sqlalchemy import text
+    _ensure_app_users_table(db_session)
 
     identifier = identifier.strip()
 
@@ -312,6 +357,7 @@ async def login_user(db_session, identifier: str, password: str) -> dict:
 async def google_sign_in(db_session, id_token: str) -> dict:
     """Google Sign-In — auto-creates account on first use."""
     from sqlalchemy import text
+    _ensure_app_users_table(db_session)
 
     if not GOOGLE_CLIENT_ID:
         raise ValueError("Google Sign-In not configured")
