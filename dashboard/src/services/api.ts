@@ -29,14 +29,14 @@ import type {
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 30000,
+  timeout: 10000,
   headers: { 'Content-Type': 'application/json' },
 });
 
 // Second instance for /tools/* endpoints (no /api prefix)
 const toolsApi = axios.create({
   baseURL: '/',
-  timeout: 30000,
+  timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -81,7 +81,7 @@ export const signalApi = {
 
 export const tradeApi = {
   getActiveTrades: (filter?: SegmentFilter) =>
-    api.get<ActiveTrade[]>('/trades/active', { params: { ...filter }, timeout: 60000 }).then((r) => r.data),
+    api.get<ActiveTrade[]>('/trades/active', { params: { ...filter }, timeout: 10000 }).then((r) => r.data),
 };
 
 export const mwaApi = {
