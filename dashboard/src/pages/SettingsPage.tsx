@@ -10,8 +10,7 @@ const token = localStorage.getItem('mkumaran_auth_token');
 if (token) api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
 export default function SettingsPage() {
-  const [grokKey, setGrokKey] = useState('');
-  const [kimiKey, setKimiKey] = useState('');
+  const [keys, setKeys] = useState<Record<string, string>>({});
   const [preferredProvider, setPreferredProvider] = useState('grok');
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -22,10 +21,13 @@ export default function SettingsPage() {
     api.get('/settings/api-keys').then((r) => {
       if (r.data.has_keys) {
         setHasKeys(true);
-        const keys = r.data.keys;
-        if (keys.grok_key) setGrokKey(keys.grok_key);
-        if (keys.kimi_key) setKimiKey(keys.kimi_key);
-        if (keys.preferred_provider) setPreferredProvider(keys.preferred_provider);
+        const k = r.data.keys;
+        const mapped: Record<string, string> = {};
+        for (const provider of ['grok', 'kimi', 'openai', 'claude', 'gemini', 'deepseek']) {
+          if (k[`${provider}_key`]) mapped[`${provider}Key`] = k[`${provider}_key`];
+        }
+        setKeys(mapped);
+        if (k.preferred_provider) setPreferredProvider(k.preferred_provider);
       }
     }).catch(() => {});
   }, []);
@@ -35,11 +37,12 @@ export default function SettingsPage() {
     setError('');
     setSaved(false);
     try {
-      await api.post('/settings/api-keys', {
-        grok_key: grokKey,
-        kimi_key: kimiKey,
-        preferred_provider: preferredProvider,
-      });
+      const payload: Record<string, string> = { preferred_provider: preferredProvider };
+      for (const provider of ['grok', 'kimi', 'openai', 'claude', 'gemini', 'deepseek']) {
+        const val = keys[`${provider}Key`];
+        if (val && !val.includes('****')) payload[`${provider}_key`] = val;
+      }
+      await api.post('/settings/api-keys', payload);
       setSaved(true);
       setHasKeys(true);
       setTimeout(() => setSaved(false), 3000);
@@ -98,6 +101,10 @@ export default function SettingsPage() {
               {[
                 { key: 'grok', label: 'Grok (xAI)', desc: 'grok-3-mini' },
                 { key: 'kimi', label: 'Kimi (Moonshot)', desc: 'moonshot-v1-8k' },
+                { key: 'openai', label: 'OpenAI (GPT)', desc: 'gpt-4o-mini' },
+                { key: 'claude', label: 'Claude (Anthropic)', desc: 'claude-haiku' },
+                { key: 'gemini', label: 'Gemini (Google)', desc: 'gemini-2.0-flash' },
+                { key: 'deepseek', label: 'DeepSeek', desc: 'deepseek-chat' },
               ].map((p) => (
                 <button
                   key={p.key}
@@ -116,33 +123,28 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Grok Key */}
-          <div>
-            <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">
-              Grok API Key <span className="text-slate-300">(api.x.ai)</span>
-            </label>
-            <input
-              type="password"
-              value={grokKey}
-              onChange={(e) => setGrokKey(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm font-mono placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 focus:ring-1 focus:ring-trading-ai/25 transition-all"
-              placeholder={hasKeys ? '****saved****' : 'xai-...'}
-            />
-          </div>
-
-          {/* Kimi Key */}
-          <div>
-            <label className="block text-[10px] font-semibold text-slate-400 mb-2 uppercase tracking-[0.12em]">
-              Kimi API Key <span className="text-slate-300">(api.moonshot.cn)</span>
-            </label>
-            <input
-              type="password"
-              value={kimiKey}
-              onChange={(e) => setKimiKey(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm font-mono placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 focus:ring-1 focus:ring-trading-ai/25 transition-all"
-              placeholder={hasKeys ? '****saved****' : 'sk-...'}
-            />
-          </div>
+          {/* API Keys — all providers */}
+          {[
+            { key: 'grok', label: 'Grok', url: 'console.x.ai', placeholder: 'xai-...' },
+            { key: 'kimi', label: 'Kimi', url: 'platform.moonshot.cn', placeholder: 'sk-...' },
+            { key: 'openai', label: 'OpenAI', url: 'platform.openai.com', placeholder: 'sk-...' },
+            { key: 'claude', label: 'Claude', url: 'console.anthropic.com', placeholder: 'sk-ant-...' },
+            { key: 'gemini', label: 'Gemini', url: 'aistudio.google.com', placeholder: 'AIza...' },
+            { key: 'deepseek', label: 'DeepSeek', url: 'platform.deepseek.com', placeholder: 'sk-...' },
+          ].map((p) => (
+            <div key={p.key}>
+              <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-[0.12em]">
+                {p.label} API Key <span className="text-slate-300">({p.url})</span>
+              </label>
+              <input
+                type="password"
+                value={(keys as Record<string, string>)[`${p.key}Key`] || ''}
+                onChange={(e) => setKeys((prev: Record<string, string>) => ({ ...prev, [`${p.key}Key`]: e.target.value }))}
+                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm font-mono placeholder-slate-400 focus:outline-none focus:border-trading-ai/50 transition-all"
+                placeholder={hasKeys ? '****saved****' : p.placeholder}
+              />
+            </div>
+          ))}
 
           <button
             onClick={handleSave}
@@ -159,10 +161,13 @@ export default function SettingsPage() {
             <strong className="text-slate-500">How it works:</strong> When you set your own keys, all AI features
             (signal validation, reports, /analyze) will use YOUR key and quota instead of the system default.
             You can get keys from{' '}
-            <a href="https://console.x.ai" target="_blank" rel="noopener noreferrer" className="text-trading-ai hover:underline">console.x.ai</a>
-            {' '}(Grok) or{' '}
-            <a href="https://platform.moonshot.cn" target="_blank" rel="noopener noreferrer" className="text-trading-ai hover:underline">platform.moonshot.cn</a>
-            {' '}(Kimi).
+            <a href="https://console.x.ai" target="_blank" rel="noopener noreferrer" className="text-trading-ai hover:underline">Grok</a>,{' '}
+            <a href="https://platform.moonshot.cn" target="_blank" rel="noopener noreferrer" className="text-trading-ai hover:underline">Kimi</a>,{' '}
+            <a href="https://platform.openai.com" target="_blank" rel="noopener noreferrer" className="text-trading-ai hover:underline">OpenAI</a>,{' '}
+            <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="text-trading-ai hover:underline">Claude</a>,{' '}
+            <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" className="text-trading-ai hover:underline">Gemini</a>, or{' '}
+            <a href="https://platform.deepseek.com" target="_blank" rel="noopener noreferrer" className="text-trading-ai hover:underline">DeepSeek</a>.
+            You can also set keys via Telegram: /setkey provider key
           </p>
         </div>
       </GlassCard>

@@ -29,8 +29,20 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/resume NSE:TICKER \u2014 Resume alerts\n"
         "/watchlist [tier] \u2014 Show watchlist\n"
         "/close NSE:TICKER \u2014 Log trade exit\n"
-        "/analyze BUY NSE:TICKER @ PRICE SL PRICE TGT PRICE \u2014 Quick AI analysis\n"
-        "/signal BUY NSE:TICKER @ PRICE SL PRICE TGT PRICE \u2014 Full pipeline (scan+AI+track)\n"
+        "/analyze BUY TICKER @ PRICE SL PRICE TGT PRICE \u2014 Quick AI analysis\n"
+        "/signal BUY TICKER @ PRICE SL PRICE TGT PRICE \u2014 Full pipeline\n"
+        "\n\U0001f464 Account:\n"
+        "/login email password \u2014 Link your account\n"
+        "/segments \u2014 View/toggle trading segments\n"
+        "/alerts on|off \u2014 Pause/resume signals\n"
+        "/plan \u2014 View subscription\n"
+        "/mystats \u2014 Your stats\n"
+        "\n\U0001f511 BYOK API Keys:\n"
+        "/setkey grok|kimi|openai|claude|gemini|deepseek KEY\n"
+        "/mykeys \u2014 View saved keys\n"
+        "/removekey provider \u2014 Remove a key\n"
+        "\n\U0001f527 Admin:\n"
+        "/health \u2014 System health\n"
         "/status \u2014 Alias for /health"
     )
 
@@ -901,5 +913,19 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("analyze", cmd_analyze))
     app.add_handler(CommandHandler("signal", cmd_signal))
 
-    logger.info("Telegram bot configured with 13 command handlers")
+    # SaaS multi-user commands
+    from mcp_server.telegram_saas import (
+        cmd_user_login, cmd_segments, cmd_alerts, cmd_setkey,
+        cmd_mykeys, cmd_removekey, cmd_mystats, cmd_plan,
+    )
+    app.add_handler(CommandHandler("login", cmd_user_login))
+    app.add_handler(CommandHandler("segments", cmd_segments))
+    app.add_handler(CommandHandler("alerts", cmd_alerts))
+    app.add_handler(CommandHandler("setkey", cmd_setkey))
+    app.add_handler(CommandHandler("mykeys", cmd_mykeys))
+    app.add_handler(CommandHandler("removekey", cmd_removekey))
+    app.add_handler(CommandHandler("mystats", cmd_mystats))
+    app.add_handler(CommandHandler("plan", cmd_plan))
+
+    logger.info("Telegram bot configured with 21 command handlers")
     return app

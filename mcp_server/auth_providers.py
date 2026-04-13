@@ -219,6 +219,11 @@ def _ensure_app_users_table(db_session):
                 city VARCHAR(100),
                 trading_experience VARCHAR(20),
                 trading_segments VARCHAR(200),
+                telegram_chat_id VARCHAR(20),
+                alert_enabled BOOLEAN DEFAULT true,
+                subscription_tier VARCHAR(20) DEFAULT 'free',
+                daily_signal_count INTEGER DEFAULT 0,
+                last_signal_date DATE,
                 is_verified BOOLEAN DEFAULT false,
                 is_active BOOLEAN DEFAULT true,
                 role VARCHAR(20) DEFAULT 'user',
@@ -228,6 +233,7 @@ def _ensure_app_users_table(db_session):
         """))
         db_session.execute(text("CREATE INDEX IF NOT EXISTS idx_app_users_email ON app_users(email)"))
         db_session.execute(text("CREATE INDEX IF NOT EXISTS idx_app_users_phone ON app_users(phone)"))
+        db_session.execute(text("CREATE INDEX IF NOT EXISTS idx_app_users_telegram ON app_users(telegram_chat_id)"))
         db_session.commit()
         _table_checked = True
         logger.info("Created app_users table")
