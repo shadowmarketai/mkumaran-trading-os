@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
 import ProtectedRoute from './components/ProtectedRoute';
+import UpgradeGate from './components/ui/UpgradeGate';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import OverviewPage from './pages/OverviewPage';
@@ -43,21 +44,24 @@ function App() {
                 <TopBar onMenuClick={toggleSidebar} />
                 <main className="flex-1 overflow-auto p-3 md:p-5">
                   <Routes>
+                    {/* Free tier — open to all */}
                     <Route path="/overview" element={<OverviewPage />} />
-                    <Route path="/trades" element={<ActiveTradesPage />} />
-                    <Route path="/accuracy" element={<AccuracyPage />} />
-                    <Route path="/watchlist" element={<WatchlistPage />} />
-                    <Route path="/backtesting" element={<BacktestingPage />} />
-                    <Route path="/engines" element={<EnginesPage />} />
-                    <Route path="/wallstreet" element={<WallStreetPage />} />
-                    <Route path="/news" element={<NewsPage />} />
-                    <Route path="/momentum" element={<MomentumPage />} />
-                    <Route path="/options" element={<OptionsPage />} />
-                    <Route path="/payoff" element={<PayoffPage />} />
-                    <Route path="/paper" element={<PaperTradingPage />} />
-                    <Route path="/monitor" element={<SignalMonitorPage />} />
-                    <Route path="/market-movers" element={<MarketMoversPage />} />
-                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/market-movers" element={<UpgradeGate feature="market_movers"><MarketMoversPage /></UpgradeGate>} />
+                    <Route path="/trades" element={<UpgradeGate feature="active_trades"><ActiveTradesPage /></UpgradeGate>} />
+                    <Route path="/accuracy" element={<UpgradeGate feature="accuracy"><AccuracyPage /></UpgradeGate>} />
+                    <Route path="/watchlist" element={<UpgradeGate feature="watchlist_view"><WatchlistPage /></UpgradeGate>} />
+                    <Route path="/news" element={<UpgradeGate feature="news_macro"><NewsPage /></UpgradeGate>} />
+                    <Route path="/options" element={<UpgradeGate feature="options_greeks"><OptionsPage /></UpgradeGate>} />
+                    <Route path="/paper" element={<UpgradeGate feature="paper_trading"><PaperTradingPage /></UpgradeGate>} />
+                    <Route path="/backtesting" element={<UpgradeGate feature="backtesting"><BacktestingPage /></UpgradeGate>} />
+
+                    {/* Pro tier — gated */}
+                    <Route path="/monitor" element={<UpgradeGate feature="signal_monitor"><SignalMonitorPage /></UpgradeGate>} />
+                    <Route path="/engines" element={<UpgradeGate feature="pattern_engines"><EnginesPage /></UpgradeGate>} />
+                    <Route path="/wallstreet" element={<UpgradeGate feature="wallstreet_ai"><WallStreetPage /></UpgradeGate>} />
+                    <Route path="/momentum" element={<UpgradeGate feature="momentum"><MomentumPage /></UpgradeGate>} />
+                    <Route path="/payoff" element={<UpgradeGate feature="payoff_calc"><PayoffPage /></UpgradeGate>} />
+                    <Route path="/settings" element={<UpgradeGate feature="settings"><SettingsPage /></UpgradeGate>} />
                   </Routes>
                 </main>
               </div>

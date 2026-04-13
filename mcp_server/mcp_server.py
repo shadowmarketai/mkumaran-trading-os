@@ -593,6 +593,7 @@ AUTH_PUBLIC_PATHS = {
     "/api/auth/send-otp", "/api/auth/verify-otp",
     "/api/auth/register", "/api/auth/user-login",
     "/api/auth/reset-password", "/api/auth/config",
+    "/api/user/tier", "/api/user/check-feature",
     "/api/info", "/health", "/docs",
     "/openapi.json", "/redoc",
     "/api/tv_webhook", "/api/telegram_webhook",
@@ -981,6 +982,36 @@ async def auth_config():
         "mobile_otp_enabled": bool(os.getenv("MSG91_AUTH_KEY")),
         "password_enabled": True,
     }
+
+
+# ── Tier Enforcement API ──────────────────────────────────────
+
+@app.get("/api/user/tier")
+async def api_user_tier(request: Request):
+    """Get current user's tier info + feature access map."""
+    user = getattr(request.state, "user", None)
+    email = user.get("sub", "") if user else ""
+    from mcp_server.tier_guard import get_user_tier_info
+    return get_user_tier_info(email)
+
+
+@app.get("/api/user/check-feature/{feature}")
+async def api_check_feature(feature: str, request: Request):
+    """Check if user can access a specific feature."""
+    user = getattr(request.state, "user", None)
+    email = user.get("sub", "") if user else ""
+    from mcp_server.tier_guard import check_tier, TierError
+    try:
+        result = check_tier(email, feature, record=False)
+        return result
+    except TierError as e:
+        return JSONResponse(status_code=403, content={
+            "allowed": False,
+            "message": e.message,
+            "required_tier": e.required_tier,
+            "current_tier": e.current_tier,
+            "feature": e.feature,
+        })
 
 
 # ============================================================

@@ -6,26 +6,29 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../../lib/utils';
+import { useTier } from '../../context/TierContext';
 import { useOverview } from '../../hooks/useOverview';
 
-interface NavItem { to: string; label: string; icon: React.ReactNode; group?: string; }
+import { Lock } from 'lucide-react';
+
+interface NavItem { to: string; label: string; icon: React.ReactNode; group?: string; feature?: string; }
 
 const navItems: NavItem[] = [
-  { to: '/overview', label: 'Overview', icon: <LayoutDashboard size={18} />, group: 'core' },
-  { to: '/market-movers', label: 'Market Movers', icon: <BarChart3 size={18} />, group: 'core' },
-  { to: '/trades', label: 'Active Trades', icon: <TrendingUp size={18} />, group: 'core' },
-  { to: '/monitor', label: 'Signal Monitor', icon: <Shield size={18} />, group: 'core' },
-  { to: '/paper', label: 'Paper Trading', icon: <FileText size={18} />, group: 'trading' },
-  { to: '/accuracy', label: 'Accuracy', icon: <Target size={18} />, group: 'trading' },
-  { to: '/watchlist', label: 'Watchlist', icon: <Eye size={18} />, group: 'trading' },
-  { to: '/backtesting', label: 'Backtesting', icon: <FlaskConical size={18} />, group: 'analysis' },
-  { to: '/engines', label: 'Pattern Engines', icon: <Cpu size={18} />, group: 'analysis' },
-  { to: '/wallstreet', label: 'Wall Street AI', icon: <Brain size={18} />, group: 'analysis' },
-  { to: '/news', label: 'News & Macro', icon: <Newspaper size={18} />, group: 'intel' },
-  { to: '/momentum', label: 'Momentum', icon: <Rocket size={18} />, group: 'intel' },
-  { to: '/options', label: 'Options Greeks', icon: <Calculator size={18} />, group: 'options' },
-  { to: '/payoff', label: 'Payoff Calc', icon: <LineChart size={18} />, group: 'options' },
-  { to: '/settings', label: 'Settings', icon: <Settings size={18} />, group: 'account' },
+  { to: '/overview', label: 'Overview', icon: <LayoutDashboard size={18} />, group: 'core', feature: 'overview' },
+  { to: '/market-movers', label: 'Market Movers', icon: <BarChart3 size={18} />, group: 'core', feature: 'market_movers' },
+  { to: '/trades', label: 'Active Trades', icon: <TrendingUp size={18} />, group: 'core', feature: 'active_trades' },
+  { to: '/monitor', label: 'Signal Monitor', icon: <Shield size={18} />, group: 'core', feature: 'signal_monitor' },
+  { to: '/paper', label: 'Paper Trading', icon: <FileText size={18} />, group: 'trading', feature: 'paper_trading' },
+  { to: '/accuracy', label: 'Accuracy', icon: <Target size={18} />, group: 'trading', feature: 'accuracy' },
+  { to: '/watchlist', label: 'Watchlist', icon: <Eye size={18} />, group: 'trading', feature: 'watchlist_view' },
+  { to: '/backtesting', label: 'Backtesting', icon: <FlaskConical size={18} />, group: 'analysis', feature: 'backtesting' },
+  { to: '/engines', label: 'Pattern Engines', icon: <Cpu size={18} />, group: 'analysis', feature: 'pattern_engines' },
+  { to: '/wallstreet', label: 'Wall Street AI', icon: <Brain size={18} />, group: 'analysis', feature: 'wallstreet_ai' },
+  { to: '/news', label: 'News & Macro', icon: <Newspaper size={18} />, group: 'intel', feature: 'news_macro' },
+  { to: '/momentum', label: 'Momentum', icon: <Rocket size={18} />, group: 'intel', feature: 'momentum' },
+  { to: '/options', label: 'Options Greeks', icon: <Calculator size={18} />, group: 'options', feature: 'options_greeks' },
+  { to: '/payoff', label: 'Payoff Calc', icon: <LineChart size={18} />, group: 'options', feature: 'payoff_calc' },
+  { to: '/settings', label: 'Settings', icon: <Settings size={18} />, group: 'account', feature: 'settings' },
 ];
 
 const groupLabels: Record<string, string> = {
@@ -46,6 +49,7 @@ interface SidebarProps { isOpen?: boolean; onClose?: () => void; }
 
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { market } = useOverview(60000);
+  const { canAccess } = useTier();
   const [collapsed, setCollapsed] = useState(false);
   const grouped = groupItems(navItems);
 
@@ -92,7 +96,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 </p>
               )}
               <div className="space-y-0.5">
-                {items.map((item) => (
+                {items.map((item) => {
+                  const locked = item.feature ? !canAccess(item.feature) : false;
+                  return (
                   <NavLink
                     key={item.to}
                     to={item.to}
@@ -103,20 +109,28 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                       collapsed ? 'px-2.5 py-2.5 justify-center' : 'px-3 py-2',
                       isActive
                         ? 'bg-trading-ai-bg text-trading-ai font-semibold'
-                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                        : locked
+                          ? 'text-slate-300 hover:text-slate-400 hover:bg-slate-50/50'
+                          : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                     )}
                   >
                     {({ isActive }) => (
                       <>
                         {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-r-full bg-trading-ai" />}
-                        <span className={cn('flex-shrink-0', isActive ? 'text-trading-ai' : 'text-slate-400 group-hover:text-slate-600')}>
+                        <span className={cn('flex-shrink-0', isActive ? 'text-trading-ai' : locked ? 'text-slate-300' : 'text-slate-400 group-hover:text-slate-600')}>
                           {item.icon}
                         </span>
-                        {!collapsed && <span>{item.label}</span>}
+                        {!collapsed && (
+                          <>
+                            <span className="flex-1">{item.label}</span>
+                            {locked && <Lock size={11} className="text-slate-300" />}
+                          </>
+                        )}
                       </>
                     )}
                   </NavLink>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}
