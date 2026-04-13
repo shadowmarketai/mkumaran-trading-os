@@ -29,7 +29,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/resume NSE:TICKER \u2014 Resume alerts\n"
         "/watchlist [tier] \u2014 Show watchlist\n"
         "/close NSE:TICKER \u2014 Log trade exit\n"
-        "/analyze BUY NSE:TICKER @ PRICE SL PRICE TGT PRICE \u2014 AI signal analysis\n"
+        "/analyze BUY NSE:TICKER @ PRICE SL PRICE TGT PRICE \u2014 Quick AI analysis\n"
+        "/signal BUY NSE:TICKER @ PRICE SL PRICE TGT PRICE \u2014 Full pipeline (scan+AI+track)\n"
         "/status \u2014 Alias for /health"
     )
 
@@ -470,6 +471,339 @@ async def cmd_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(report)
 
 
+async def cmd_signal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /signal — full pipeline: parse → scan → AI debate → track.
+
+    Usage:
+      /signal BUY NSE:RELIANCE @ 2500 SL 2400 TGT 2800
+      /signal SELL MCX:GOLD 72000 SL 72500 TGT 71000
+      /signal BUY NIFTY 24500 SL 24300 TGT 24900
+    """
+    if not context.args:
+        await update.message.reply_text(
+            "\U0001f4e1 Signal Intake Pipeline\n"
+            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+            "Share a signal to analyze:\n\n"
+            "/signal BUY NSE:RELIANCE @ 2500 SL 2400 TGT 2800\n"
+            "/signal SELL MCX:GOLD 72000 SL 72500 TGT 71000\n\n"
+            "Pipeline:\n"
+            "1\ufe0f\u20e3 Parse signal\n"
+            "2\ufe0f\u20e3 Run 40+ scanners on ticker\n"
+            "3\ufe0f\u20e3 AI debate (Grok/Kimi)\n"
+            "4\ufe0f\u20e3 Confidence score + verdict\n"
+            "5\ufe0f\u20e3 Auto-track if >50% confidence"
+        )
+        return
+
+    signal_text = " ".join(context.args)
+    await update.message.reply_text("\u23f3 Processing signal through full pipeline...")
+
+    # ── Step 1: Parse ──────────────────────────────────────────
+    try:
+        from mcp_server.telegram_receiver import parse_signal_message
+        signal = parse_signal_message(signal_text)
+    except Exception as e:
+        await update.message.reply_text(f"\u274c Parse error: {e}")
+        return
+
+    if signal is None:
+        await update.message.reply_text(
+            "\u274c Could not parse signal.\n"
+            "Format: BUY NSE:TICKER @ PRICE SL PRICE TGT PRICE"
+        )
+        return
+
+    entry = signal.entry_price
+    sl = signal.stop_loss
+    tgt = signal.target
+    ticker = signal.ticker
+    direction = signal.direction
+    exchange = signal.exchange
+
+    if entry <= 0 or sl <= 0 or tgt <= 0:
+        await update.message.reply_text(
+            f"\u274c Missing prices.\n"
+            f"Parsed: {direction} {ticker} Entry={entry} SL={sl} TGT={tgt}\n"
+            f"Please include all three: entry, SL, target."
+        )
+        return
+
+    risk = abs(entry - sl)
+    reward = abs(tgt - entry)
+    rrr = round(reward / risk, 2) if risk > 0 else 0
+
+    dir_emoji = "\U0001f7e2" if direction in ("BUY", "LONG") else "\U0001f534"
+    parsed_msg = (
+        f"{dir_emoji} Signal Parsed\n"
+        f"{direction} {ticker} ({exchange})\n"
+        f"Entry: \u20b9{entry:,.2f} | SL: \u20b9{sl:,.2f} | TGT: \u20b9{tgt:,.2f}\n"
+        f"RRR: {rrr:.2f}\n"
+    )
+
+    # ── Step 2: Run scanners ───────────────────────────────────
+    scanner_report = ""
+    matched_scanners = []
+    scanner_count = 0
+
+    try:
+        from mcp_server.data_provider import get_provider
+        from mcp_server.mwa_scanner import MWAScanner
+
+        provider = get_provider()
+        ticker_clean = ticker.replace("NSE:", "").replace("MCX:", "").replace("NFO:", "").replace("CDS:", "")
+
+        # Fetch OHLCV
+        df = provider.get_ohlcv_routed(ticker_clean, interval="day", days=180, exchange=exchange)
+
+        if df is not None and not df.empty:
+            # Run scanners against this single stock
+            scanner = MWAScanner()
+            stock_data = {ticker: df}
+            results = scanner.run_all(stock_data=stock_data, save=False, segment=exchange)
+
+            # Find which scanners fired for this ticker
+            for scanner_name, scanner_data in results.items():
+                stocks = scanner_data.get("stocks", [])
+                if ticker_clean in stocks or ticker in stocks:
+                    matched_scanners.append({
+                        "name": scanner_name,
+                        "group": scanner_data.get("group", ""),
+                        "direction": scanner_data.get("direction", ""),
+                    })
+
+            scanner_count = len(matched_scanners)
+
+            if matched_scanners:
+                scanner_lines = []
+                for s in matched_scanners[:10]:
+                    s_dir = "\U0001f7e2" if s["direction"] == "BULL" else "\U0001f534" if s["direction"] == "BEAR" else "\u26aa"
+                    scanner_lines.append(f"  {s_dir} {s['name']} ({s['group']})")
+                scanner_report = (
+                    f"\n\U0001f50d Scanner Analysis ({scanner_count} hit)\n"
+                    + "\n".join(scanner_lines)
+                )
+                if len(matched_scanners) > 10:
+                    scanner_report += f"\n  ... +{len(matched_scanners) - 10} more"
+            else:
+                scanner_report = "\n\U0001f50d Scanners: No matching patterns found"
+        else:
+            scanner_report = "\n\U0001f50d Scanners: Could not fetch data for analysis"
+    except Exception as e:
+        logger.warning("Scanner analysis failed for %s: %s", ticker, e)
+        scanner_report = f"\n\U0001f50d Scanners: Analysis failed ({str(e)[:50]})"
+
+    # ── Step 3: AI Debate ──────────────────────────────────────
+    ai_confidence = 0
+    ai_recommendation = "SKIP"
+    ai_reasoning = ""
+    debate_method = "none"
+
+    try:
+        # Try full debate validator
+        from mcp_server.debate_validator import run_debate
+
+        # Get MWA direction
+        mwa_direction = "UNKNOWN"
+        try:
+            from mcp_server.db import SessionLocal
+            from mcp_server.models import MWAScore
+            db = SessionLocal()
+            latest_mwa = db.query(MWAScore).order_by(MWAScore.score_date.desc()).first()
+            if latest_mwa:
+                mwa_direction = latest_mwa.direction or "UNKNOWN"
+            db.close()
+        except Exception:
+            pass
+
+        # Pre-confidence from scanner count
+        pre_confidence = min(40 + scanner_count * 8, 85)
+
+        confidence_boosts = []
+        if scanner_count >= 3:
+            confidence_boosts.append(f"{scanner_count} scanners aligned")
+        if rrr >= 3.0:
+            confidence_boosts.append(f"Strong RRR {rrr}")
+
+        debate_result = run_debate(
+            ticker=ticker_clean,
+            direction=direction,
+            pattern=signal.pattern or "External Signal",
+            rrr=rrr,
+            entry_price=entry,
+            stop_loss=sl,
+            target=tgt,
+            mwa_direction=mwa_direction,
+            scanner_count=scanner_count,
+            tv_confirmed=False,
+            sector_strength="NEUTRAL",
+            fii_net=0,
+            delivery_pct=0,
+            confidence_boosts=confidence_boosts,
+            pre_confidence=pre_confidence,
+        )
+
+        ai_confidence = debate_result.final_confidence
+        ai_recommendation = debate_result.recommendation
+        ai_reasoning = debate_result.reasoning
+        debate_method = debate_result.method
+
+    except Exception as e:
+        logger.warning("AI debate failed for %s: %s", ticker, e)
+        # Fallback: simple AI call
+        try:
+            from mcp_server.ai_provider import call_ai
+            raw = call_ai(
+                prompt=(
+                    f"Score this Indian market signal 0-100 for quality.\n"
+                    f"Signal: {direction} {ticker} Entry=Rs.{entry} SL=Rs.{sl} TGT=Rs.{tgt} RRR={rrr}\n"
+                    f"Scanners matched: {scanner_count}\n"
+                    f"Respond JSON: {{\"confidence\": N, \"recommendation\": \"ALERT|WATCHLIST|SKIP\", \"reasoning\": \"...\"}}"
+                ),
+                max_tokens=200,
+            )
+            import json
+            if "{" in raw:
+                parsed = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+                ai_confidence = parsed.get("confidence", 50)
+                ai_recommendation = parsed.get("recommendation", "WATCHLIST")
+                ai_reasoning = parsed.get("reasoning", "")
+                debate_method = "single_pass"
+        except Exception:
+            ai_confidence = pre_confidence if scanner_count > 0 else 40
+            ai_recommendation = "WATCHLIST"
+            debate_method = "scanner_only"
+
+    # ── Step 4: Build Telegram report ──────────────────────────
+    conf_bar = "\u2588" * (ai_confidence // 10) + "\u2591" * (10 - ai_confidence // 10)
+
+    if ai_confidence >= 70:
+        verdict_emoji = "\u2705"
+        verdict_text = "STRONG — Execute"
+    elif ai_confidence >= 50:
+        verdict_emoji = "\U0001f7e1"
+        verdict_text = "MODERATE — Consider"
+    else:
+        verdict_emoji = "\u274c"
+        verdict_text = "WEAK — Skip"
+
+    report = (
+        f"\U0001f4e1 SIGNAL ANALYSIS\n"
+        f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+        f"{parsed_msg}"
+        f"{scanner_report}\n"
+        f"\n\U0001f916 AI Confidence: {conf_bar} {ai_confidence}%\n"
+        f"Method: {debate_method}\n"
+        f"Recommendation: {ai_recommendation}\n"
+    )
+
+    if ai_reasoning:
+        report += f"Reasoning: {ai_reasoning[:200]}\n"
+
+    report += (
+        f"\n{verdict_emoji} VERDICT: {verdict_text}\n"
+        f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+    )
+
+    # ── Step 5: Auto-track if confidence > 50% ─────────────────
+    if ai_confidence >= 50:
+        try:
+            from mcp_server.db import SessionLocal
+            from mcp_server.models import Signal, ActiveTrade
+            from mcp_server.telegram_receiver import record_signal_to_sheets
+
+            db = SessionLocal()
+            try:
+                # Insert signal into DB
+                from mcp_server.market_calendar import now_ist
+                today = now_ist().date()
+
+                db_signal = Signal(
+                    signal_date=today,
+                    signal_time=now_ist().time(),
+                    ticker=ticker,
+                    exchange=exchange,
+                    asset_class=signal.asset_class,
+                    direction=direction,
+                    pattern=signal.pattern or "External Signal",
+                    entry_price=entry,
+                    stop_loss=sl,
+                    target=tgt,
+                    rrr=rrr,
+                    qty=0,
+                    risk_amt=0,
+                    ai_confidence=ai_confidence,
+                    tv_confirmed=False,
+                    mwa_score=mwa_direction if 'mwa_direction' in dir() else "UNKNOWN",
+                    scanner_count=scanner_count,
+                    tier=2,
+                    source="telegram",
+                    timeframe="1D",
+                    status="OPEN",
+                )
+                db.add(db_signal)
+                db.flush()
+
+                # Add to active trades
+                active = ActiveTrade(
+                    signal_id=db_signal.id,
+                    ticker=ticker,
+                    exchange=exchange,
+                    asset_class=signal.asset_class,
+                    entry_price=entry,
+                    target=tgt,
+                    stop_loss=sl,
+                    prrr=rrr,
+                    current_price=entry,
+                    crrr=rrr,
+                    timeframe="1D",
+                )
+                db.add(active)
+                db.commit()
+
+                # Record to Google Sheets
+                try:
+                    record_signal_to_sheets({
+                        "signal_id": f"TG-{now_ist().strftime('%Y%m%d%H%M%S')}",
+                        "date": str(today),
+                        "ticker": ticker,
+                        "exchange": exchange,
+                        "asset_class": signal.asset_class,
+                        "direction": direction,
+                        "entry_price": entry,
+                        "stop_loss": sl,
+                        "target": tgt,
+                        "rrr": rrr,
+                        "pattern": signal.pattern or "External Signal",
+                        "confidence": ai_confidence,
+                        "notes": f"Telegram intake | {scanner_count} scanners | {debate_method}",
+                    })
+                except Exception as sheet_err:
+                    logger.warning("Sheets recording failed: %s", sheet_err)
+
+                report += (
+                    f"\n\u2705 AUTO-TRACKED\n"
+                    f"  \u2022 Added to Active Trades (ID: {db_signal.id})\n"
+                    f"  \u2022 Signal Monitor will track SL/TGT\n"
+                    f"  \u2022 Recorded to Google Sheets\n"
+                    f"  \u2022 Scanners matched: {', '.join(s['name'] for s in matched_scanners[:5]) or 'None'}\n"
+                )
+            finally:
+                db.close()
+        except Exception as track_err:
+            logger.error("Signal tracking failed: %s", track_err)
+            report += f"\n\u26a0\ufe0f Tracking failed: {str(track_err)[:100]}\n"
+    else:
+        report += (
+            f"\n\u26a0\ufe0f NOT TRACKED (confidence {ai_confidence}% < 50%)\n"
+            f"  Signal not added to active trades.\n"
+            f"  Use /signal with a higher-conviction setup.\n"
+        )
+
+    report += "\n\u26a0\ufe0f Not SEBI advice. AI analytics only."
+
+    await update.message.reply_text(report)
+
+
 async def send_telegram_message(
     text: str,
     exchange: str = "NSE",
@@ -565,6 +899,7 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
     app.add_handler(CommandHandler("close", cmd_close))
     app.add_handler(CommandHandler("analyze", cmd_analyze))
+    app.add_handler(CommandHandler("signal", cmd_signal))
 
-    logger.info("Telegram bot configured with 12 command handlers")
+    logger.info("Telegram bot configured with 13 command handlers")
     return app
