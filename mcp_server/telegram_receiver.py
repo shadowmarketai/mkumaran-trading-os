@@ -65,31 +65,46 @@ class TelegramSignal:
     entry_price: float = 0.0
     stop_loss: float = 0.0
     target: float = 0.0
+    target2: float = 0.0  # second target for options
     rrr: float = 0.0
     pattern: str = ""
     confidence: int = 0
-    status: str = "OPEN"  # OPEN / TARGET_HIT / SL_HIT / PARTIAL / EXPIRED / CANCELLED
+    status: str = "OPEN"
     exit_price: float = 0.0
     exit_date: str = ""
     pnl_pct: float = 0.0
     pnl_rs: float = 0.0
-    result: str = ""  # WIN / LOSS / BREAKEVEN
+    result: str = ""
     notes: str = ""
     raw_message: str = ""
+    # Options fields
+    is_option: bool = False
+    option_type: str = ""       # CE or PE
+    strike_price: float = 0.0
+    underlying: str = ""        # NIFTY, BANKNIFTY, etc.
+    option_symbol: str = ""     # NIFTY24200PE
+    lot_size: int = 0
 
 
 # ── Signal Parser ────────────────────────────────────────────
+
+OPTION_LOT_SIZES = {
+    "NIFTY": 25, "BANKNIFTY": 15, "FINNIFTY": 25, "MIDCPNIFTY": 50,
+    "SENSEX": 10,
+}
+
 
 def parse_signal_message(text: str) -> TelegramSignal | None:
     """
     Parse a trading signal from Telegram message text.
 
-    Supports multiple formats:
-    1. Structured: "BUY NSE:RELIANCE @ 2500 SL 2400 TGT 2800"
-    2. MCP format: "SIGNAL: RELIANCE | BUY | Entry: 2500 | SL: 2400 | Target: 2800"
-    3. Simple: "RELIANCE BUY 2500 SL 2400 TARGET 2800"
+    Supports formats:
+    1. Equity: "BUY NSE:RELIANCE @ 2500 SL 2400 TGT 2800"
+    2. Options: "BUY NIFTY 24200PE @ 200 SL 180 TGT 220"
+    3. Options: "Buy nifty 24200pe @200 sl 24180 target24220/24230"
+    4. MCP: "SIGNAL: RELIANCE | BUY | Entry: 2500 | SL: 2400 | Target: 2800"
     """
-    if not text or len(text) < 10:
+    if not text or len(text) < 8:
         return None
 
     signal = TelegramSignal(
@@ -98,7 +113,7 @@ def parse_signal_message(text: str) -> TelegramSignal | None:
         raw_message=text[:500],
     )
 
-    upper = text.upper()
+    upper = text.upper().strip()
 
     # Direction
     if any(w in upper for w in ("BUY", "LONG", "BULLISH")):
@@ -106,32 +121,63 @@ def parse_signal_message(text: str) -> TelegramSignal | None:
     elif any(w in upper for w in ("SELL", "SHORT", "BEARISH")):
         signal.direction = "SELL"
     else:
-        return None  # No direction = not a signal
+        return None
 
-    # Ticker — look for EXCHANGE:SYMBOL or known patterns
-    ticker_match = re.search(r'(NSE|BSE|MCX|CDS|NFO):([A-Z0-9_]+)', upper)
-    if ticker_match:
-        signal.exchange = ticker_match.group(1)
-        signal.ticker = f"{ticker_match.group(1)}:{ticker_match.group(2)}"
+    # ── OPTIONS DETECTION ──
+    # Match: NIFTY 24200PE, BANKNIFTY 52000CE, NIFTY24200PE, etc.
+    opt_match = re.search(
+        r'\b(NIFTY|BANKNIFTY|FINNIFTY|MIDCPNIFTY|SENSEX)\s*(\d{4,6})\s*(CE|PE)\b',
+        upper
+    )
+    if opt_match:
+        signal.is_option = True
+        signal.underlying = opt_match.group(1)
+        signal.strike_price = float(opt_match.group(2))
+        signal.option_type = opt_match.group(3)
+        signal.option_symbol = f"{signal.underlying}{int(signal.strike_price)}{signal.option_type}"
+        signal.ticker = f"NFO:{signal.underlying}"
+        signal.exchange = "NFO"
+        signal.asset_class = "FNO"
+        signal.lot_size = OPTION_LOT_SIZES.get(signal.underlying, 25)
+        signal.pattern = f"Option {signal.option_type} {'Buy' if signal.direction == 'BUY' else 'Sell'}"
+
+        # For options: infer market direction from option type + direction
+        # BUY PE = BEARISH view, BUY CE = BULLISH view
+        # SELL PE = BULLISH view, SELL CE = BEARISH view
+        if signal.direction == "BUY" and signal.option_type == "PE":
+            signal.notes = "Bearish view (buying puts)"
+        elif signal.direction == "BUY" and signal.option_type == "CE":
+            signal.notes = "Bullish view (buying calls)"
+        elif signal.direction == "SELL" and signal.option_type == "PE":
+            signal.notes = "Bullish view (selling puts)"
+        elif signal.direction == "SELL" and signal.option_type == "CE":
+            signal.notes = "Bearish view (selling calls)"
     else:
-        # Try to find a standalone ticker (uppercase word, 3-20 chars)
-        words = re.findall(r'\b([A-Z][A-Z0-9]{2,19})\b', upper)
-        skip = {"BUY", "SELL", "LONG", "SHORT", "BULLISH", "BEARISH",
-                "ENTRY", "TARGET", "TGT", "STOP", "LOSS", "SIGNAL",
-                "ALERT", "WATCHLIST", "CMP", "SL", "TP", "OPEN", "CLOSE",
-                "HIGH", "LOW", "PATTERN", "CONFIDENCE", "RRR", "SKIP",
-                "NSE", "BSE", "MCX", "CDS", "NFO"}
-        for w in words:
-            if w not in skip and len(w) >= 3:
-                signal.ticker = f"NSE:{w}"
-                break
+        # ── EQUITY DETECTION ──
+        ticker_match = re.search(r'(NSE|BSE|MCX|CDS|NFO):([A-Z0-9_]+)', upper)
+        if ticker_match:
+            signal.exchange = ticker_match.group(1)
+            signal.ticker = f"{ticker_match.group(1)}:{ticker_match.group(2)}"
+        else:
+            words = re.findall(r'\b([A-Z][A-Z0-9]{2,19})\b', upper)
+            skip = {"BUY", "SELL", "LONG", "SHORT", "BULLISH", "BEARISH",
+                    "ENTRY", "TARGET", "TGT", "STOP", "LOSS", "SIGNAL",
+                    "ALERT", "WATCHLIST", "CMP", "SL", "TP", "OPEN", "CLOSE",
+                    "HIGH", "LOW", "PATTERN", "CONFIDENCE", "RRR", "SKIP",
+                    "NSE", "BSE", "MCX", "CDS", "NFO"}
+            for w in words:
+                if w not in skip and len(w) >= 3:
+                    signal.ticker = f"NSE:{w}"
+                    break
 
     if not signal.ticker:
         return None
 
-    # Prices — extract numbers following keywords
+    # ── PRICE EXTRACTION ──
+    clean = upper.replace(",", "").replace("₹", "")
+
     def _extract_price(pattern: str) -> float:
-        m = re.search(pattern, upper.replace(",", ""))
+        m = re.search(pattern, clean)
         if m:
             try:
                 return float(m.group(1))
@@ -139,15 +185,51 @@ def parse_signal_message(text: str) -> TelegramSignal | None:
                 pass
         return 0.0
 
-    signal.entry_price = _extract_price(r'(?:ENTRY|@|CMP|PRICE)[:\s]*₹?\s*(\d+\.?\d*)')
+    # Entry price
+    signal.entry_price = _extract_price(r'(?:ENTRY|@|CMP|PRICE)[:\s]*\s*(\d+\.?\d*)')
     if signal.entry_price == 0:
-        # Try: number right after ticker
-        m = re.search(r'(?:BUY|SELL|LONG|SHORT)\s+\S+\s+(\d+\.?\d*)', upper)
-        if m:
-            signal.entry_price = float(m.group(1))
+        # Try: number right after option symbol or ticker
+        if signal.is_option:
+            m = re.search(r'(?:CE|PE)\s*(?:@|AT)?\s*(\d+\.?\d*)', clean)
+            if m:
+                signal.entry_price = float(m.group(1))
+        if signal.entry_price == 0:
+            m = re.search(r'(?:BUY|SELL|LONG|SHORT)\s+\S+\s+(\d+\.?\d*)', clean)
+            if m:
+                signal.entry_price = float(m.group(1))
 
-    signal.stop_loss = _extract_price(r'(?:SL|STOP\s*LOSS|STOPLOSS)[:\s]*₹?\s*(\d+\.?\d*)')
-    signal.target = _extract_price(r'(?:TGT|TARGET|TP|TAKE\s*PROFIT)[:\s]*₹?\s*(\d+\.?\d*)')
+    # Stop loss
+    signal.stop_loss = _extract_price(r'(?:SL|STOP\s*LOSS|STOPLOSS)[:\s]*\s*(\d+\.?\d*)')
+
+    # Target(s) — handle "target24220/24230" format
+    target_match = re.search(r'(?:TGT|TARGET|TP|TAKE\s*PROFIT)[:\s]*\s*(\d+\.?\d*)\s*(?:/\s*(\d+\.?\d*))?', clean)
+    if target_match:
+        signal.target = float(target_match.group(1))
+        if target_match.group(2):
+            signal.target2 = float(target_match.group(2))
+    else:
+        signal.target = _extract_price(r'(?:TGT|TARGET|TP)[:\s]*\s*(\d+\.?\d*)')
+
+    # ── OPTIONS: Smart price interpretation ──
+    if signal.is_option and signal.entry_price > 0:
+        # If SL/TGT are spot levels (> 1000) but entry is premium (< 1000),
+        # the user mixed spot and premium prices. Convert to premium-based.
+        if signal.stop_loss > 1000 and signal.entry_price < 1000:
+            # SL is a spot level, not premium — keep as notes but clear
+            signal.notes += f" | Spot SL: {signal.stop_loss}"
+            # Estimate premium SL: 10% below entry for puts, 10% above for calls
+            risk_pct = 0.10
+            signal.stop_loss = round(signal.entry_price * (1 - risk_pct), 1)
+
+        if signal.target > 1000 and signal.entry_price < 1000:
+            # Targets are spot levels
+            t1 = signal.target
+            t2 = signal.target2
+            signal.notes += f" | Spot TGT: {t1}" + (f"/{t2}" if t2 else "")
+            # Estimate premium target: 10-15% above entry
+            signal.target = round(signal.entry_price * 1.10, 1)
+            if t2:
+                signal.target2 = round(signal.entry_price * 1.15, 1)
 
     # RRR
     if signal.stop_loss > 0 and signal.target > 0 and signal.entry_price > 0:
@@ -155,18 +237,20 @@ def parse_signal_message(text: str) -> TelegramSignal | None:
         reward = abs(signal.target - signal.entry_price)
         signal.rrr = round(reward / risk, 2) if risk > 0 else 0
 
-    # Pattern
-    pattern_match = re.search(r'(?:PATTERN|SETUP)[:\s]*([A-Za-z_ ]+?)(?:\||$|\n)', text, re.IGNORECASE)
-    if pattern_match:
-        signal.pattern = pattern_match.group(1).strip()
+    # Pattern (explicit)
+    if not signal.pattern:
+        pattern_match = re.search(r'(?:PATTERN|SETUP)[:\s]*([A-Za-z_ ]+?)(?:\||$|\n)', text, re.IGNORECASE)
+        if pattern_match:
+            signal.pattern = pattern_match.group(1).strip()
 
     # Confidence
     conf_match = re.search(r'(?:CONFIDENCE|CONF)[:\s]*(\d+)', upper)
     if conf_match:
         signal.confidence = int(conf_match.group(1))
 
-    # Derive asset_class from exchange
-    signal.asset_class = EXCHANGE_TO_ASSET_CLASS.get(signal.exchange, "EQUITY")
+    # Asset class
+    if not signal.is_option:
+        signal.asset_class = EXCHANGE_TO_ASSET_CLASS.get(signal.exchange, "EQUITY")
 
     return signal
 
