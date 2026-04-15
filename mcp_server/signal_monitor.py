@@ -231,6 +231,18 @@ def monitor_open_signals() -> list[dict]:
                 except Exception as acc_err:
                     logger.debug("Accuracy update skipped: %s", acc_err)
 
+                # 6) Feed outcome to self-learning skill agents
+                try:
+                    from mcp_server.skill_agents import record_outcome
+                    record_outcome(
+                        signal_id=sig.id,
+                        outcome=outcome_str,
+                        scanner_count=sig.scanner_count or 0,
+                        confidence=sig.ai_confidence or 0,
+                    )
+                except Exception as learn_err:
+                    logger.debug("Agent learning skipped: %s", learn_err)
+
                 # 6) Update trade memory
                 try:
                     from mcp_server.trade_memory import TradeMemory

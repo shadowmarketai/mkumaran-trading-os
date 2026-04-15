@@ -253,7 +253,32 @@ def run_debate(
     if similar_trades is None:
         similar_trades = []
 
-    # ── Gate: Debate feature must be enabled ─────────────────────
+    # ── Primary: Use skill-based agents (ZERO API calls) ─────────
+    try:
+        from mcp_server.skill_agents import run_skill_debate
+        skill_result = run_skill_debate(
+            ticker=ticker, direction=direction, pattern=pattern, rrr=rrr,
+            entry_price=entry_price, stop_loss=stop_loss, target=target,
+            mwa_direction=mwa_direction, scanner_count=scanner_count,
+            sector_strength=sector_strength, fii_net=fii_net,
+            delivery_pct=delivery_pct,
+        )
+        # Convert to our DebateResult format
+        return DebateResult(
+            final_confidence=skill_result.final_confidence,
+            recommendation=skill_result.recommendation,
+            reasoning=skill_result.reasoning,
+            method=skill_result.method,
+            api_calls_used=0,
+            debate_transcript=skill_result.debate_transcript,
+            risk_assessment=skill_result.risk_assessment,
+            boosts=skill_result.boosts,
+            validation_status="VALIDATED",
+        )
+    except Exception as skill_err:
+        logger.warning("Skill agents failed, falling back to LLM: %s", skill_err)
+
+    # ── Fallback: LLM debate (only if skill agents fail) ──────────
     if not settings.DEBATE_ENABLED:
         return _run_single_pass(
             ticker=ticker, direction=direction, pattern=pattern, rrr=rrr,
