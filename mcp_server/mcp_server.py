@@ -1457,8 +1457,12 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
         from mcp_server.nse_scanner import _get_nse_universe
 
         # 1) NSE equity — routed via Angel → NSE India → yfinance
+        # Limit universe size to prevent server crash on small VPS
+        import os as _os
+        _MAX_NSE = int(_os.getenv("MWA_MAX_NSE_STOCKS", "50"))
         if segments is None or "NSE" in segments:
-            nse_stocks = _get_nse_universe()
+            nse_stocks = _get_nse_universe()[:_MAX_NSE]
+            logger.info("Scanning %d NSE stocks (limit=%d)", len(nse_stocks), _MAX_NSE)
             for ticker in nse_stocks:
                 try:
                     symbol_clean = ticker.replace("NSE:", "")
@@ -1517,7 +1521,8 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
             # 4b) F&O stocks — same OHLCV as NSE underlying, reuse if already
             # fetched, otherwise pull via NSE route. Stored under NFO: prefix
             # so the nfo_stk_* scanners can find them.
-            for stk in NFO_STOCK_UNIVERSE:
+            _MAX_NFO = int(_os.getenv("MWA_MAX_NFO_STOCKS", "30"))
+            for stk in NFO_STOCK_UNIVERSE[:_MAX_NFO]:
                 try:
                     nse_key = next(
                         (k for k in nse_data
