@@ -1459,11 +1459,17 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
         # 1) NSE equity — routed via Angel → NSE India → yfinance
         # Limit universe size to prevent server crash on small VPS
         import os as _os
-        _MAX_NSE = int(_os.getenv("MWA_MAX_NSE_STOCKS", "50"))
+        import time as _scan_time
+        import gc as _gc
+        _MAX_NSE = int(_os.getenv("MWA_MAX_NSE_STOCKS", "30"))
+        _BATCH_DELAY = float(_os.getenv("MWA_BATCH_DELAY", "0.1"))
         if segments is None or "NSE" in segments:
             nse_stocks = _get_nse_universe()[:_MAX_NSE]
-            logger.info("Scanning %d NSE stocks (limit=%d)", len(nse_stocks), _MAX_NSE)
-            for ticker in nse_stocks:
+            logger.info("Scanning %d NSE stocks (limit=%d, delay=%.1fs)", len(nse_stocks), _MAX_NSE, _BATCH_DELAY)
+            for i, ticker in enumerate(nse_stocks):
+                if i > 0 and i % 10 == 0:
+                    _scan_time.sleep(_BATCH_DELAY)
+                    _gc.collect()
                 try:
                     symbol_clean = ticker.replace("NSE:", "")
                     df = provider.get_ohlcv_routed(symbol_clean, interval="day", days=180, exchange="NSE")
@@ -1521,8 +1527,10 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
             # 4b) F&O stocks — same OHLCV as NSE underlying, reuse if already
             # fetched, otherwise pull via NSE route. Stored under NFO: prefix
             # so the nfo_stk_* scanners can find them.
-            _MAX_NFO = int(_os.getenv("MWA_MAX_NFO_STOCKS", "30"))
-            for stk in NFO_STOCK_UNIVERSE[:_MAX_NFO]:
+            _MAX_NFO = int(_os.getenv("MWA_MAX_NFO_STOCKS", "20"))
+            for i_nfo, stk in enumerate(NFO_STOCK_UNIVERSE[:_MAX_NFO]):
+                if i_nfo > 0 and i_nfo % 10 == 0:
+                    _scan_time.sleep(_BATCH_DELAY)
                 try:
                     nse_key = next(
                         (k for k in nse_data
