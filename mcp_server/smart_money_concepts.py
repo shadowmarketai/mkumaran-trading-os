@@ -871,16 +871,19 @@ class SMCEngine:
         else:
             lines.append("CRT       : No manipulation pattern")
 
-        # C4 summary
+        # C4 summary — tagged with the timeframe it was analysed on so the
+        # card is honest about whether the stage came from daily (rare) or
+        # the intraday rebase (what we actually want for entry timing).
         c4 = results.get("c4_setup")
+        c4_tf = results.get("c4_timeframe") or "daily"
         if c4:
-            lines.append(f"C4 Setup  : Stage {c4.stage} — {c4.direction}")
+            lines.append(f"C4 Setup  : Stage {c4.stage} — {c4.direction} ({c4_tf})")
             lines.append(f"           Consol {c4.consolidation_low:.0f}–{c4.consolidation_high:.0f}")
             if c4.catalyst_candle:
                 lines.append(f"           Catalyst: {c4.catalyst_candle.crt_pattern} ✅")
             lines.append(f"           AMD aligned: {'YES ✅' if c4.aligned_with_amd else 'NO'}")
         else:
-            lines.append("C4 Setup  : Not detected")
+            lines.append(f"C4 Setup  : No setup on {c4_tf} bars")
 
         # Trade signal
         signal = results.get("trade_signal")

@@ -2024,6 +2024,31 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                 sig_df = stock_data.get(sig["ticker"])
                 if sig_df is not None and len(sig_df) >= 15:
                     smc_result = smc_engine.analyse(sig_df, symbol=sig["ticker"], timeframe="day")
+
+                    # C4 needs intraday bars (5m/15m) to fire meaningfully.
+                    # Re-run just the C4 detector on 15m OHLCV for this
+                    # ticker so the card carries a real entry-timing signal
+                    # instead of "Not detected" on every daily card.
+                    try:
+                        df_15m = provider.get_ohlcv(
+                            sig["ticker"], interval="15minute",
+                            days=5, exchange=sig.get("exchange", "NSE"),
+                        )
+                        if df_15m is not None and not df_15m.empty and len(df_15m) >= 15:
+                            df_15m = df_15m.rename(columns={c: c.lower() for c in df_15m.columns})
+                            c4_15m = smc_engine.c4.detect_setup(
+                                df_15m,
+                                symbol=sig["ticker"],
+                                timeframe="15minute",
+                                amd_zones=smc_result.get("amd_zones", []),
+                            )
+                            smc_result["c4_setup"] = c4_15m
+                            smc_result["c4_timeframe"] = "15m"
+                            # Rebuild the telegram_summary with the rebased C4.
+                            smc_result["telegram_summary"] = smc_engine.format_smc_card(smc_result)
+                    except Exception as c4_err:
+                        logger.debug("C4 intraday rebase skipped for %s: %s", sig["ticker"], c4_err)
+
                     rrms_dir = "BULL" if sig["direction"] == "LONG" else "BEAR"
                     smc_boost = smc_confidence_boost(smc_result, rrms_dir)
                     if smc_boost != 0:
