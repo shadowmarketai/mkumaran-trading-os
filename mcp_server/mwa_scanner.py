@@ -2128,6 +2128,34 @@ class MWAScanner:
             results[key] = [s.replace("NSE:", "") for s in stocks]
             logger.info("[PYTHON] %s: %d stocks", key, len(results[key]))
 
+        # TradingView scanners — union into existing keys for NSE/ALL only.
+        # Gated behind TRADINGVIEW_SCANNER_ENABLED; no-op when flag is off
+        # or tradingview-screener isn't installed.
+        if segment in ("ALL", "NSE"):
+            try:
+                from mcp_server import tradingview_scanner as tv_scanner
+
+                if tv_scanner.is_available():
+                    tv_results = tv_scanner.run_all()
+                    added_total = 0
+                    for key, tv_symbols in tv_results.items():
+                        existing = results.get(key, [])
+                        seen = set(existing)
+                        additions = [s for s in tv_symbols if s and s not in seen]
+                        if additions:
+                            results[key] = existing + additions
+                            added_total += len(additions)
+                            logger.info(
+                                "[TRADINGVIEW] %s: +%d symbols (total now %d)",
+                                key, len(additions), len(results[key]),
+                            )
+                    logger.info(
+                        "[TRADINGVIEW] Done: %d scanners queried, %d net new symbols unioned",
+                        len(tv_results), added_total,
+                    )
+            except Exception as e:
+                logger.warning("[TRADINGVIEW] scanner pass failed: %s", e)
+
         if save:
             try:
                 data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
