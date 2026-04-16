@@ -133,6 +133,10 @@ async def _auto_scan_loop():
 # Self-development loop state — keyed by date so we only run once per day
 _self_dev_cache: dict[str, Any] = {}
 
+# Kite login notification throttle — one success message per calendar day,
+# regardless of how many times /api/kite_callback fires.
+_kite_login_notify_cache: dict[str, str] = {}
+
 
 async def _self_dev_loop():
     """
@@ -1704,8 +1708,31 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
     try:
         from mcp_server.mwa_signal_generator import generate_mwa_signals
 
+        # Exclude tickers that already have OPEN signals — otherwise every
+        # scan feeds the same top-10 into signal generation and the dedup
+        # check below silently drops them all. By filtering upstream we
+        # surface the next 10 fresh candidates from the ~500 promoted list.
+        try:
+            open_tickers = {
+                row[0]
+                for row in db.query(Signal.ticker)
+                .filter(Signal.status == "OPEN")
+                .all()
+            }
+        except Exception as open_err:
+            logger.debug("Could not load OPEN-ticker set: %s", open_err)
+            open_tickers = set()
+
+        fresh_promoted = [t for t in promoted if t not in open_tickers]
+        if not fresh_promoted:
+            logger.info(
+                "MWA: all %d promoted stocks already have OPEN signals — "
+                "no fresh candidates this cycle",
+                len(promoted),
+            )
+
         mwa_signals = generate_mwa_signals(
-            promoted=promoted[:10],
+            promoted=fresh_promoted[:10],
             stock_data=stock_data,
             mwa_direction=score["direction"],
             scanner_results=raw_results,
@@ -4017,14 +4044,24 @@ async def api_kite_callback(request_token: str = Query(...)):
         except Exception:
             pass
 
-        # Send Telegram confirmation
+        # Send Telegram confirmation — once per day only. Without this
+        # throttle, repeated callback hits (browser bookmark, /kitelogin
+        # command invocations, etc.) spam the owner's Telegram with the
+        # same success message and drown out actual signal cards.
         try:
-            from mcp_server.telegram_bot import send_telegram_message
-            asyncio.ensure_future(send_telegram_message(
-                "\u2705 Kite Login Successful\n"
-                f"Token cached at {_now_ist().strftime('%H:%M IST')}",
-                force=True,
-            ))
+            today_key = _now_ist().strftime("%Y-%m-%d")
+            if _kite_login_notify_cache.get("last_date") != today_key:
+                from mcp_server.telegram_bot import send_telegram_message
+                asyncio.ensure_future(send_telegram_message(
+                    "\u2705 Kite Login Successful\n"
+                    f"Token cached at {_now_ist().strftime('%H:%M IST')}",
+                    force=True,
+                ))
+                _kite_login_notify_cache["last_date"] = today_key
+            else:
+                logger.info(
+                    "Kite login notification throttled — already sent today"
+                )
         except Exception:
             pass
 
