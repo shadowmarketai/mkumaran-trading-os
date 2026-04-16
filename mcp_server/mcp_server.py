@@ -1745,6 +1745,61 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
             scanner_results=raw_results,
         )
 
+        # ── Risk filters: delivery % → FII/DII → sector strength ────────
+        # Previously these were defined in mwa_scanner.apply_python_filters
+        # but that method was never invoked, so every MWA signal bypassed
+        # the 3 risk gates. Inline them here so they actually fire.
+        pre_filter = len(mwa_signals)
+        try:
+            from mcp_server.delivery_filter import apply_delivery_filter
+            mwa_signals = apply_delivery_filter(mwa_signals, min_delivery_pct=60)
+            logger.info(
+                "[FILTER] delivery%%: %d -> %d signals", pre_filter, len(mwa_signals)
+            )
+        except Exception as delivery_err:
+            logger.debug("Delivery filter skipped: %s", delivery_err)
+
+        try:
+            from mcp_server.fii_dii_filter import fii_allows_long, get_fii_dii_data
+            pre_fii = len(mwa_signals)
+            fii_data = get_fii_dii_data()
+            fii_net = fii_data.get("fii_net", 0) if isinstance(fii_data, dict) else 0
+            if not fii_allows_long(fii_net):
+                mwa_signals = [
+                    s for s in mwa_signals if s.get("direction") != "LONG"
+                ]
+                logger.info(
+                    "[FILTER] FII selling (net=%.0f) — LONGs dropped: %d -> %d",
+                    fii_net, pre_fii, len(mwa_signals),
+                )
+            else:
+                logger.debug(
+                    "[FILTER] FII neutral/buying (net=%.0f) — LONGs allowed", fii_net
+                )
+        except Exception as fii_err:
+            logger.debug("FII filter skipped: %s", fii_err)
+
+        try:
+            from mcp_server.sector_filter import (
+                get_sector_strength,
+                sector_allows_trade,
+            )
+            pre_sector = len(mwa_signals)
+            sector_strength = get_sector_strength() or {}
+            mwa_signals = [
+                s for s in mwa_signals
+                if sector_allows_trade(
+                    s.get("ticker", ""),
+                    s.get("direction", "LONG"),
+                    sector_strength,
+                )
+            ]
+            logger.info(
+                "[FILTER] sector: %d -> %d signals", pre_sector, len(mwa_signals)
+            )
+        except Exception as sector_err:
+            logger.debug("Sector filter skipped: %s", sector_err)
+
         from mcp_server.market_calendar import is_market_open as _is_mkt_open
 
         for sig in mwa_signals:
