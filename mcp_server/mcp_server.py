@@ -1908,13 +1908,22 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                 entry_price = sig["entry"]
                 deviation_pct = abs(live_price - entry_price) / entry_price * 100 if entry_price else 0
 
-                # Self-development guard: suppressed signals do NOT create ActiveTrade
+                # Self-development guard: suppressed signals do NOT create
+                # ActiveTrade (predictor flagged high loss probability).
+                # Owner still gets a SUPPRESSED notice in the Telegram block
+                # below so nothing is silently dropped.
+                is_stale = deviation_pct > 2.0
                 if db_signal.suppressed:
                     logger.info(
                         "ActiveTrade skipped for %s: signal suppressed by predictor (%s)",
                         sig["ticker"], db_signal.suppression_reason,
                     )
-                elif deviation_pct <= 2.0:
+                else:
+                    # Create ActiveTrade even when price deviated >2% from
+                    # entry — previously this was silently skipped, hiding
+                    # live signals from the owner. We keep the record but tag
+                    # it STALE in the Telegram card (user decides whether to
+                    # chase or wait for a better entry).
                     db_active = ActiveTrade(
                         signal_id=db_signal.id,
                         ticker=sig["ticker"],
@@ -1930,18 +1939,49 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                         timeframe="1D",
                     )
                     db.add(db_active)
-                    logger.info(
-                        "ActiveTrade created: %s CMP=%.2f Entry=%.2f (%.1f%% off)",
-                        sig["ticker"], live_price, entry_price, deviation_pct,
-                    )
-                else:
-                    logger.info(
-                        "ActiveTrade skipped for %s: CMP=%.2f is %.1f%% away from Entry=%.2f",
-                        sig["ticker"], live_price, deviation_pct, entry_price,
-                    )
+                    if is_stale:
+                        logger.info(
+                            "ActiveTrade created STALE for %s: CMP=%.2f is %.1f%% away from Entry=%.2f",
+                            sig["ticker"], live_price, deviation_pct, entry_price,
+                        )
+                    else:
+                        logger.info(
+                            "ActiveTrade created: %s CMP=%.2f Entry=%.2f (%.1f%% off)",
+                            sig["ticker"], live_price, entry_price, deviation_pct,
+                        )
 
                 db.commit()
                 logger.info("Saved MWA signal to DB: %s (id=%d)", sig["ticker"], db_signal.id)
+
+                # Record to Google Sheets (fixes the gap where auto-generated
+                # MWA signals bypass Sheets — previously only the /signal paste
+                # flow synced, so auto signals were only visible on DB close).
+                try:
+                    from mcp_server.telegram_receiver import record_signal_to_sheets
+                    record_signal_to_sheets({
+                        "signal_id": f"MWA-{db_signal.id}",
+                        "date": str(db_signal.signal_date),
+                        "ticker": sig["ticker"],
+                        "exchange": sig["exchange"],
+                        "asset_class": sig["asset_class"],
+                        "direction": sig["direction"],
+                        "entry_price": sig["entry"],
+                        "stop_loss": sig["sl"],
+                        "target": sig["target"],
+                        "rrr": sig["rrr"],
+                        "pattern": sig.get("pattern", "MWA"),
+                        "confidence": confidence,
+                        "notes": (
+                            f"MWA auto | {sig.get('scanner_count', 0)} scanners | "
+                            f"rec={recommendation}"
+                            + (" | SUPPRESSED" if db_signal.suppressed else "")
+                        ),
+                    })
+                except Exception as sheet_err:
+                    logger.warning(
+                        "Sheets sync failed for MWA signal %s: %s",
+                        sig["ticker"], sheet_err,
+                    )
             except Exception as db_err:
                 logger.warning("DB save failed for %s: %s", sig["ticker"], db_err)
                 try:
@@ -1973,9 +2013,18 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                     f"Signal ID: {record_result.get('signal_id', 'N/A')} (not traded)"
                 )
             else:
+                # Flag stale entries so user sees why CMP drifted. Computed
+                # above (live_price vs sig["entry"]); we reuse is_stale.
+                stale_line = ""
+                if is_stale:
+                    stale_line = (
+                        f"\u26a0\ufe0f STALE: CMP \u20b9{live_price:.1f} is "
+                        f"{deviation_pct:.1f}% off entry\n"
+                    )
                 msg = (
                     f"{emoji} MWA Signal\n"
                     f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                    f"{stale_line}"
                     f"Ticker: {sig['ticker']}\n"
                     f"Segment: {segment} | {sig['asset_class']}\n"
                     f"Timeframe: Daily (Swing)\n"
@@ -2021,8 +2070,25 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                     except Exception as opt_msg_err:  # noqa: BLE001
                         logger.debug("Option message block skipped: %s", opt_msg_err)
             _fire_and_forget(send_telegram_message(msg, exchange=sig["exchange"], force=True))
+
+            # Broadcast to SaaS subscribers opted into this segment
+            # (NSE Equity / F&O / Commodity / Forex). Non-blocking; silent on
+            # failure so owner delivery is never impacted by subscriber issues.
+            if not is_suppressed:
+                try:
+                    from mcp_server.telegram_saas import broadcast_signal_to_users
+                    _fire_and_forget(
+                        broadcast_signal_to_users(msg, exchange=sig["exchange"])
+                    )
+                except Exception as broadcast_err:
+                    logger.debug(
+                        "Subscriber broadcast skipped for %s: %s",
+                        sig["ticker"], broadcast_err,
+                    )
+
             mwa_signal_cards.append({
                 "ticker": sig["ticker"], "direction": sig["direction"],
+                "exchange": sig.get("exchange", "NSE"),
                 "entry": sig["entry"], "sl": sig["sl"], "target": sig["target"],
                 "rrr": sig["rrr"], "qty": sig["qty"],
                 "confidence": confidence, "recommendation": recommendation,
@@ -2035,6 +2101,29 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                 "MWA signal card sent: %s %s conf=%d suppressed=%s",
                 sig["ticker"], sig["direction"], confidence, is_suppressed,
             )
+
+        # Post-scan summary — one compact Telegram line so the user sees
+        # the full picture of each scan cycle including how many signals
+        # were suppressed or tagged stale (previously invisible).
+        if mwa_signal_cards:
+            total = len(mwa_signal_cards)
+            suppressed_count = sum(1 for c in mwa_signal_cards if c.get("suppressed"))
+            by_segment: dict[str, int] = {}
+            for c in mwa_signal_cards:
+                exch = c.get("exchange") or "?"
+                by_segment[exch] = by_segment.get(exch, 0) + 1
+            segment_summary = (
+                " ".join(f"{k}:{v}" for k, v in sorted(by_segment.items()))
+                if by_segment else "-"
+            )
+            summary_msg = (
+                "\U0001f4ca MWA Scan Summary\n"
+                f"Signals: {total} ({total - suppressed_count} active, "
+                f"{suppressed_count} suppressed)\n"
+                f"By segment: {segment_summary}\n"
+                f"Time: {_now_ist().strftime('%H:%M IST')}"
+            )
+            _fire_and_forget(send_telegram_message(summary_msg, force=True))
 
     except Exception as e:
         logger.error("MWA signal generation failed: %s", e)

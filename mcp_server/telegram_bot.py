@@ -688,15 +688,27 @@ async def cmd_signal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     # ── Step 4: Build Telegram report ──────────────────────────
     conf_bar = "\u2588" * (ai_confidence // 10) + "\u2591" * (10 - ai_confidence // 10)
 
-    if ai_confidence >= 70:
+    # Build an explicit PASS/FAIL verdict so paste replies have a hard
+    # header (not just a confidence number). Reasons help the user
+    # understand why a signal failed without re-reading the whole card.
+    verdict_reasons: list[str] = []
+    if scanner_count == 0:
+        verdict_reasons.append("no scanner match")
+    if rrr and rrr < 1.5:
+        verdict_reasons.append(f"RRR {rrr:.1f} < 1.5")
+    if ai_recommendation == "BLOCKED":
+        verdict_reasons.append("debate blocked")
+
+    if ai_confidence >= 70 and not verdict_reasons:
         verdict_emoji = "\u2705"
-        verdict_text = "STRONG — Execute"
-    elif ai_confidence >= 50:
+        verdict_text = f"VALID — STRONG ({ai_confidence}%) — Execute"
+    elif ai_confidence >= 50 and not verdict_reasons:
         verdict_emoji = "\U0001f7e1"
-        verdict_text = "MODERATE — Consider"
+        verdict_text = f"VALID — MODERATE ({ai_confidence}%) — Consider"
     else:
         verdict_emoji = "\u274c"
-        verdict_text = "WEAK — Skip"
+        reason = " · ".join(verdict_reasons) if verdict_reasons else f"conf {ai_confidence}% < 50"
+        verdict_text = f"INVALID — Skip (reason: {reason})"
 
     report = (
         f"\U0001f4e1 SIGNAL ANALYSIS\n"
