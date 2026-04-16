@@ -32,17 +32,80 @@ logger = logging.getLogger(__name__)
 
 
 # ── Eligibility Universe ──────────────────────────────────────
-# 4 indices + top 20 most liquid F&O stocks (user-selected scope)
+# 4 indices + curated top-liquidity F&O stocks. When
+# `OPTION_UNIVERSE_ALL_FNO=true` the `is_eligible` check also
+# accepts any symbol present in the Kite NFO instruments dump,
+# which covers all ~220 F&O-eligible NSE stocks without
+# hardcoding each name.
 OPTION_INDEX_UNIVERSE: list[str] = [
     "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
 ]
 OPTION_STOCK_UNIVERSE: list[str] = [
+    # Mega-caps
     "RELIANCE", "HDFCBANK", "ICICIBANK", "INFY", "TCS",
     "SBIN", "AXISBANK", "KOTAKBANK", "LT", "ITC",
     "HINDUNILVR", "BHARTIARTL", "MARUTI", "TATAMOTORS", "TATASTEEL",
     "M&M", "BAJFINANCE", "HCLTECH", "WIPRO", "ADANIENT",
+    # Large-caps frequently signaled by MWA
+    "HAL", "DIVISLAB", "ALKEM", "INDIGO", "TATAELXSI",
+    "SCHAEFFLER", "DATAPATTNS", "LTTS", "ESCORTS", "MRF",
+    "ASIANPAINT", "SRF", "NESTLEIND", "ULTRACEMCO", "TITAN",
+    "POWERGRID", "NTPC", "ONGC", "COALINDIA", "BPCL",
+    "IOC", "GAIL", "HINDALCO", "JSWSTEEL", "SHREECEM",
+    "BAJAJFINSV", "BAJAJ-AUTO", "EICHERMOT", "HEROMOTOCO", "ASHOKLEY",
+    "SUNPHARMA", "DRREDDY", "CIPLA", "APOLLOHOSP", "LUPIN",
+    "BIOCON", "AUROPHARMA", "CADILAHC", "TORNTPHARM", "GLENMARK",
+    "ADANIPORTS", "ADANIPOWER", "ADANIGREEN", "VEDL", "HINDPETRO",
+    "DLF", "GODREJPROP", "OBEROIRLTY", "PRESTIGE", "SOBHA",
+    "BANDHANBNK", "FEDERALBNK", "IDFCFIRSTB", "PNB", "BANKBARODA",
+    "IDEA", "TATACOMM", "IRCTC", "INDIGO", "GRASIM",
+    "DABUR", "GODREJCP", "MARICO", "COLPAL", "BRITANNIA",
+    "PIDILITIND", "BERGEPAINT", "HAVELLS", "VOLTAS", "BLUESTARCO",
+    "PAGEIND", "TRENT", "DMART", "NAUKRI", "ZOMATO",
+    "PAYTM", "NYKAA", "POLICYBZR", "DIXON", "PERSISTENT",
+    "COFORGE", "MPHASIS", "MINDTREE", "LTI", "TECHM",
+    "SIEMENS", "ABB", "HONAUT", "CUMMINSIND", "BHEL",
+    "PIIND", "UPL", "CHAMBLFERT", "COROMANDEL", "FACT",
+    "RAMCOCEM", "ACC", "AMBUJACEM", "DALBHARAT", "JKCEMENT",
 ]
 OPTION_UNIVERSE: set[str] = set(OPTION_INDEX_UNIVERSE + OPTION_STOCK_UNIVERSE)
+
+
+# Dynamic F&O universe loaded from Kite NFO instruments (populated on
+# first call, refreshed daily). Used when OPTION_UNIVERSE_ALL_FNO=true
+# so eligibility is data-driven rather than a hardcoded list.
+_dynamic_fno_universe: set[str] = set()
+_dynamic_fno_universe_date: str | None = None
+
+
+def _load_dynamic_fno_universe() -> set[str]:
+    """Populate the F&O universe from Kite's NFO instrument dump (daily cache).
+
+    Each option contract has a `name` field equal to the underlying symbol
+    (e.g. "RELIANCE", "NIFTY"). Deduping those names gives the full set of
+    F&O-eligible underlyings without hardcoding.
+    """
+    global _dynamic_fno_universe, _dynamic_fno_universe_date
+    today_key = date.today().isoformat()
+    if _dynamic_fno_universe_date == today_key and _dynamic_fno_universe:
+        return _dynamic_fno_universe
+    try:
+        from mcp_server.kite_auth import get_authenticated_kite
+        kite = get_authenticated_kite()
+        instruments = kite.instruments("NFO") or []
+        names = {
+            (inst.get("name") or "").upper()
+            for inst in instruments
+            if inst.get("instrument_type") in ("CE", "PE", "FUT")
+        }
+        names.discard("")
+        if names:
+            _dynamic_fno_universe = names
+            _dynamic_fno_universe_date = today_key
+            logger.info("Dynamic F&O universe loaded: %d underlyings", len(names))
+    except Exception as exc:
+        logger.debug("Dynamic F&O universe load failed: %s", exc)
+    return _dynamic_fno_universe
 
 
 # ── Lot Size Fallback Map ─────────────────────────────────────
@@ -62,12 +125,21 @@ def is_eligible(ticker: str) -> bool:
     Check if a ticker qualifies for option enrichment.
 
     Gated by:
-      - settings.OPTION_SIGNALS_ENABLED feature flag
-      - Membership in OPTION_UNIVERSE (4 indices + 20 liquid stocks)
+      - settings.OPTION_SIGNALS_ENABLED feature flag (default true)
+      - Either membership in the curated OPTION_UNIVERSE, OR — when
+        OPTION_UNIVERSE_ALL_FNO=true — membership in the dynamic set
+        loaded from Kite's NFO instrument dump.
     """
     if not getattr(settings, "OPTION_SIGNALS_ENABLED", True):
         return False
-    return (ticker or "").upper() in OPTION_UNIVERSE
+    t = (ticker or "").upper()
+    if t in OPTION_UNIVERSE:
+        return True
+    if getattr(settings, "OPTION_UNIVERSE_ALL_FNO", True):
+        dynamic = _load_dynamic_fno_universe()
+        if t in dynamic:
+            return True
+    return False
 
 
 # ── Expiry Selection ──────────────────────────────────────────

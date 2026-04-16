@@ -179,6 +179,10 @@ class Settings:
     OPTION_IV_DEBIT_MAX: float = float(os.getenv("OPTION_IV_DEBIT_MAX", "40"))
     OPTION_IV_CREDIT_MIN: float = float(os.getenv("OPTION_IV_CREDIT_MIN", "60"))
     OPTION_MIN_DAYS_TO_EXPIRY: int = int(os.getenv("OPTION_MIN_DAYS_TO_EXPIRY", "2"))
+    # When true, option enrichment is attempted for any ticker present in the
+    # Kite NFO instrument list (all ~220 F&O underlyings). When false, only
+    # the curated OPTION_UNIVERSE (4 indices + large-cap stocks) is eligible.
+    OPTION_UNIVERSE_ALL_FNO: bool = os.getenv("OPTION_UNIVERSE_ALL_FNO", "true").lower() == "true"
 
     # Telegram behavior
     TELEGRAM_SIGNALS_ONLY: bool = os.getenv("TELEGRAM_SIGNALS_ONLY", "true").lower() == "true"
