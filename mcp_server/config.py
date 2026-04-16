@@ -184,6 +184,14 @@ class Settings:
     # the curated OPTION_UNIVERSE (4 indices + large-cap stocks) is eligible.
     OPTION_UNIVERSE_ALL_FNO: bool = os.getenv("OPTION_UNIVERSE_ALL_FNO", "true").lower() == "true"
 
+    # Intraday signals (ORB, VWAP, 5m momentum) — separate pipeline from MWA
+    # daily-swing. Default false so turning this on is an explicit opt-in.
+    INTRADAY_SIGNALS_ENABLED: bool = os.getenv("INTRADAY_SIGNALS_ENABLED", "false").lower() == "true"
+    INTRADAY_WATCHLIST: str = os.getenv("INTRADAY_WATCHLIST", "")  # empty → scanner's built-in 30-ticker default
+    INTRADAY_SCAN_INTERVAL_SEC: int = int(os.getenv("INTRADAY_SCAN_INTERVAL_SEC", "300"))
+    INTRADAY_MAX_SIGNALS_PER_DAY: int = int(os.getenv("INTRADAY_MAX_SIGNALS_PER_DAY", "5"))
+    INTRADAY_RRR_FLOOR: float = float(os.getenv("INTRADAY_RRR_FLOOR", "2.0"))
+
     # Telegram behavior
     TELEGRAM_SIGNALS_ONLY: bool = os.getenv("TELEGRAM_SIGNALS_ONLY", "true").lower() == "true"
     # When true: only send actual trade signal cards to Telegram

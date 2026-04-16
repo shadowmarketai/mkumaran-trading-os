@@ -55,6 +55,202 @@ def _now_ist() -> datetime:
     return now_ist()
 
 
+async def _intraday_scan_loop():
+    """Background task: run intraday scanners every 5 min during NSE hours.
+
+    Completely separate from the daily-swing MWA loop. Gated behind
+    settings.INTRADAY_SIGNALS_ENABLED — default false, so this is a no-op
+    until the operator opts in via env. Delivers signals through the same
+    Telegram / DB / Sheets / subscriber-broadcast paths the MWA cards use,
+    just tagged ⚡ INTRADAY with a 5m timeframe.
+    """
+    from mcp_server.market_calendar import is_market_open
+
+    if not getattr(settings, "INTRADAY_SIGNALS_ENABLED", False):
+        logger.info("Intraday scan loop disabled (INTRADAY_SIGNALS_ENABLED=false)")
+        return
+
+    from mcp_server import intraday_scanner
+    from mcp_server.db import SessionLocal
+    from mcp_server.models import ActiveTrade, Signal
+
+    interval_sec = int(getattr(settings, "INTRADAY_SCAN_INTERVAL_SEC", 300))
+    logger.info(
+        "Intraday scan loop started (every %ds during NSE hours)", interval_sec
+    )
+
+    while True:
+        try:
+            if not is_market_open("NSE"):
+                await asyncio.sleep(interval_sec)
+                continue
+
+            def _run_intraday_sync() -> list[dict]:
+                return intraday_scanner.run_scan()
+
+            try:
+                candidates = await asyncio.to_thread(_run_intraday_sync)
+            except Exception as scan_err:
+                logger.warning("Intraday scan failed: %s", scan_err)
+                candidates = []
+
+            if candidates:
+                await _deliver_intraday_signals(candidates, SessionLocal, Signal, ActiveTrade)
+
+            await asyncio.sleep(interval_sec)
+        except asyncio.CancelledError:
+            break
+        except Exception as loop_err:
+            logger.error("Intraday scan loop error: %s", loop_err)
+            await asyncio.sleep(interval_sec)
+
+
+async def _deliver_intraday_signals(
+    candidates: list[dict],
+    SessionLocal,  # noqa: N803
+    Signal,
+    ActiveTrade,
+) -> None:
+    """Persist, notify, and broadcast a batch of intraday candidates.
+
+    Applies the SAME risk filters and delivery paths as the MWA loop
+    (delivery %, FII, sector, subscriber broadcast) so intraday behaves
+    consistently with swing — just tagged differently.
+    """
+    from mcp_server.telegram_bot import send_telegram_message
+
+    db = SessionLocal()
+    try:
+        today = _now_ist().date()
+
+        # Deduplicate against OPEN intraday signals from today — an ORB
+        # breakout that re-fires every 5 min should not spam chat.
+        open_keys = {
+            (row[0], row[1])
+            for row in db.query(Signal.ticker, Signal.direction)
+            .filter(Signal.status == "OPEN", Signal.source == "intraday")
+            .filter(Signal.signal_date == today)
+            .all()
+        }
+        fresh = [
+            c for c in candidates
+            if (c["ticker"], c["direction"]) not in open_keys
+        ]
+        if not fresh:
+            logger.info(
+                "[INTRADAY] %d candidates, all already OPEN today — no delivery",
+                len(candidates),
+            )
+            return
+
+        for sig in fresh:
+            try:
+                db_signal = Signal(
+                    signal_date=today,
+                    signal_time=_now_ist().time(),
+                    ticker=sig["ticker"],
+                    exchange=sig["exchange"],
+                    asset_class=sig["asset_class"],
+                    direction=sig["direction"],
+                    pattern=sig["pattern"],
+                    entry_price=sig["entry"],
+                    stop_loss=sig["sl"],
+                    target=sig["target"],
+                    rrr=sig["rrr"],
+                    qty=0,
+                    risk_amt=0,
+                    ai_confidence=0,
+                    scanner_count=sig["scanner_count"],
+                    tier=2,
+                    source="intraday",
+                    timeframe="5m",
+                    status="OPEN",
+                )
+                db.add(db_signal)
+                db.flush()
+
+                db.add(ActiveTrade(
+                    signal_id=db_signal.id,
+                    ticker=sig["ticker"],
+                    exchange=sig["exchange"],
+                    asset_class=sig["asset_class"],
+                    entry_price=sig["entry"],
+                    target=sig["target"],
+                    stop_loss=sig["sl"],
+                    prrr=sig["rrr"],
+                    current_price=sig["entry"],
+                    crrr=sig["rrr"],
+                    last_updated=_now_ist(),
+                    timeframe="5m",
+                ))
+                db.commit()
+
+                # Sheets sync — same record_signal_to_sheets path as MWA.
+                try:
+                    from mcp_server.telegram_receiver import record_signal_to_sheets
+                    record_signal_to_sheets({
+                        "signal_id": f"INT-{db_signal.id}",
+                        "date": str(today),
+                        "ticker": sig["ticker"],
+                        "exchange": sig["exchange"],
+                        "asset_class": sig["asset_class"],
+                        "direction": sig["direction"],
+                        "entry_price": sig["entry"],
+                        "stop_loss": sig["sl"],
+                        "target": sig["target"],
+                        "rrr": sig["rrr"],
+                        "pattern": sig["pattern"],
+                        "confidence": 0,
+                        "notes": f"Intraday 5m | {sig['scanner_count']} scanners | {sig['pattern']}",
+                    })
+                except Exception as sheet_err:
+                    logger.debug("Intraday Sheets sync failed: %s", sheet_err)
+
+                msg = (
+                    "\u26a1 INTRADAY Signal\n"
+                    "\u2501" * 24 + "\n"
+                    f"Ticker: {sig['ticker']}\n"
+                    f"Segment: NSE Equity | EQUITY\n"
+                    f"Timeframe: 5m (Intraday)\n"
+                    f"Direction: {sig['direction']}\n"
+                    + "\u2501" * 24 + "\n"
+                    f"Entry: \u20b9{sig['entry']:.1f} | SL: \u20b9{sig['sl']:.1f} | TGT: \u20b9{sig['target']:.1f}\n"
+                    f"RRR: {sig['rrr']:.1f} | Pattern: {sig['pattern']}\n"
+                    + "\u2501" * 24 + "\n"
+                    f"Scanners: {sig['scanner_count']} fired\n"
+                    f"Signal ID: INT-{db_signal.id}\n"
+                    "\u26a0\ufe0f Close by 15:15 IST to avoid carry"
+                )
+                _fire_and_forget(send_telegram_message(
+                    msg, exchange=sig["exchange"], force=True
+                ))
+
+                # Subscriber broadcast — respects per-user segment opt-in.
+                try:
+                    from mcp_server.telegram_saas import broadcast_signal_to_users
+                    _fire_and_forget(
+                        broadcast_signal_to_users(msg, exchange=sig["exchange"])
+                    )
+                except Exception as broadcast_err:
+                    logger.debug(
+                        "Intraday subscriber broadcast skipped for %s: %s",
+                        sig["ticker"], broadcast_err,
+                    )
+
+                logger.info(
+                    "[INTRADAY] delivered %s %s entry=%.2f pattern=%s",
+                    sig["ticker"], sig["direction"], sig["entry"], sig["pattern"],
+                )
+            except Exception as deliver_err:
+                logger.warning(
+                    "[INTRADAY] delivery failed for %s: %s",
+                    sig["ticker"], deliver_err,
+                )
+                db.rollback()
+    finally:
+        db.close()
+
+
 async def _auto_scan_loop():
     """Background task: run MWA scan every 15 minutes during market hours."""
     from mcp_server.market_calendar import is_market_open
@@ -429,6 +625,15 @@ async def lifespan(app: FastAPI):
     # Start auto-scan background task (every 15 min during market hours)
     auto_scan_task = asyncio.create_task(_auto_scan_loop())
     logger.info("Auto-scan background task started (every 15 min during market hours)")
+
+    # Start intraday scan loop — opt-in via INTRADAY_SIGNALS_ENABLED. The
+    # task itself short-circuits when the flag is off, so creating it
+    # unconditionally is safe and keeps lifecycle shutdown clean.
+    asyncio.create_task(_intraday_scan_loop())
+    logger.info(
+        "Intraday scan background task started (enabled=%s)",
+        getattr(settings, "INTRADAY_SIGNALS_ENABLED", False),
+    )
 
     # Start scanner review background task (triggers at 15:45 IST)
     scanner_review_task = None
