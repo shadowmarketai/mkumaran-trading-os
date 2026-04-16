@@ -1706,6 +1706,13 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
     # ── MWA Signal Cards: detailed trade levels for top promoted stocks ──
     mwa_signal_cards = []
     try:
+        # Ensure send_telegram_message is bound for THIS function regardless
+        # of the earlier TELEGRAM_SIGNALS_ONLY gate. Without this import,
+        # Python treats the name as local (because it's assigned at line
+        # 1666 inside a conditional) and every reference below raises
+        # UnboundLocalError when TELEGRAM_SIGNALS_ONLY=true — which is
+        # the production default, silently killing every signal card.
+        from mcp_server.telegram_bot import send_telegram_message  # noqa: F811
         from mcp_server.mwa_signal_generator import generate_mwa_signals
 
         # Exclude tickers that already have OPEN signals — otherwise every
@@ -4044,26 +4051,16 @@ async def api_kite_callback(request_token: str = Query(...)):
         except Exception:
             pass
 
-        # Send Telegram confirmation — once per day only. Without this
-        # throttle, repeated callback hits (browser bookmark, /kitelogin
-        # command invocations, etc.) spam the owner's Telegram with the
-        # same success message and drown out actual signal cards.
-        try:
-            today_key = _now_ist().strftime("%Y-%m-%d")
-            if _kite_login_notify_cache.get("last_date") != today_key:
-                from mcp_server.telegram_bot import send_telegram_message
-                asyncio.ensure_future(send_telegram_message(
-                    "\u2705 Kite Login Successful\n"
-                    f"Token cached at {_now_ist().strftime('%H:%M IST')}",
-                    force=True,
-                ))
-                _kite_login_notify_cache["last_date"] = today_key
-            else:
-                logger.info(
-                    "Kite login notification throttled — already sent today"
-                )
-        except Exception:
-            pass
+        # Kite login success is confirmed by the HTML page returned below
+        # ("✅ Kite Login Successful"). We deliberately do NOT send a
+        # Telegram message here any more. It was drowning actual trade
+        # signals in the owner's chat whenever /api/kite_callback fired
+        # repeatedly (browser bookmarks, retried OAuth flows, etc.). The
+        # log line is enough for operational visibility.
+        logger.info(
+            "Kite login cached via callback at %s IST",
+            _now_ist().strftime("%H:%M"),
+        )
 
         return HTMLResponse(
             "<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
