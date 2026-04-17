@@ -1151,8 +1151,8 @@ class DhanSource:
             logger.warning("DHAN_CLIENT_ID or DHAN_ACCESS_TOKEN not set — skipping Dhan")
             return False
         try:
-            from dhanhq import dhanhq
-            self.client = dhanhq(client_id, token)
+            from dhanhq import DhanContext, dhanhq
+            self.client = dhanhq(DhanContext(client_id, token))
             self.logged_in = True
             logger.info("Dhan login OK")
             return True

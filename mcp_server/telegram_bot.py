@@ -387,9 +387,9 @@ async def cmd_dhantoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     try:
         from mcp_server.data_provider import get_provider
-        from dhanhq import dhanhq
+        from dhanhq import DhanContext, dhanhq
         provider = get_provider()
-        provider.dhan.client = dhanhq(client_id, token)
+        provider.dhan.client = dhanhq(DhanContext(client_id, token))
         provider.dhan.logged_in = True
         provider._sources["dhan"] = True
         msg = (

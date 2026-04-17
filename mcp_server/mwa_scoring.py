@@ -228,13 +228,17 @@ def get_promoted_stocks(
     ]
 
     stock_counts: dict[str, int] = {}
+    # Track tickers that came from multi-asset scanners (nfo_*, mcx_*, cds_*)
+    # so they can use a lower promotion threshold even if they're not in the
+    # static asset_registry universes (e.g. NFO stock tickers like ANGELONE).
+    multi_asset_hits: set[str] = set()
+    _MULTI_PREFIXES = ("nfo_", "mcx_", "cds_", "forex_", "commodity_")
 
     for scanner_id in promotion_scanners:
         result = scanner_results.get(scanner_id)
         if result is None:
             continue
 
-        # Support both new format (list) and old format (dict with "stocks")
         if isinstance(result, list):
             stocks = result
         elif isinstance(result, dict):
@@ -242,16 +246,23 @@ def get_promoted_stocks(
         else:
             continue
 
+        is_multi = any(scanner_id.startswith(p) for p in _MULTI_PREFIXES)
         for stock in stocks:
             stock_counts[stock] = stock_counts.get(stock, 0) + 1
+            if is_multi:
+                multi_asset_hits.add(stock)
 
     from mcp_server.asset_registry import MCX_UNIVERSE, CDS_UNIVERSE, NFO_INDEX_UNIVERSE
     multi_asset_tickers = set(MCX_UNIVERSE + CDS_UNIVERSE + NFO_INDEX_UNIVERSE)
 
     promoted = []
     for s, c in stock_counts.items():
-        # MCX/CDS/NFO tickers need only 1 scanner (they have fewer scanners)
-        threshold = 1 if s in multi_asset_tickers else min_scanners
+        clean = s.split(":")[-1] if ":" in s else s
+        is_multi_asset = (
+            clean in multi_asset_tickers
+            or s in multi_asset_hits
+        )
+        threshold = 1 if is_multi_asset else min_scanners
         if c >= threshold:
             promoted.append(s)
 
