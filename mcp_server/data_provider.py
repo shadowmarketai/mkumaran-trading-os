@@ -1184,26 +1184,68 @@ class DhanSource:
 
         try:
             csv_url = "https://images.dhan.co/api-data/api-scrip-master.csv"
-            df = pd.read_csv(csv_url)
+            df = pd.read_csv(csv_url, low_memory=False)
             scrip_map: dict[str, str] = {}
+            # For futures (MCX/NFO/CDS), build base-symbol → nearest-expiry
+            # aliases so "MCX:GOLD" resolves to the current-month FUTCOM contract.
+            # Track: (exchange, base_name) → (expiry_str, security_id)
+            futures_best: dict[tuple[str, str], tuple[str, str]] = {}
+            today_str = str(date.today())
+
             for _, row in df.iterrows():
                 seg = str(row.get("SEM_EXM_EXCH_ID", "")).strip()
                 symbol = str(row.get("SEM_TRADING_SYMBOL", "")).strip().upper()
                 sec_id = str(row.get("SEM_SMST_SECURITY_ID", "")).strip()
+                instr = str(row.get("SEM_INSTRUMENT_NAME", "")).strip().upper()
+                expiry_raw = str(row.get("SEM_EXPIRY_DATE", "")).strip()
                 if not seg or not symbol or not sec_id:
                     continue
-                exchange_map_inv = {
-                    "NSE": "NSE", "BSE": "BSE", "MCX": "MCX",
-                }
+                exchange_map_inv = {"NSE": "NSE", "BSE": "BSE", "MCX": "MCX"}
                 exch = exchange_map_inv.get(seg)
-                if exch:
-                    scrip_map[f"{exch}:{symbol}"] = sec_id
+                if not exch:
+                    continue
+
+                # Direct symbol mapping (equity, indices)
+                scrip_map[f"{exch}:{symbol}"] = sec_id
+
+                # Futures alias: pick nearest non-expired contract per base name.
+                # MCX: FUTCOM/FUTIDX; NSE: FUTIDX/FUTSTK/FUTCUR
+                if instr in ("FUTCOM", "FUTIDX", "FUTSTK", "FUTCUR"):
+                    base = symbol.split("-")[0]
+                    if not base:
+                        continue
+                    if expiry_raw < today_str:
+                        continue
+                    bkey = (exch, base)
+                    existing = futures_best.get(bkey)
+                    if existing is None or expiry_raw < existing[0]:
+                        futures_best[bkey] = (expiry_raw, sec_id)
+
+            # Apply futures aliases: MCX:GOLD → nearest FUTCOM security_id
+            for (exch, base), (_, sec_id) in futures_best.items():
+                alias_key = f"{exch}:{base}"
+                if alias_key not in scrip_map or exch != "NSE":
+                    scrip_map[alias_key] = sec_id
+
+            # Also map NFO base names for index futures
+            for (exch, base), (_, sec_id) in futures_best.items():
+                if exch == "NSE" and base in ("NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"):
+                    scrip_map[f"NFO:{base}"] = sec_id
+                elif exch == "NSE":
+                    # CDS currency futures
+                    if base in ("USDINR", "EURINR", "GBPINR", "JPYINR"):
+                        scrip_map[f"CDS:{base}"] = sec_id
+
             if scrip_map:
                 self._scrip_cache = scrip_map
                 self._scrip_cache_date = today
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
                 cache_path.write_text(json.dumps({"date": today, "map": scrip_map}))
-                logger.info("Dhan scrip master downloaded: %d symbols", len(scrip_map))
+                futures_count = len(futures_best)
+                logger.info(
+                    "Dhan scrip master downloaded: %d symbols (%d futures aliases)",
+                    len(scrip_map), futures_count,
+                )
         except Exception as e:
             logger.warning("Dhan scrip master load failed: %s", e)
 

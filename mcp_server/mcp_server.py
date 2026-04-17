@@ -1977,8 +1977,25 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
                 len(promoted),
             )
 
+        # Interleave segments: reserve slots for non-equity so NFO/MCX/CDS
+        # tickers (which have fewer scanners and sort to the bottom) still
+        # get a chance at signal generation instead of being starved by the
+        # 462 NSE equity candidates above them.
+        nse_fresh = [t for t in fresh_promoted if ":" not in t or t.startswith("NSE:")]
+        multi_fresh = [t for t in fresh_promoted if ":" in t and not t.startswith("NSE:")]
+        # 7 equity + up to 3 multi-asset (NFO/MCX/CDS), then fill remainder
+        interleaved = nse_fresh[:7] + multi_fresh[:3]
+        remaining = [t for t in fresh_promoted if t not in set(interleaved)]
+        signal_candidates = (interleaved + remaining)[:10]
+        if multi_fresh:
+            logger.info(
+                "MWA: %d multi-asset candidates (NFO/MCX/CDS) in promoted, "
+                "%d allocated signal slots",
+                len(multi_fresh), min(len(multi_fresh), 3),
+            )
+
         mwa_signals = generate_mwa_signals(
-            promoted=fresh_promoted[:10],
+            promoted=signal_candidates,
             stock_data=stock_data,
             mwa_direction=score["direction"],
             scanner_results=raw_results,
