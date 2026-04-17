@@ -76,16 +76,15 @@ _PERIOD_TO_DAYS: dict[str, int] = {
 # Env-var override: DATA_ROUTE_MCX=angel,yfinance
 
 SEGMENT_ROUTING: dict[str, list[str]] = {
-    "NSE": ["angel", "nse", "yfinance"],
-    "BSE": ["angel", "nse", "yfinance"],
-    "NFO": ["angel", "kite", "yfinance"],
-    # MCX: ONLY real MCX FUTCOM contracts (via gwc/angel/kite). yfinance is
-    # deliberately excluded — it maps CRUDEOIL→CL=F (NYMEX WTI), GOLD→GC=F
-    # (COMEX), etc., which are global proxies, NOT MCX FUTCOM prices. Signals
-    # built off NYMEX/COMEX prices would diverge from the MCX market the user
-    # actually trades. Better to have no data than wrong data.
-    "MCX": ["gwc", "angel", "kite"],
-    "CDS": ["angel", "kite", "yfinance"],
+    "NSE": ["angel", "nse", "dhan", "yfinance"],
+    "BSE": ["angel", "nse", "dhan", "yfinance"],
+    "NFO": ["angel", "kite", "dhan", "yfinance"],
+    # MCX: ONLY real MCX FUTCOM contracts. yfinance is deliberately excluded
+    # — it maps CRUDEOIL→CL=F (NYMEX WTI), GOLD→GC=F (COMEX), which are
+    # global proxies in USD, NOT MCX FUTCOM in INR. Dhan added as primary
+    # MCX source (free API, supports MCX_COMM segment natively).
+    "MCX": ["dhan", "gwc", "angel", "kite"],
+    "CDS": ["dhan", "angel", "kite", "yfinance"],
 }
 
 # Apply env-var overrides (e.g. DATA_ROUTE_MCX=angel,yfinance)
@@ -1094,11 +1093,39 @@ class UpstoxSource:
 
 class DhanSource:
 
+    # Exchange segment mapping: our internal codes → Dhan SDK constants.
+    # The constants are class-level strings on the dhanhq object itself
+    # (e.g. dhanhq.MCX == "MCX_COMM"), so we carry the string values here
+    # so they work even before login.
+    EXCHANGE_MAP: dict[str, str] = {
+        "NSE": "NSE_EQ",
+        "BSE": "BSE_EQ",
+        "NFO": "NSE_FNO",
+        "MCX": "MCX_COMM",
+        "CDS": "NSE_CURRENCY",
+    }
+    INSTRUMENT_TYPE_MAP: dict[str, str] = {
+        "NSE": "EQUITY",
+        "BSE": "EQUITY",
+        "NFO": "FUTIDX",
+        "MCX": "FUTCOM",
+        "CDS": "FUTCUR",
+    }
+    INTERVAL_MAP: dict[str, int] = {
+        "1minute": 1,
+        "5minute": 5,
+        "15minute": 15,
+        "30minute": 25,   # Dhan offers 25m, closest to 30m
+        "60minute": 60,
+    }
+
     def __init__(self):
         self.client_id = os.environ.get("DHAN_CLIENT_ID", "")
         self.token = os.environ.get("DHAN_ACCESS_TOKEN", "")
         self.client = None
         self.logged_in = False
+        self._scrip_cache: dict[str, str] = {}  # EXCHANGE:SYMBOL → security_id
+        self._scrip_cache_date: str | None = None
 
     def login(self) -> bool:
         if not self.client_id or not self.token:
@@ -1116,33 +1143,159 @@ class DhanSource:
             logger.warning("Dhan login error: %s", e)
         return False
 
+    # ── Instrument resolution ──────────────────────────────────
+
+    def _load_scrip_master(self) -> None:
+        """Load Dhan's instrument CSV (daily cache) to resolve ticker → security_id."""
+        today = str(date.today())
+        if self._scrip_cache_date == today and self._scrip_cache:
+            return
+
+        cache_path = Path("data/dhan_instruments.json")
+        if cache_path.exists():
+            try:
+                cached = json.loads(cache_path.read_text())
+                if cached.get("date") == today:
+                    self._scrip_cache = cached.get("map", {})
+                    self._scrip_cache_date = today
+                    logger.info("Dhan scrip master from cache: %d symbols", len(self._scrip_cache))
+                    return
+            except Exception:
+                pass
+
+        try:
+            csv_url = "https://images.dhan.co/api-data/api-scrip-master.csv"
+            df = pd.read_csv(csv_url)
+            scrip_map: dict[str, str] = {}
+            for _, row in df.iterrows():
+                seg = str(row.get("SEM_EXM_EXCH_ID", "")).strip()
+                symbol = str(row.get("SEM_TRADING_SYMBOL", "")).strip().upper()
+                sec_id = str(row.get("SEM_SMST_SECURITY_ID", "")).strip()
+                if not seg or not symbol or not sec_id:
+                    continue
+                exchange_map_inv = {
+                    "NSE": "NSE", "BSE": "BSE", "MCX": "MCX",
+                }
+                exch = exchange_map_inv.get(seg)
+                if exch:
+                    scrip_map[f"{exch}:{symbol}"] = sec_id
+            if scrip_map:
+                self._scrip_cache = scrip_map
+                self._scrip_cache_date = today
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_text(json.dumps({"date": today, "map": scrip_map}))
+                logger.info("Dhan scrip master downloaded: %d symbols", len(scrip_map))
+        except Exception as e:
+            logger.warning("Dhan scrip master load failed: %s", e)
+
+    def _resolve_security_id(self, symbol: str, exchange: str = "NSE") -> str | None:
+        """Resolve SYMBOL → Dhan security_id string."""
+        self._load_scrip_master()
+        return self._scrip_cache.get(f"{exchange}:{symbol.upper()}")
+
+    # ── Historical data ────────────────────────────────────────
+
     @retry(max_attempts=2, delay=1.0)
     def get_historical(self, symbol: str,
                        interval: str = "day",
-                       days: int = 60) -> pd.DataFrame:
+                       days: int = 60,
+                       exchange: str = "NSE") -> pd.DataFrame:
         if not self.logged_in:
             return pd.DataFrame()
+
+        sec_id = self._resolve_security_id(symbol, exchange)
+        if not sec_id:
+            logger.debug("Dhan: no security_id for %s:%s", exchange, symbol)
+            return pd.DataFrame()
+
+        dhan_segment = self.EXCHANGE_MAP.get(exchange, "NSE_EQ")
+        instr_type = self.INSTRUMENT_TYPE_MAP.get(exchange, "EQUITY")
+        from_date = (date.today() - timedelta(days=days)).strftime("%Y-%m-%d")
+        to_date = date.today().strftime("%Y-%m-%d")
+
         try:
-            from_date = (date.today() - timedelta(days=days)).strftime("%Y-%m-%d")
-            to_date = date.today().strftime("%Y-%m-%d")
-            resp = self.client.historical_daily_data(
-                symbol=symbol,
-                exchange_segment=self.client.NSE,
-                instrument_type="EQUITY",
-                from_date=from_date,
-                to_date=to_date,
-            )
+            if interval == "day":
+                resp = self.client.historical_daily_data(
+                    security_id=sec_id,
+                    exchange_segment=dhan_segment,
+                    instrument_type=instr_type,
+                    from_date=from_date,
+                    to_date=to_date,
+                )
+            else:
+                dhan_interval = self.INTERVAL_MAP.get(interval)
+                if dhan_interval is None:
+                    logger.debug("Dhan: unsupported interval %s", interval)
+                    return pd.DataFrame()
+                from_dt = (date.today() - timedelta(days=days)).strftime("%Y-%m-%d 09:15:00")
+                to_dt = date.today().strftime("%Y-%m-%d 15:30:00")
+                resp = self.client.intraday_minute_data(
+                    security_id=sec_id,
+                    exchange_segment=dhan_segment,
+                    instrument_type=instr_type,
+                    from_date=from_dt,
+                    to_date=to_dt,
+                    interval=dhan_interval,
+                )
+
             if resp and resp.get("data"):
                 df = pd.DataFrame(resp["data"])
+                rename = {
+                    "timestamp": "date", "start_Time": "date",
+                    "open": "open", "high": "high",
+                    "low": "low", "close": "close", "volume": "volume",
+                }
                 df = df.rename(columns={
-                    "timestamp": "date",
+                    k: v for k, v in rename.items() if k in df.columns
                 })
+                if "date" not in df.columns:
+                    date_cols = [c for c in df.columns if "time" in c.lower() or "date" in c.lower()]
+                    if date_cols:
+                        df = df.rename(columns={date_cols[0]: "date"})
                 df["date"] = pd.to_datetime(df["date"])
-                return df[["date", "open", "high", "low", "close", "volume"]] \
-                         .sort_values("date").reset_index(drop=True)
+                needed = ["date", "open", "high", "low", "close", "volume"]
+                avail = [c for c in needed if c in df.columns]
+                if len(avail) >= 5:
+                    return df[avail].sort_values("date").reset_index(drop=True)
         except Exception as e:
-            logger.warning("Dhan historical failed for %s: %s", symbol, e)
+            logger.warning("Dhan historical failed for %s:%s (%s): %s", exchange, symbol, interval, e)
         return pd.DataFrame()
+
+    # ── Live quote ─────────────────────────────────────────────
+
+    @retry(max_attempts=2, delay=0.5)
+    def get_quote(self, symbol: str, exchange: str = "NSE") -> dict:
+        if not self.logged_in:
+            return {}
+        sec_id = self._resolve_security_id(symbol, exchange)
+        if not sec_id:
+            return {}
+        dhan_segment = self.EXCHANGE_MAP.get(exchange, "NSE_EQ")
+        try:
+            resp = self.client.quote_data({dhan_segment: [sec_id]})
+            if resp and resp.get("data"):
+                entries = resp["data"]
+                if isinstance(entries, dict):
+                    entry = entries.get(sec_id, {})
+                elif isinstance(entries, list) and entries:
+                    entry = entries[0]
+                else:
+                    entry = {}
+                ltp = float(entry.get("last_price", entry.get("ltp", 0)))
+                if ltp:
+                    return {
+                        "symbol": symbol,
+                        "exchange": exchange,
+                        "source": "DHAN",
+                        "ltp": ltp,
+                        "open": float(entry.get("open", 0)),
+                        "high": float(entry.get("high", 0)),
+                        "low": float(entry.get("low", 0)),
+                        "volume": int(entry.get("volume", 0)),
+                    }
+        except Exception as e:
+            logger.debug("Dhan quote failed for %s:%s: %s", exchange, symbol, e)
+        return {}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1250,9 +1403,9 @@ class MarketDataProvider:
                 self._hist_cache[cache_key] = (df, time.time())
                 return df
 
-        # 4. Dhan (equity only)
-        if self._sources["dhan"] and interval == "day" and exchange in ("NSE", "BSE"):
-            df = self.dhan.get_historical(symbol_clean, interval, days)
+        # 4. Dhan (all segments + intraday)
+        if self._sources["dhan"]:
+            df = self.dhan.get_historical(symbol_clean, interval, days, exchange=exchange)
             if not df.empty:
                 self._hist_cache[cache_key] = (df, time.time())
                 return df
@@ -1340,6 +1493,8 @@ class MarketDataProvider:
                 except Exception as e:
                     logger.debug("Kite source failed for %s:%s: %s", exchange, symbol, e)
                 return pd.DataFrame()
+            elif source == "dhan" and self._sources.get("dhan"):
+                return self.dhan.get_historical(symbol, interval, days, exchange=exchange)
             elif source == "upstox" and self._sources.get("upstox") and exchange in ("NSE", "BSE"):
                 return self.upstox.get_historical(symbol, interval, days)
             elif source == "yfinance":
