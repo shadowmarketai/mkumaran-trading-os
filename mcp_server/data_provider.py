@@ -1239,7 +1239,15 @@ class DhanSource:
                 )
 
             if resp and resp.get("data"):
-                df = pd.DataFrame(resp["data"])
+                raw = resp["data"]
+                # Dhan sometimes returns a single dict instead of a list
+                # for symbols with only one data point. Guard against it
+                # so pd.DataFrame doesn't raise "must pass an index".
+                if isinstance(raw, dict):
+                    raw = [raw]
+                if not isinstance(raw, list) or not raw:
+                    return pd.DataFrame()
+                df = pd.DataFrame(raw)
                 rename = {
                     "timestamp": "date", "start_Time": "date",
                     "open": "open", "high": "high",
