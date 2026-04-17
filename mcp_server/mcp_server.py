@@ -333,6 +333,12 @@ _self_dev_cache: dict[str, Any] = {}
 # regardless of how many times /api/kite_callback fires.
 _kite_login_notify_cache: dict[str, str] = {}
 
+# Scan-in-progress lock — prevents concurrent MWA scans from the auto-scan
+# loop (every 15 min) and n8n extended monitor (every 10 min) from
+# overlapping and generating duplicate signals for the same ticker.
+import threading
+_scan_lock = threading.Lock()
+
 
 async def _self_dev_loop():
     """
@@ -605,6 +611,18 @@ async def lifespan(app: FastAPI):
             _purge_session.close()
     except Exception as e:
         logger.debug("Startup yfinance MCX/NFO purge skipped: %s", e)
+
+    # Force-clear stale Dhan instrument cache so the latest scrip master
+    # (with futures aliases for MCX/NFO/CDS) is loaded fresh. The cached
+    # file from pre-fix deployments has no MCX:GOLD → FUTCOM mappings.
+    try:
+        from pathlib import Path
+        dhan_cache = Path("data/dhan_instruments.json")
+        if dhan_cache.exists():
+            dhan_cache.unlink()
+            logger.info("Startup: cleared stale Dhan instrument cache")
+    except Exception:
+        pass
 
     # Dhan token lifecycle: auto-refresh via TOTP if configured, else warn.
     # The DhanSource.login() above already tried auto-refresh. Here we just
@@ -1637,8 +1655,8 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
     """Run the full 98-scanner MWA scan and persist score to DB."""
     import threading
 
-    # ── Holiday / weekend gate ────────────────────────────────
-    from mcp_server.market_calendar import is_market_holiday, is_weekend
+    # ── Holiday / weekend / after-hours gate ─────────────────
+    from mcp_server.market_calendar import is_market_holiday, is_market_open, is_weekend
 
     today = date.today()
     if is_weekend(today):
@@ -1647,6 +1665,13 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
     if is_market_holiday("NSE", today):
         return {"status": "skipped", "tool": "run_mwa_scan",
                 "reason": f"Market holiday ({today}). Scan not needed."}
+    # Prevent after-hours scans triggered by n8n or manual API calls.
+    # At least one segment must be open, otherwise we're generating
+    # signals on stale data and spamming Telegram post-close.
+    any_open = is_market_open("NSE") or is_market_open("MCX") or is_market_open("CDS")
+    if not any_open:
+        return {"status": "skipped", "tool": "run_mwa_scan",
+                "reason": "All markets closed. Scan skipped to prevent after-hours signals."}
 
     # ── Async mode: return job_id immediately, run in background ──
     mode = request.query_params.get("mode", "async")
@@ -1673,15 +1698,27 @@ async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
 def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
     """Core MWA scan logic — used by both sync and async modes.
 
-    Routes data by segment to the best source (Angel for NSE/NFO, Goodwill
-    for MCX, yfinance for CDS) and runs scanners per-segment so that
-    Chartink (NSE-only) doesn't run against MCX/CDS, while universal
-    scanners (SMC/Wyckoff/VSA/Harmonic/RL) now run on all segments.
+    Acquires _scan_lock to prevent concurrent executions from producing
+    duplicate signals (n8n every 10 min + auto_scan_loop every 15 min
+    would otherwise overlap). If the lock is held, returns immediately
+    with status="skipped".
 
     Args:
         segments: List of open segments to scan (e.g. ["MCX", "CDS"]).
                   None = scan all segments (backward compat for manual API).
     """
+    if not _scan_lock.acquire(blocking=False):
+        logger.info("MWA scan skipped — another scan is already in progress")
+        return {"status": "skipped", "reason": "concurrent scan in progress"}
+
+    try:
+        return _execute_mwa_scan_impl(db, segments)
+    finally:
+        _scan_lock.release()
+
+
+def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> dict:
+    """Inner implementation — always called under _scan_lock."""
     from mcp_server.mwa_scanner import MWAScanner
     from mcp_server.mwa_scoring import calculate_mwa_score, get_promoted_stocks, format_morning_brief
     from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, NFO_INDEX_UNIVERSE, NFO_STOCK_UNIVERSE
