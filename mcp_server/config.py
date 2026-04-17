@@ -184,9 +184,11 @@ class Settings:
     # the curated OPTION_UNIVERSE (4 indices + large-cap stocks) is eligible.
     OPTION_UNIVERSE_ALL_FNO: bool = os.getenv("OPTION_UNIVERSE_ALL_FNO", "true").lower() == "true"
 
-    # Dhan TOTP key — used by future Playwright-based token auto-refresh.
-    # For now the /dhantoken Telegram command handles manual rotation.
+    # Dhan auto-authentication (TOTP + PIN). When both are set, the system
+    # generates fresh access tokens at startup and on expiry — no manual
+    # /dhantoken paste needed. Uses dhanhq.auth.DhanLogin (SDK v2.2.0+).
     DHAN_TOTP_KEY: str = os.getenv("DHAN_TOTP_KEY", "")
+    DHAN_PIN: str = os.getenv("DHAN_PIN", "")
 
     # Intraday signals (ORB, VWAP, 5m momentum) — separate pipeline from MWA
     # daily-swing. Default false so turning this on is an explicit opt-in.

@@ -606,30 +606,37 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.debug("Startup yfinance MCX/NFO purge skipped: %s", e)
 
-    # Check Dhan token expiry — warn via Telegram if it expires within 2h
-    # so the user has time to paste a new one via /dhantoken before MCX
-    # data goes dark.
+    # Dhan token lifecycle: auto-refresh via TOTP if configured, else warn.
+    # The DhanSource.login() above already tried auto-refresh. Here we just
+    # log the result and send a Telegram nudge only if auto-refresh is not
+    # configured and the token is expiring.
     try:
         dhan_token = os.environ.get("DHAN_ACCESS_TOKEN", "")
+        has_auto = bool(os.environ.get("DHAN_TOTP_KEY") and os.environ.get("DHAN_PIN"))
         if dhan_token.startswith("eyJ"):
             import base64
             payload = json.loads(base64.urlsafe_b64decode(dhan_token.split(".")[1] + "=="))
             exp = payload.get("exp", 0)
             hours_left = (exp - _now_ist().timestamp()) / 3600
-            if hours_left <= 0:
+            if has_auto:
+                logger.info(
+                    "Dhan token: %.0fh remaining (auto-refresh configured)", hours_left
+                )
+            elif hours_left <= 0:
                 _fire_and_forget(send_telegram_message(
                     "\u26a0\ufe0f Dhan token EXPIRED — MCX/intraday data offline.\n"
-                    "Paste a fresh token: /dhantoken eyJ0...",
+                    "Paste a fresh token: /dhantoken eyJ0...\n"
+                    "Or set DHAN_TOTP_KEY + DHAN_PIN for auto-refresh.",
                     force=True,
                 ))
             elif hours_left <= 2:
                 _fire_and_forget(send_telegram_message(
                     f"\u26a0\ufe0f Dhan token expires in {hours_left:.0f}h.\n"
-                    "Renew: web.dhan.co \u2192 Generate Token \u2192 /dhantoken <paste>",
+                    "Renew: /dhantoken <paste> or set DHAN_TOTP_KEY + DHAN_PIN.",
                     force=True,
                 ))
             else:
-                logger.info("Dhan token valid for %.0fh", hours_left)
+                logger.info("Dhan token valid for %.0fh (no auto-refresh)", hours_left)
     except Exception as dhan_exp_err:
         logger.debug("Dhan token expiry check skipped: %s", dhan_exp_err)
 

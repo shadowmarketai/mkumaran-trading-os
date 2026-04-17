@@ -1128,12 +1128,31 @@ class DhanSource:
         self._scrip_cache_date: str | None = None
 
     def login(self) -> bool:
-        if not self.client_id or not self.token:
+        # Try auto-token-refresh first (TOTP + PIN), then fall back to
+        # static env token. This means Dhan tokens rotate automatically
+        # at startup — no manual /dhantoken paste needed.
+        token = self.token
+        client_id = self.client_id
+
+        if os.environ.get("DHAN_TOTP_KEY") and os.environ.get("DHAN_PIN"):
+            try:
+                from mcp_server.dhan_auth import get_dhan_token
+                token = get_dhan_token()
+                # Extract client_id from the JWT if not set explicitly.
+                if not client_id:
+                    import base64
+                    payload = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
+                    client_id = str(payload.get("dhanClientId", ""))
+                logger.info("Dhan token acquired via auto-refresh")
+            except Exception as auth_err:
+                logger.warning("Dhan auto-refresh failed: %s — trying static token", auth_err)
+
+        if not client_id or not token:
             logger.warning("DHAN_CLIENT_ID or DHAN_ACCESS_TOKEN not set — skipping Dhan")
             return False
         try:
             from dhanhq import dhanhq
-            self.client = dhanhq(self.client_id, self.token)
+            self.client = dhanhq(client_id, token)
             self.logged_in = True
             logger.info("Dhan login OK")
             return True
