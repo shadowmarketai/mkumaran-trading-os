@@ -71,6 +71,20 @@ OPTION_STOCK_UNIVERSE: list[str] = [
 OPTION_UNIVERSE: set[str] = set(OPTION_INDEX_UNIVERSE + OPTION_STOCK_UNIVERSE)
 
 
+def _estimate_atm_iv_from_chain(chain: dict, spot: float) -> float | None:
+    """Pick the nearest strike to spot and average CE+PE IVs."""
+    if not chain:
+        return None
+    nearest_strike = min(chain.keys(), key=lambda s: abs(s - spot))
+    entry = chain.get(nearest_strike, {})
+    ivs = [
+        entry.get(ot, {}).get("iv", 0)
+        for ot in ("CE", "PE")
+        if entry.get(ot, {}).get("iv", 0) > 0
+    ]
+    return sum(ivs) / len(ivs) if ivs else None
+
+
 # Dynamic F&O universe loaded from Kite NFO instruments (populated on
 # first call, refreshed daily). Used when OPTION_UNIVERSE_ALL_FNO=true
 # so eligibility is data-driven rather than a hardcoded list.
@@ -483,32 +497,76 @@ def build_option_recommendation(
         logger.debug("Option enrichment skipped for %s: import failed (%s)", symbol, imp_err)
         return None
 
-    # 2) Instruments
-    instruments = _get_kite_instruments(kite, "NFO")
-    if not instruments:
-        logger.debug("No NFO instruments for %s", symbol)
+    # 2) Instruments + expiry + chain — try Kite first, Dhan fallback.
+    #    Dhan provides option chain with OI + Greeks for free (no MCX add-on
+    #    needed), so it covers the cases where Kite isn't connected or lacks
+    #    the NFO/MCX permission.
+    instruments: list[dict] = []
+    expiry: date | None = None
+    chain: dict = {}
+    chain_source = "none"
+
+    if kite:
+        try:
+            instruments = _get_kite_instruments(kite, "NFO")
+        except Exception:
+            instruments = []
+        if instruments:
+            expiry = select_expiry(instruments, symbol)
+            if expiry:
+                chain = _get_option_chain(kite, instruments, symbol, expiry)
+                if chain:
+                    chain_source = "kite"
+
+    # Dhan fallback when Kite didn't deliver
+    if not chain:
+        try:
+            from mcp_server.data_provider import get_provider
+            dhan = get_provider().dhan
+            if dhan.logged_in:
+                expiry_list = dhan.get_expiry_list(symbol, exchange="NSE")
+                if expiry_list:
+                    # Pick the nearest expiry ≥ today
+                    today_str = str(date.today())
+                    valid = sorted([e for e in expiry_list if e >= today_str])
+                    min_dte = getattr(settings, "OPTION_MIN_DAYS_TO_EXPIRY", 2)
+                    for exp_str in valid:
+                        exp_date = date.fromisoformat(exp_str)
+                        if (exp_date - date.today()).days >= min_dte:
+                            expiry = exp_date
+                            break
+                    if expiry:
+                        chain = dhan.get_option_chain(symbol, str(expiry), exchange="NSE")
+                        if chain:
+                            chain_source = "dhan"
+                            logger.info(
+                                "Option chain for %s via Dhan (Kite unavailable): %d strikes",
+                                symbol, len(chain),
+                            )
+        except Exception as dhan_oc_err:
+            logger.debug("Dhan option chain fallback failed for %s: %s", symbol, dhan_oc_err)
+
+    if not chain:
+        logger.debug("Empty option chain for %s (tried kite+dhan)", symbol)
         return None
 
-    # 3) Expiry
-    expiry = select_expiry(instruments, symbol)
     if not expiry:
         logger.debug("No eligible expiry for %s", symbol)
-        return None
-
-    # 4) Option chain
-    chain = _get_option_chain(kite, instruments, symbol, expiry)
-    if not chain:
-        logger.debug("Empty option chain for %s expiry %s", symbol, expiry)
         return None
 
     # 5) IV rank (fail-safe: default 50 → ATM regime)
     iv_rank_val = 50.0
     try:
-        iv_data = get_iv_rank(kite, symbol)
+        iv_data = get_iv_rank(kite, symbol) if kite else None
         if iv_data and iv_data.get("iv_rank") is not None:
             ivr = float(iv_data.get("iv_rank") or 0)
             if ivr > 0:
                 iv_rank_val = ivr
+        elif chain_source == "dhan":
+            # Estimate IV rank from the chain's ATM IV when Kite is down.
+            atm_iv = _estimate_atm_iv_from_chain(chain, float(spot))
+            if atm_iv and atm_iv > 0:
+                iv_rank_val = min(atm_iv, 100.0)
     except Exception as iv_err:
         logger.debug("IV rank fetch failed for %s, using 50 default: %s", symbol, iv_err)
 

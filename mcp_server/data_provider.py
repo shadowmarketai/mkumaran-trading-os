@@ -1263,6 +1263,80 @@ class DhanSource:
 
     # ── Live quote ─────────────────────────────────────────────
 
+    # ── Option chain ─────────────────────────────────────────
+
+    def get_expiry_list(self, symbol: str, exchange: str = "NSE") -> list[str]:
+        """Return available expiry dates (YYYY-MM-DD strings) for an underlying."""
+        if not self.logged_in:
+            return []
+        sec_id = self._resolve_security_id(symbol, exchange)
+        if not sec_id:
+            return []
+        dhan_segment = self.EXCHANGE_MAP.get(exchange, "NSE_EQ")
+        try:
+            resp = self.client.expiry_list(
+                under_security_id=sec_id,
+                under_exchange_segment=dhan_segment,
+            )
+            if resp and resp.get("data"):
+                return [str(d) for d in resp["data"]]
+        except Exception as e:
+            logger.debug("Dhan expiry_list failed for %s:%s: %s", exchange, symbol, e)
+        return []
+
+    def get_option_chain(self, symbol: str, expiry: str, exchange: str = "NSE") -> dict:
+        """Fetch Dhan option chain and normalize to the Kite-compatible shape.
+
+        Returns: {strike: {"CE": {oi, ltp, volume, iv, ...}, "PE": {...}}}
+        so `options_selector` and `fo_module` can consume it interchangeably.
+        """
+        if not self.logged_in:
+            return {}
+        sec_id = self._resolve_security_id(symbol, exchange)
+        if not sec_id:
+            return {}
+        dhan_segment = self.EXCHANGE_MAP.get(exchange, "NSE_EQ")
+        try:
+            resp = self.client.option_chain(
+                under_security_id=sec_id,
+                under_exchange_segment=dhan_segment,
+                expiry=expiry,
+            )
+            if not resp or not resp.get("data"):
+                return {}
+
+            chain: dict[float, dict] = {}
+            for row in resp["data"]:
+                strike = float(row.get("strikePrice", 0))
+                if strike <= 0:
+                    continue
+                opt_type = row.get("optionType", "").upper()
+                if opt_type not in ("CE", "PE", "CALL", "PUT"):
+                    continue
+                opt_type = "CE" if opt_type in ("CE", "CALL") else "PE"
+
+                if strike not in chain:
+                    chain[strike] = {}
+                chain[strike][opt_type] = {
+                    "oi": int(row.get("oi", row.get("openInterest", 0))),
+                    "ltp": float(row.get("ltp", row.get("lastTradedPrice", 0))),
+                    "volume": int(row.get("volume", row.get("tradedVolume", 0))),
+                    "iv": float(row.get("iv", row.get("impliedVolatility", 0))),
+                    "delta": float(row.get("delta", 0)),
+                    "gamma": float(row.get("gamma", 0)),
+                    "theta": float(row.get("theta", 0)),
+                    "vega": float(row.get("vega", 0)),
+                    "tradingsymbol": str(row.get("tradingSymbol", row.get("scrip", ""))),
+                    "token": str(row.get("securityId", row.get("security_id", ""))),
+                }
+            logger.info("Dhan option chain for %s exp %s: %d strikes", symbol, expiry, len(chain))
+            return chain
+        except Exception as e:
+            logger.warning("Dhan option chain failed for %s:%s exp=%s: %s", exchange, symbol, expiry, e)
+            return {}
+
+    # ── Live quote ─────────────────────────────────────────
+
     @retry(max_attempts=2, delay=0.5)
     def get_quote(self, symbol: str, exchange: str = "NSE") -> dict:
         if not self.logged_in:
