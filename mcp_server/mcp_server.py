@@ -606,6 +606,33 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.debug("Startup yfinance MCX/NFO purge skipped: %s", e)
 
+    # Check Dhan token expiry — warn via Telegram if it expires within 2h
+    # so the user has time to paste a new one via /dhantoken before MCX
+    # data goes dark.
+    try:
+        dhan_token = os.environ.get("DHAN_ACCESS_TOKEN", "")
+        if dhan_token.startswith("eyJ"):
+            import base64
+            payload = json.loads(base64.urlsafe_b64decode(dhan_token.split(".")[1] + "=="))
+            exp = payload.get("exp", 0)
+            hours_left = (exp - _now_ist().timestamp()) / 3600
+            if hours_left <= 0:
+                _fire_and_forget(send_telegram_message(
+                    "\u26a0\ufe0f Dhan token EXPIRED — MCX/intraday data offline.\n"
+                    "Paste a fresh token: /dhantoken eyJ0...",
+                    force=True,
+                ))
+            elif hours_left <= 2:
+                _fire_and_forget(send_telegram_message(
+                    f"\u26a0\ufe0f Dhan token expires in {hours_left:.0f}h.\n"
+                    "Renew: web.dhan.co \u2192 Generate Token \u2192 /dhantoken <paste>",
+                    force=True,
+                ))
+            else:
+                logger.info("Dhan token valid for %.0fh", hours_left)
+    except Exception as dhan_exp_err:
+        logger.debug("Dhan token expiry check skipped: %s", dhan_exp_err)
+
     # Start signal auto-monitor background task
     monitor_task = None
     try:

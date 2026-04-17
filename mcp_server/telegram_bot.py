@@ -350,6 +350,61 @@ async def cmd_gwclogin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(f"\u274c GWC login URL failed: {e}")
 
 
+async def cmd_dhantoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /dhantoken <JWT> — hot-swap Dhan access token at runtime.
+
+    Decodes the JWT to validate it's a real Dhan token, then replaces the
+    token on the live DhanSource instance — no redeploy needed.
+    """
+    if not context.args:
+        await update.message.reply_text(
+            "\U0001f510 Dhan Token Refresh\n"
+            "\u2501" * 24 + "\n"
+            "Usage: /dhantoken <paste JWT here>\n\n"
+            "1. Go to web.dhan.co/index/profile\n"
+            "2. Generate Access Token\n"
+            "3. Copy the JWT and paste:\n"
+            "   /dhantoken eyJ0eXAi..."
+        )
+        return
+    token = context.args[0].strip()
+    if not token.startswith("eyJ"):
+        await update.message.reply_text("\u274c That doesn't look like a JWT. Paste the full token starting with eyJ...")
+        return
+
+    try:
+        import base64, json as _json
+        payload = _json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
+        exp = payload.get("exp", 0)
+        client_id = payload.get("dhanClientId", "?")
+        from datetime import datetime, timezone
+        expires = datetime.fromtimestamp(exp, tz=timezone.utc)
+        hours_left = (exp - datetime.now(tz=timezone.utc).timestamp()) / 3600
+    except Exception:
+        expires = None
+        hours_left = 0
+        client_id = "?"
+
+    try:
+        from mcp_server.data_provider import get_provider
+        from dhanhq import dhanhq
+        provider = get_provider()
+        provider.dhan.client = dhanhq(client_id, token)
+        provider.dhan.logged_in = True
+        provider._sources["dhan"] = True
+        msg = (
+            "\u2705 Dhan Token Refreshed\n"
+            f"Client: {client_id}\n"
+            f"Expires: {expires.strftime('%Y-%m-%d %H:%M UTC') if expires else '?'}\n"
+            f"Valid for: {hours_left:.0f}h\n"
+            "MCX/NFO/CDS data will use fresh token."
+        )
+    except Exception as e:
+        msg = f"\u274c Dhan token swap failed: {e}"
+
+    await update.message.reply_text(msg)
+
+
 async def cmd_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /close NSE:TICKER -- log trade exit."""
     if not context.args:
@@ -916,6 +971,7 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("status", cmd_health))  # alias
     app.add_handler(CommandHandler("kitelogin", cmd_kitelogin))
     app.add_handler(CommandHandler("gwclogin", cmd_gwclogin))
+    app.add_handler(CommandHandler("dhantoken", cmd_dhantoken))
     app.add_handler(CommandHandler("add", cmd_add))
     app.add_handler(CommandHandler("remove", cmd_remove))
     app.add_handler(CommandHandler("pause", cmd_pause))

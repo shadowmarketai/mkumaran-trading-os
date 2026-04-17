@@ -184,6 +184,10 @@ class Settings:
     # the curated OPTION_UNIVERSE (4 indices + large-cap stocks) is eligible.
     OPTION_UNIVERSE_ALL_FNO: bool = os.getenv("OPTION_UNIVERSE_ALL_FNO", "true").lower() == "true"
 
+    # Dhan TOTP key — used by future Playwright-based token auto-refresh.
+    # For now the /dhantoken Telegram command handles manual rotation.
+    DHAN_TOTP_KEY: str = os.getenv("DHAN_TOTP_KEY", "")
+
     # Intraday signals (ORB, VWAP, 5m momentum) — separate pipeline from MWA
     # daily-swing. Default false so turning this on is an explicit opt-in.
     INTRADAY_SIGNALS_ENABLED: bool = os.getenv("INTRADAY_SIGNALS_ENABLED", "false").lower() == "true"
