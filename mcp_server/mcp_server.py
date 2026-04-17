@@ -2501,6 +2501,55 @@ async def tool_backtest_strategy(
     return {"status": "ok", "tool": "backtest_strategy", **result}
 
 
+@app.post("/tools/backtest_validate")
+async def tool_backtest_validate(
+    ticker: str,
+    strategy: str = "rrms",
+    days: int = 1095,
+    n_simulations: int = 1000,
+    n_bootstrap: int = 1000,
+    n_windows: int = 5,
+):
+    """Run a backtest and then put its results through three statistical
+    validation tests — Monte Carlo permutation, Bootstrap Sharpe CI, and
+    Walk-Forward consistency — to check whether the observed edge is real
+    or a lucky path. Adapted from Vibe-Trading's validation suite.
+
+    Interpretation guide:
+      - monte_carlo.p_value_sharpe < 0.05  → strategy beats random ordering
+      - bootstrap.ci_crosses_zero == false → Sharpe is robustly positive
+      - walk_forward.consistency_rate ≥ 0.6 → durable across regimes
+    """
+    from mcp_server.backtest_validation import run_full_validation, summarise
+    from mcp_server.backtester import run_backtest
+
+    def _compute() -> dict:
+        bt = run_backtest(ticker, strategy=strategy, days=days)
+        validation = run_full_validation(
+            bt,
+            monte_carlo_kwargs={"n_simulations": n_simulations},
+            bootstrap_kwargs={"n_bootstrap": n_bootstrap},
+            walk_forward_kwargs={"n_windows": n_windows},
+        )
+        return {
+            "status": "ok",
+            "tool": "backtest_validate",
+            "ticker": ticker,
+            "strategy": strategy,
+            "summary": summarise(validation),
+            "backtest_metrics": {
+                k: bt.get(k) for k in (
+                    "total_trades", "win_rate", "profit_factor",
+                    "sharpe_ratio", "max_drawdown_pct",
+                )
+            },
+            "validation": validation,
+        }
+
+    # Monte Carlo + bootstrap loops are CPU-bound; run off the event loop.
+    return await asyncio.to_thread(_compute)
+
+
 @app.post("/tools/manage_watchlist")
 async def tool_manage_watchlist(
     action: str,
