@@ -65,8 +65,27 @@ DEFAULT_WATCHLIST: list[str] = [
 def _watchlist() -> list[str]:
     raw = getattr(settings, "INTRADAY_WATCHLIST", "") or ""
     if raw.strip():
-        return [s.strip().upper() for s in raw.split(",") if s.strip()]
-    return DEFAULT_WATCHLIST
+        base = [s.strip().upper() for s in raw.split(",") if s.strip()]
+    else:
+        base = list(DEFAULT_WATCHLIST)
+
+    # Dynamically add today's top movers to the intraday watchlist.
+    # The top gainers/losers are the most-traded stocks — prime intraday
+    # candidates that the static list might miss.
+    try:
+        from mcp_server.mcp_server import _market_movers_cache
+        if _market_movers_cache:
+            existing = set(base)
+            for cat in ("gainers", "losers", "most_active"):
+                for item in (_market_movers_cache.get(cat, []) or [])[:5]:
+                    t = item.get("symbol", "")
+                    if t and t not in existing:
+                        base.append(t)
+                        existing.add(t)
+    except Exception:
+        pass
+
+    return base
 
 
 # ── Helpers ─────────────────────────────────────────────────────

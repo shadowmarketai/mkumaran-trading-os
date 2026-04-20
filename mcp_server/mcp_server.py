@@ -1991,6 +1991,32 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
 
     score = calculate_mwa_score(raw_results, segments_run=segments)
     promoted = get_promoted_stocks(raw_results)
+
+    # Inject market movers into the promoted list. Top gainers/losers are
+    # the most-traded stocks of the day — they should always be analysed
+    # by the signal pipeline, even if no Chartink scanner caught them.
+    try:
+        movers = _fetch_market_movers() if _market_movers_cache is None else _market_movers_cache
+        if movers:
+            mover_tickers: list[str] = []
+            # Top 10 gainers + top 10 losers + 52W highs + most active
+            for cat in ("gainers", "losers", "week52_high", "most_active"):
+                for item in (movers.get(cat, []) or [])[:10]:
+                    t = item.get("symbol", "")
+                    if t and t not in mover_tickers:
+                        mover_tickers.append(t)
+            # Inject at the FRONT of promoted so they get priority
+            existing = set(promoted)
+            injected = [t for t in mover_tickers if t not in existing]
+            if injected:
+                promoted = injected + promoted
+                logger.info(
+                    "[MOVERS] injected %d market movers into promoted (gainers+losers+52W+active)",
+                    len(injected),
+                )
+    except Exception as mover_err:
+        logger.debug("Market movers injection skipped: %s", mover_err)
+
     brief = format_morning_brief(score)
 
     # Log CDS/MCX scanner results for diagnostics
