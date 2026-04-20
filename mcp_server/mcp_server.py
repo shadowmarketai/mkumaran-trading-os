@@ -2121,8 +2121,9 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
 
         from mcp_server.market_calendar import is_market_open as _is_mkt_open
 
-        # Daily signal cap — prevents Telegram flood on volatile days.
-        max_daily = getattr(settings, "MWA_MAX_SIGNALS_PER_DAY", 15)
+        # Signal caps — per-cycle (spread signals through the day) + daily ceiling.
+        max_per_cycle = getattr(settings, "MWA_MAX_SIGNALS_PER_CYCLE", 5)
+        max_daily = getattr(settings, "MWA_MAX_SIGNALS_PER_DAY", 50)
         if max_daily > 0:
             today_count = db.query(Signal).filter(
                 Signal.signal_date == date.today(),
@@ -2133,6 +2134,14 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                     today_count, max_daily,
                 )
                 mwa_signals = []
+        # Per-cycle cap: only process the top N per scan, so signals
+        # distribute through the day instead of a morning burst.
+        if max_per_cycle > 0 and len(mwa_signals) > max_per_cycle:
+            logger.info(
+                "MWA per-cycle cap: %d signals → keeping top %d",
+                len(mwa_signals), max_per_cycle,
+            )
+            mwa_signals = mwa_signals[:max_per_cycle]
 
         for sig in mwa_signals:
             # Build pre_confidence from scanner count + MWA alignment
