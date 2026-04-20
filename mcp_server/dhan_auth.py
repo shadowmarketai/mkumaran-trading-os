@@ -101,8 +101,16 @@ def generate_fresh_token() -> str:
     if not client_id or not pin:
         raise ValueError("DHAN_CLIENT_ID and DHAN_PIN must be set")
 
+    # Dhan rate-limits token generation to once every 2 minutes. The retry
+    # delays must be long enough to clear both the TOTP 30s window AND
+    # the rate limit: attempt 1 immediately, attempt 2 after 35s (next
+    # TOTP window), attempt 3 after 125s (clear the 2-min rate limit).
+    delays = [0, 35, 125]
     last_err = None
     for attempt in range(3):
+        if delays[attempt] > 0:
+            logger.info("Dhan TOTP: waiting %ds before attempt %d", delays[attempt], attempt + 1)
+            time.sleep(delays[attempt])
         totp = _generate_totp()
         login = DhanLogin(client_id)
         try:
@@ -110,7 +118,6 @@ def generate_fresh_token() -> str:
         except Exception as e:
             last_err = e
             logger.warning("Dhan TOTP attempt %d failed: %s", attempt + 1, e)
-            time.sleep(15)
             continue
 
         if not resp or not isinstance(resp, dict):
@@ -126,11 +133,11 @@ def generate_fresh_token() -> str:
         )
         if not token:
             err_msg = resp.get("message", resp.get("remarks", {}).get("error_message", ""))
-            if "Invalid TOTP" in str(err_msg) or "Invalid" in str(err_msg):
-                logger.warning("Dhan TOTP attempt %d: %s — retrying in 15s", attempt + 1, err_msg)
-                time.sleep(15)
-                continue
             last_err = RuntimeError(f"No accessToken in Dhan response: {resp}")
+            if "Invalid TOTP" in str(err_msg) or "2 minutes" in str(err_msg):
+                logger.warning("Dhan TOTP attempt %d: %s — will retry", attempt + 1, err_msg)
+                continue
+            # Unknown error — don't retry
             break
 
         _save_token(token)
