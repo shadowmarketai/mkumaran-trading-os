@@ -889,6 +889,25 @@ AUTH_PUBLIC_PATHS = {
     "/tools/retrain_predictor",
     "/tools/update_bayesian_stats",
     "/tools/mine_rules",
+    # Dashboard read-only endpoints — public so the SPA loads without
+    # requiring login. Write operations (order placement, settings) still
+    # require auth. Re-secure these once SaaS user auth is production-ready.
+    "/api/market-movers",
+    "/api/active_trades",
+    "/api/signals",
+    "/api/mwa_score",
+    "/api/dashboard",
+    "/api/momentum",
+    "/api/health",
+    "/api/watchlist",
+    "/tools/market_movers",
+    "/tools/signal_accuracy",
+    "/tools/portfolio_exposure",
+    "/tools/trade_memory_stats",
+    "/tools/reflect_trades",
+    "/tools/check_signals",
+    "/tools/backtest_strategy",
+    "/tools/backtest_validate",
 }
 AUTH_PUBLIC_PREFIXES = (
     "/assets/", "/docs/", "/redoc/",
@@ -900,6 +919,10 @@ AUTH_PUBLIC_PREFIXES = (
     # Options enrichment — universe list + per-symbol picker
     "/api/fno/option_recommendation/",
     "/api/fno/option_universe",
+    # Dashboard data endpoints (read-only, re-secure for SaaS production)
+    "/api/backtest/",
+    "/api/signals/",
+    "/api/trades/",
 )
 
 
