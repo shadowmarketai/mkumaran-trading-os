@@ -1153,8 +1153,15 @@ class DhanSource:
         try:
             from dhanhq import DhanContext, dhanhq
             self.client = dhanhq(DhanContext(client_id, token))
+            # Validate the token actually works by fetching the scrip master.
+            # A DH-901/DH-902 here means the token is expired or Data APIs
+            # aren't activated — catch it at login instead of silently
+            # failing on every subsequent data call.
+            self._load_scrip_master()
+            if not self._scrip_cache:
+                logger.warning("Dhan login: client created but scrip master empty — token may be expired")
             self.logged_in = True
-            logger.info("Dhan login OK")
+            logger.info("Dhan login OK (scrip cache: %d symbols)", len(self._scrip_cache))
             return True
         except ImportError:
             logger.warning("dhanhq not installed: pip install dhanhq")

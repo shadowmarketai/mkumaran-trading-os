@@ -87,7 +87,13 @@ def _generate_totp() -> str:
 
 
 def generate_fresh_token() -> str:
-    """Full login: PIN + TOTP → new access token."""
+    """Full login: PIN + TOTP → new access token.
+
+    Retries up to 3 times with a 15-second wait between attempts to
+    handle TOTP timing edge cases (code changes every 30 seconds — if
+    we hit the boundary, the first attempt gets "Invalid TOTP" but the
+    next window succeeds).
+    """
     from dhanhq.auth import DhanLogin
 
     client_id = os.environ.get("DHAN_CLIENT_ID", "").strip()
@@ -95,20 +101,43 @@ def generate_fresh_token() -> str:
     if not client_id or not pin:
         raise ValueError("DHAN_CLIENT_ID and DHAN_PIN must be set")
 
-    totp = _generate_totp()
-    login = DhanLogin(client_id)
-    resp = login.generate_token(pin=pin, totp=totp)
+    last_err = None
+    for attempt in range(3):
+        totp = _generate_totp()
+        login = DhanLogin(client_id)
+        try:
+            resp = login.generate_token(pin=pin, totp=totp)
+        except Exception as e:
+            last_err = e
+            logger.warning("Dhan TOTP attempt %d failed: %s", attempt + 1, e)
+            time.sleep(15)
+            continue
 
-    if not resp or not isinstance(resp, dict):
-        raise RuntimeError(f"Dhan generate_token returned: {resp}")
+        if not resp or not isinstance(resp, dict):
+            last_err = RuntimeError(f"Dhan generate_token returned: {resp}")
+            time.sleep(15)
+            continue
 
-    token = resp.get("data", {}).get("accessToken") or resp.get("accessToken") or resp.get("access_token", "")
-    if not token:
-        raise RuntimeError(f"No accessToken in Dhan response: {resp}")
+        # Response may have accessToken at top level or nested under "data"
+        token = (
+            resp.get("accessToken")
+            or resp.get("data", {}).get("accessToken")
+            or resp.get("access_token", "")
+        )
+        if not token:
+            err_msg = resp.get("message", resp.get("remarks", {}).get("error_message", ""))
+            if "Invalid TOTP" in str(err_msg) or "Invalid" in str(err_msg):
+                logger.warning("Dhan TOTP attempt %d: %s — retrying in 15s", attempt + 1, err_msg)
+                time.sleep(15)
+                continue
+            last_err = RuntimeError(f"No accessToken in Dhan response: {resp}")
+            break
 
-    _save_token(token)
-    logger.info("Dhan token generated via TOTP — valid for %.1fh", _hours_remaining(token))
-    return token
+        _save_token(token)
+        logger.info("Dhan token generated via TOTP (attempt %d) — valid for %.1fh", attempt + 1, _hours_remaining(token))
+        return token
+
+    raise RuntimeError(f"Dhan token generation failed after 3 attempts: {last_err}")
 
 
 def renew_existing_token(current_token: str) -> str:
