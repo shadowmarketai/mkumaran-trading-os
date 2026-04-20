@@ -252,6 +252,71 @@ async def _deliver_intraday_signals(
         db.close()
 
 
+async def _options_signal_loop():
+    """Background task: scan for pure options strategies every 10 min during F&O hours."""
+    if not getattr(settings, "OPTION_SIGNALS_ENABLED", True):
+        logger.info("Options signal loop disabled (OPTION_SIGNALS_ENABLED=false)")
+        return
+
+    from mcp_server.market_calendar import is_market_open as _mkt_open
+
+    logger.info("Options signal loop started (every 600s during F&O hours)")
+
+    # Track sent signals to avoid duplicates within the same day
+    sent_today: set[str] = set()
+    last_date = ""
+
+    while True:
+        try:
+            if not _mkt_open("NSE"):
+                await asyncio.sleep(600)
+                continue
+
+            today = str(date.today())
+            if today != last_date:
+                sent_today.clear()
+                last_date = today
+
+            def _run_options_sync():
+                from mcp_server.options_signal_engine import run_options_scan
+                return run_options_scan()
+
+            try:
+                signals = await asyncio.to_thread(_run_options_sync)
+            except Exception as scan_err:
+                logger.warning("Options signal scan failed: %s", scan_err)
+                signals = []
+
+            if signals:
+                from mcp_server.telegram_bot import send_telegram_message
+                from mcp_server.options_signal_engine import format_option_signal_card
+
+                for sig in signals:
+                    dedup_key = f"{sig['symbol']}:{sig['pattern']}:{sig.get('direction','')}"
+                    if dedup_key in sent_today:
+                        continue
+                    sent_today.add(dedup_key)
+                    msg = format_option_signal_card(sig)
+                    _fire_and_forget(send_telegram_message(msg, force=True))
+                    # Broadcast to subscribers
+                    try:
+                        from mcp_server.telegram_saas import broadcast_signal_to_users
+                        _fire_and_forget(broadcast_signal_to_users(msg, exchange="NFO"))
+                    except Exception:
+                        pass
+                    logger.info(
+                        "[OPTIONS] signal: %s %s %s",
+                        sig["symbol"], sig["strategy"], sig.get("rationale", "")[:80],
+                    )
+
+            await asyncio.sleep(600)
+        except asyncio.CancelledError:
+            break
+        except Exception as loop_err:
+            logger.error("Options signal loop error: %s", loop_err)
+            await asyncio.sleep(600)
+
+
 async def _auto_scan_loop():
     """Background task: run MWA scan every 15 minutes during market hours."""
     from mcp_server.market_calendar import is_market_open
@@ -686,6 +751,13 @@ async def lifespan(app: FastAPI):
     logger.info(
         "Intraday scan background task started (enabled=%s)",
         getattr(settings, "INTRADAY_SIGNALS_ENABLED", False),
+    )
+
+    # Start pure options signal loop (IV crush, PCR extreme, expiry plays, etc.)
+    asyncio.create_task(_options_signal_loop())
+    logger.info(
+        "Options signal loop started (enabled=%s)",
+        getattr(settings, "OPTION_SIGNALS_ENABLED", True),
     )
 
     # Start scanner review background task (triggers at 15:45 IST)
