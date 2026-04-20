@@ -32,13 +32,19 @@ from mcp_server.market_calendar import is_market_open, now_ist
 
 logger = logging.getLogger(__name__)
 
-# Indices to scan for pure options plays
-INDEX_UNIVERSE = ["NIFTY", "BANKNIFTY"]
+# Indices to scan for pure options plays — all tradeable index options
+INDEX_UNIVERSE = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]
 # Top liquid F&O stocks for options signals
 STOCK_UNIVERSE = [
     "RELIANCE", "HDFCBANK", "ICICIBANK", "INFY", "TCS",
     "SBIN", "BAJFINANCE", "TATAMOTORS", "LT", "AXISBANK",
+    "KOTAKBANK", "MARUTI", "HINDUNILVR", "BHARTIARTL", "SUNPHARMA",
 ]
+
+# VIX thresholds for strategy selection
+VIX_HIGH = 20.0   # Above this → sell premium (expensive options)
+VIX_LOW = 13.0    # Below this → buy premium (cheap options)
+VIX_SPIKE = 8.0   # % change → VIX spike alert (intraday opportunity)
 
 
 def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
@@ -391,6 +397,96 @@ def strategy_oi_wall(data: dict) -> dict[str, Any] | None:
     return None
 
 
+def _get_vix_data() -> dict[str, float] | None:
+    """Fetch India VIX current value + % change."""
+    try:
+        from mcp_server.data_provider import get_provider
+        provider = get_provider()
+        # Try NSE India source for VIX
+        try:
+            quote = provider.nse.get_quote("INDIA VIX")
+            if quote and quote.get("ltp"):
+                return {
+                    "vix": float(quote["ltp"]),
+                    "pct_change": float(quote.get("pct_change", 0)),
+                }
+        except Exception:
+            pass
+        # Fallback: yfinance ^INDIAVIX
+        try:
+            import yfinance as yf
+            data = yf.download("^INDIAVIX", period="2d", progress=False)
+            if not data.empty:
+                vix = float(data["Close"].iloc[-1])
+                prev = float(data["Close"].iloc[-2]) if len(data) > 1 else vix
+                pct = ((vix - prev) / prev * 100) if prev else 0
+                return {"vix": vix, "pct_change": pct}
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return None
+
+
+def strategy_vix_spike(data: dict, vix_data: dict | None = None) -> dict[str, Any] | None:
+    """VIX spike → sell premium on NIFTY/BANKNIFTY. High VIX = expensive options."""
+    if not vix_data or data["symbol"] not in INDEX_UNIVERSE:
+        return None
+    vix = vix_data.get("vix", 0)
+    vix_chg = vix_data.get("pct_change", 0)
+
+    # VIX spike (>8% jump) → premium is inflated, sell it
+    if vix_chg >= VIX_SPIKE and vix >= VIX_HIGH:
+        straddle = data["atm_ce_ltp"] + data["atm_pe_ltp"]
+        if straddle <= 0:
+            return None
+        return {
+            "symbol": data["symbol"],
+            "strategy": f"SHORT STRADDLE (VIX spike {vix:.1f})",
+            "direction": "NEUTRAL",
+            "strike": data["atm_strike"],
+            "premium_collected": round(straddle, 1),
+            "sl_premium": round(straddle * 1.3, 1),
+            "target_premium": round(straddle * 0.4, 1),
+            "iv": round(data["atm_iv"], 1),
+            "vix": round(vix, 2),
+            "vix_change": round(vix_chg, 1),
+            "rationale": (
+                f"India VIX spiked +{vix_chg:.1f}% to {vix:.1f} — "
+                f"options are expensive. Sell ATM straddle, target 60% decay."
+            ),
+            "pattern": "VIX spike premium sell",
+            "expiry": data["expiry"],
+            "days_to_expiry": data["days_to_expiry"],
+        }
+
+    # VIX very low → premiums cheap, buy straddle for breakout
+    if vix <= VIX_LOW and data["days_to_expiry"] >= 3:
+        straddle = data["atm_ce_ltp"] + data["atm_pe_ltp"]
+        if straddle <= 0:
+            return None
+        return {
+            "symbol": data["symbol"],
+            "strategy": f"LONG STRADDLE (VIX low {vix:.1f})",
+            "direction": "NEUTRAL",
+            "strike": data["atm_strike"],
+            "premium_paid": round(straddle, 1),
+            "sl_premium": round(straddle * 0.5, 1),
+            "target_premium": round(straddle * 2.0, 1),
+            "iv": round(data["atm_iv"], 1),
+            "vix": round(vix, 2),
+            "vix_change": round(vix_chg, 1),
+            "rationale": (
+                f"India VIX at {vix:.1f} (low) — options are cheap. "
+                f"Buy ATM straddle, expect volatility expansion."
+            ),
+            "pattern": "VIX low straddle buy",
+            "expiry": data["expiry"],
+            "days_to_expiry": data["days_to_expiry"],
+        }
+    return None
+
+
 ALL_STRATEGIES = [
     strategy_iv_crush,
     strategy_cheap_premium,
@@ -398,6 +494,7 @@ ALL_STRATEGIES = [
     strategy_expiry_day,
     strategy_max_pain_magnet,
     strategy_oi_wall,
+    strategy_vix_spike,
 ]
 
 
@@ -416,6 +513,14 @@ def run_options_scan() -> list[dict[str, Any]]:
     universe = INDEX_UNIVERSE + STOCK_UNIVERSE
     signals: list[dict[str, Any]] = []
 
+    # Fetch India VIX once per scan — shared across all strategies
+    vix_data = _get_vix_data()
+    if vix_data:
+        logger.info(
+            "[OPTIONS] India VIX: %.2f (%+.1f%%)",
+            vix_data.get("vix", 0), vix_data.get("pct_change", 0),
+        )
+
     for symbol in universe:
         data = _get_chain_and_data(symbol)
         if not data:
@@ -423,11 +528,21 @@ def run_options_scan() -> list[dict[str, Any]]:
 
         for strategy_fn in ALL_STRATEGIES:
             try:
-                result = strategy_fn(data)
+                result = strategy_fn(data, vix_data=vix_data)
+            except TypeError:
+                # Strategies that don't accept vix_data kwarg
+                try:
+                    result = strategy_fn(data)
+                except Exception:
+                    result = None
             except Exception as e:
                 logger.debug("Options strategy %s failed for %s: %s", strategy_fn.__name__, symbol, e)
                 result = None
             if result:
+                # Attach VIX to every signal for the card
+                if vix_data:
+                    result.setdefault("vix", vix_data.get("vix"))
+                    result.setdefault("vix_change", vix_data.get("pct_change"))
                 signals.append(result)
 
     logger.info("[OPTIONS] %d pure option signals from %d symbols", len(signals), len(universe))
@@ -454,6 +569,10 @@ def format_option_signal_card(sig: dict) -> str:
         sep,
     ]
 
+    if sig.get("vix"):
+        vix_chg = sig.get("vix_change", 0)
+        vix_arrow = "\u2191" if vix_chg > 0 else "\u2193" if vix_chg < 0 else ""
+        lines.append(f"India VIX: {sig['vix']:.2f} ({vix_arrow}{vix_chg:+.1f}%)")
     if sig.get("iv"):
         lines.append(f"IV: {sig['iv']:.0f}%")
     if sig.get("pcr"):
