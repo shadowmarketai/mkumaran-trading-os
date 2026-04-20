@@ -1308,14 +1308,28 @@ class DhanSource:
 
             if resp and resp.get("data"):
                 raw = resp["data"]
-                # Dhan sometimes returns a single dict instead of a list
-                # for symbols with only one data point. Guard against it
-                # so pd.DataFrame doesn't raise "must pass an index".
+                # Dhan v2.2.0 returns two formats:
+                # 1) Columnar dict: {"open":[..], "close":[..], "timestamp":[..]}
+                #    → pd.DataFrame(raw) creates proper rows
+                # 2) List of row-dicts: [{"open":1, "close":2}, ...]
+                #    → pd.DataFrame(raw) also works
+                # 3) Single scalar dict: {"open":1, "close":2}
+                #    → needs wrapping in a list
                 if isinstance(raw, dict):
-                    raw = [raw]
-                if not isinstance(raw, list) or not raw:
+                    # Check if values are lists (columnar) or scalars (single row)
+                    first_val = next(iter(raw.values()), None)
+                    if isinstance(first_val, (list, tuple)):
+                        # Columnar format — pass directly
+                        df = pd.DataFrame(raw)
+                    else:
+                        # Single-row scalar dict
+                        df = pd.DataFrame([raw])
+                elif isinstance(raw, list) and raw:
+                    df = pd.DataFrame(raw)
+                else:
                     return pd.DataFrame()
-                df = pd.DataFrame(raw)
+                if df.empty:
+                    return pd.DataFrame()
                 rename = {
                     "timestamp": "date", "start_Time": "date",
                     "open": "open", "high": "high",
@@ -1328,7 +1342,15 @@ class DhanSource:
                     date_cols = [c for c in df.columns if "time" in c.lower() or "date" in c.lower()]
                     if date_cols:
                         df = df.rename(columns={date_cols[0]: "date"})
-                df["date"] = pd.to_datetime(df["date"])
+                # Dhan timestamps may be Unix epoch (float/int) or ISO strings.
+                if "date" in df.columns:
+                    try:
+                        if df["date"].dtype in ("float64", "int64"):
+                            df["date"] = pd.to_datetime(df["date"], unit="s")
+                        else:
+                            df["date"] = pd.to_datetime(df["date"])
+                    except Exception:
+                        df["date"] = pd.to_datetime(df["date"], unit="s", errors="coerce")
                 needed = ["date", "open", "high", "low", "close", "volume"]
                 avail = [c for c in needed if c in df.columns]
                 if len(avail) >= 5:
