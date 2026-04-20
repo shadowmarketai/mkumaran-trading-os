@@ -190,6 +190,10 @@ class Settings:
     DHAN_TOTP_KEY: str = os.getenv("DHAN_TOTP_KEY", "")
     DHAN_PIN: str = os.getenv("DHAN_PIN", "")
 
+    # MWA daily signal cap — prevents Telegram flood on volatile days.
+    # Set to 0 for unlimited. Counts signals saved to DB, not scan cycles.
+    MWA_MAX_SIGNALS_PER_DAY: int = int(os.getenv("MWA_MAX_SIGNALS_PER_DAY", "15"))
+
     # Intraday signals (ORB, VWAP, 5m momentum) — separate pipeline from MWA
     # daily-swing. Default false so turning this on is an explicit opt-in.
     INTRADAY_SIGNALS_ENABLED: bool = os.getenv("INTRADAY_SIGNALS_ENABLED", "false").lower() == "true"

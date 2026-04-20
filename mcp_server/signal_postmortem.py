@@ -297,13 +297,8 @@ def _try_claude_narrative(
             f"Signal:\n{json.dumps(summary, default=str, indent=2)}"
         )
 
-        resp = client.messages.create(
-            model=os.getenv("CLAUDE_MODEL_POSTMORTEM", "claude-haiku-4-5-20251001"),
-            max_tokens=300,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = "".join(block.text for block in resp.content if hasattr(block, "text")).strip()
-        return text or None
+        text = call_ai(prompt, max_tokens=300, temperature=0.2)
+        return text.strip() if text else None
     except Exception as e:
         logger.debug("Claude narrative unavailable: %s", e)
         return None

@@ -1768,6 +1768,7 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                 try:
                     df = provider.get_ohlcv_routed(ticker, interval="day", days=180, exchange="CDS")
                     if df is not None and not df.empty:
+                        df.columns = [c.lower() for c in df.columns]
                         if "date" in df.columns:
                             df = df.set_index("date")
                         cds_data[ticker] = df
@@ -1782,6 +1783,7 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                 try:
                     df = provider.get_ohlcv_routed(ticker, interval="day", days=180, exchange="MCX")
                     if df is not None and not df.empty:
+                        df.columns = [c.lower() for c in df.columns]
                         if "date" in df.columns:
                             df = df.set_index("date")
                         mcx_data[ticker] = df
@@ -1797,6 +1799,7 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                 try:
                     df = provider.get_ohlcv_routed(ticker, interval="day", days=180, exchange="NFO")
                     if df is not None and not df.empty:
+                        df.columns = [c.lower() for c in df.columns]
                         if "date" in df.columns:
                             df = df.set_index("date")
                         nfo_data[ticker] = df
@@ -2094,6 +2097,19 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
             logger.debug("Sector filter skipped: %s", sector_err)
 
         from mcp_server.market_calendar import is_market_open as _is_mkt_open
+
+        # Daily signal cap — prevents Telegram flood on volatile days.
+        max_daily = getattr(settings, "MWA_MAX_SIGNALS_PER_DAY", 15)
+        if max_daily > 0:
+            today_count = db.query(Signal).filter(
+                Signal.signal_date == date.today(),
+            ).count()
+            if today_count >= max_daily:
+                logger.info(
+                    "MWA daily cap reached (%d/%d) — no new signals this cycle",
+                    today_count, max_daily,
+                )
+                mwa_signals = []
 
         for sig in mwa_signals:
             # Build pre_confidence from scanner count + MWA alignment
