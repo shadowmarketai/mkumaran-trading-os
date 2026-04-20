@@ -708,6 +708,33 @@ async def lifespan(app: FastAPI):
     except Exception as stale_err:
         logger.debug("Stale signal cleanup skipped: %s", stale_err)
 
+    # Force-train the loss predictor at startup if enough closed trades
+    # exist and no model is loaded yet. The self-dev loop only runs at
+    # 16:00 IST — but the predictor should be ready from boot.
+    try:
+        from mcp_server.signal_predictor import get_predictor, retrain_predictor
+        pred = get_predictor()
+        if not pred.is_ready():
+            logger.info("Startup: loss predictor not ready — attempting training")
+            result = retrain_predictor()
+            logger.info("Startup: predictor training result: %s", result)
+        else:
+            logger.info("Startup: loss predictor ready (model loaded)")
+    except Exception as pred_err:
+        logger.debug("Startup predictor training skipped: %s", pred_err)
+
+    # Update Bayesian scanner stats at startup so the confidence booster
+    # has fresh per-scanner win rates from the first scan cycle.
+    try:
+        from mcp_server.scanner_bayesian import update_bayesian_stats
+        bay_result = update_bayesian_stats()
+        logger.info(
+            "Startup: Bayesian scanner stats updated — %d scanners tracked",
+            bay_result.get("scanners_tracked", 0),
+        )
+    except Exception as bay_err:
+        logger.debug("Startup Bayesian stats skipped: %s", bay_err)
+
     # Force-clear stale Dhan instrument cache so the latest scrip master
     # (with futures aliases for MCX/NFO/CDS) is loaded fresh. The cached
     # file from pre-fix deployments has no MCX:GOLD → FUTCOM mappings.
@@ -2370,9 +2397,27 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                 confidence = pre_confidence
                 recommendation = "WATCHLIST" if confidence > 50 else "SKIP"
 
-            if confidence <= 50:
-                logger.info("MWA signal %s skipped: confidence %d <= 50", sig["ticker"], confidence)
+            # Confidence gate: 70% minimum. The old 50% threshold let through
+            # too many weak signals → 15% win rate. Raising to 70% filters
+            # the bottom ~40% of signals that have negative expectancy.
+            min_confidence = int(getattr(settings, "MWA_MIN_CONFIDENCE", 70))
+            if confidence < min_confidence:
+                logger.info("MWA signal %s skipped: confidence %d < %d", sig["ticker"], confidence, min_confidence)
                 continue
+
+            # Confidence-based position sizing: scale qty so higher-confidence
+            # signals get more capital, lower-confidence get less. A 90%
+            # signal gets full RRMS qty; a 70% signal gets 60%.
+            base_qty = sig["qty"]
+            if confidence >= 90:
+                scaled_qty = base_qty
+            elif confidence >= 80:
+                scaled_qty = max(1, int(base_qty * 0.8))
+            elif confidence >= 70:
+                scaled_qty = max(1, int(base_qty * 0.6))
+            else:
+                scaled_qty = max(1, int(base_qty * 0.4))
+            sig["qty"] = scaled_qty
 
             # Signal similarity check: find similar past signals and warn if
             # they mostly lost. Helps the user avoid repeating mistakes.
