@@ -174,33 +174,43 @@ def generate_mwa_signals(
         exchange = _resolve_exchange(ticker)
         asset_class = _resolve_asset_class(exchange)
 
-        # ── Options Enrichment for eligible F&O signals ──
+        # ── Options Enrichment for ANY eligible ticker ──
         # Attach concrete option contract recommendation (strike, expiry,
         # premium, Greeks, option-level SL/TGT) so users can act directly.
-        # Fails open: any error leaves the signal as futures-only.
+        # Most F&O stocks trade on NSE as equity AND on NFO for derivatives.
+        # We check is_eligible (covers all ~220 F&O underlyings) rather than
+        # gating on asset_class==FNO, because asset_class is almost always
+        # EQUITY for stock signals — the FNO classification only triggers for
+        # index futures (NIFTY/BANKNIFTY) which are rarely in promoted.
+        # Fails open: any error leaves the signal as equity-only.
         option_fields: dict = {}
-        if asset_class == AssetClass.FNO.value:
-            try:
-                from mcp_server.options_selector import (
-                    build_option_recommendation,
-                    is_eligible,
+        try:
+            from mcp_server.options_selector import (
+                build_option_recommendation,
+                is_eligible,
+            )
+            if is_eligible(ticker):
+                from mcp_server.mcp_server import _get_kite_for_fo
+                kite = _get_kite_for_fo()
+                logger.info("Option enrichment: attempting for %s (eligible)", ticker)
+                rec = build_option_recommendation(
+                    symbol=ticker,
+                    direction=direction,
+                    spot=entry,
+                    underlying_sl=sl,
+                    underlying_target=target,
+                    kite=kite,
                 )
-                if is_eligible(ticker):
-                    # Late-binding import to avoid circular dep with mcp_server
-                    from mcp_server.mcp_server import _get_kite_for_fo
-                    kite = _get_kite_for_fo()
-                    rec = build_option_recommendation(
-                        symbol=ticker,
-                        direction=direction,
-                        spot=entry,
-                        underlying_sl=sl,
-                        underlying_target=target,
-                        kite=kite,
+                if rec:
+                    option_fields = rec
+                    logger.info(
+                        "Option enrichment: %s → %s %s",
+                        ticker, rec.get("option_tradingsymbol"), rec.get("option_strategy"),
                     )
-                    if rec:
-                        option_fields = rec
-            except Exception as opt_err:  # noqa: BLE001
-                logger.debug("Option enrichment failed for %s: %s", ticker, opt_err)
+                else:
+                    logger.debug("Option enrichment: %s → no recommendation returned", ticker)
+        except Exception as opt_err:  # noqa: BLE001
+            logger.debug("Option enrichment failed for %s: %s", ticker, opt_err)
 
         signals.append({
             "ticker": ticker,
