@@ -206,20 +206,21 @@ async def _deliver_intraday_signals(
                 except Exception as sheet_err:
                     logger.debug("Intraday Sheets sync failed: %s", sheet_err)
 
+                sep = "\u2501" * 24
                 msg = (
-                    "\u26a1 INTRADAY Signal\n"
-                    "\u2501" * 24 + "\n"
+                    f"\u26a1 INTRADAY Signal\n"
+                    f"{sep}\n"
                     f"Ticker: {sig['ticker']}\n"
                     f"Segment: NSE Equity | EQUITY\n"
                     f"Timeframe: 5m (Intraday)\n"
                     f"Direction: {sig['direction']}\n"
-                    + "\u2501" * 24 + "\n"
+                    f"{sep}\n"
                     f"Entry: \u20b9{sig['entry']:.1f} | SL: \u20b9{sig['sl']:.1f} | TGT: \u20b9{sig['target']:.1f}\n"
                     f"RRR: {sig['rrr']:.1f} | Pattern: {sig['pattern']}\n"
-                    + "\u2501" * 24 + "\n"
+                    f"{sep}\n"
                     f"Scanners: {sig['scanner_count']} fired\n"
                     f"Signal ID: INT-{db_signal.id}\n"
-                    "\u26a0\ufe0f Close by 15:15 IST to avoid carry"
+                    f"\u26a0\ufe0f Close by 15:15 IST to avoid carry"
                 )
                 _fire_and_forget(send_telegram_message(
                     msg, exchange=sig["exchange"], force=True
