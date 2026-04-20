@@ -678,6 +678,36 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.debug("Startup yfinance MCX/NFO purge skipped: %s", e)
 
+    # Auto-close stale signals — signals OPEN for >7 days without hitting
+    # SL or TGT are expired. This prevents the OPEN signal count from
+    # growing indefinitely (was 1318), which breaks dedup, signal monitor
+    # performance, and EOD accuracy reporting.
+    try:
+        _stale_db = SessionLocal()
+        try:
+            stale_cutoff = (date.today() - timedelta(days=7))
+            stale_signals = _stale_db.query(Signal).filter(
+                Signal.status == "OPEN",
+                Signal.signal_date < stale_cutoff,
+            ).all()
+            if stale_signals:
+                for sig in stale_signals:
+                    sig.status = "EXPIRED"
+                _stale_db.commit()
+                expired_ids = [s.id for s in stale_signals]
+                _stale_db.query(ActiveTrade).filter(
+                    ActiveTrade.signal_id.in_(expired_ids)
+                ).delete(synchronize_session=False)
+                _stale_db.commit()
+                logger.info(
+                    "Startup: expired %d stale OPEN signals (older than %s)",
+                    len(stale_signals), stale_cutoff,
+                )
+        finally:
+            _stale_db.close()
+    except Exception as stale_err:
+        logger.debug("Stale signal cleanup skipped: %s", stale_err)
+
     # Force-clear stale Dhan instrument cache so the latest scrip master
     # (with futures aliases for MCX/NFO/CDS) is loaded fresh. The cached
     # file from pre-fix deployments has no MCX:GOLD → FUTCOM mappings.
@@ -2137,6 +2167,24 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
             scanner_results=raw_results,
         )
 
+        # Filter out NSE equity signals when NSE is closed. When MCX
+        # is open after 15:30, the auto_scan_loop still fires with
+        # segments=["MCX"] but the scorer uses stale NSE scanner results
+        # to promote equity stocks — which generates after-hours equity
+        # signals on stale data. Block them at the signal level.
+        from mcp_server.market_calendar import is_market_open as _mkt_check
+        if not _mkt_check("NSE"):
+            before = len(mwa_signals)
+            mwa_signals = [
+                s for s in mwa_signals
+                if s.get("exchange") not in ("NSE", "") or ":" in s.get("ticker", "")
+            ]
+            if before != len(mwa_signals):
+                logger.info(
+                    "After-hours: dropped %d NSE equity signals (NSE closed)",
+                    before - len(mwa_signals),
+                )
+
         # ── Risk filters: delivery % → FII/DII → sector strength ────────
         # Previously these were defined in mwa_scanner.apply_python_filters
         # but that method was never invoked, so every MWA signal bypassed
@@ -2299,6 +2347,34 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
             if confidence <= 50:
                 logger.info("MWA signal %s skipped: confidence %d <= 50", sig["ticker"], confidence)
                 continue
+
+            # Signal similarity check: find similar past signals and warn if
+            # they mostly lost. Helps the user avoid repeating mistakes.
+            similarity_warning = ""
+            try:
+                from mcp_server.signal_similarity import find_similar_signals
+                # Create a temporary signal object for similarity search
+                _temp_sig = Signal(
+                    ticker=sig["ticker"], direction=sig["direction"],
+                    entry_price=sig["entry"], stop_loss=sig["sl"],
+                    target=sig["target"],
+                    feature_vector=getattr(sig.get("ohlcv_df"), "_feature_vec", None),
+                )
+                similar = find_similar_signals(_temp_sig, db, top_k=5, only_closed=True)
+                if similar:
+                    losses = sum(1 for s in similar if s.get("outcome") == "LOSS")
+                    wins = sum(1 for s in similar if s.get("outcome") == "WIN")
+                    if losses >= 3:
+                        similarity_warning = (
+                            f"\u26a0\ufe0f Similar past signals: {losses}L/{wins}W "
+                            f"— caution, similar setups lost before"
+                        )
+                        logger.info(
+                            "Similarity warning for %s: %d/%d losses in top-5 similar",
+                            sig["ticker"], losses, len(similar),
+                        )
+            except Exception as sim_err:
+                logger.debug("Similarity check skipped for %s: %s", sig["ticker"], sim_err)
 
             # Check for duplicate: skip if OPEN signal exists for same ticker+direction
             existing = db.query(Signal).filter(
@@ -2567,6 +2643,8 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                 )
                 if smc_card_text:
                     msg += "\n" + smc_card_text
+                if similarity_warning:
+                    msg += "\n" + similarity_warning
 
                 # ── Options recommendation block (only if signal was enriched) ──
                 if sig.get("option_tradingsymbol"):
