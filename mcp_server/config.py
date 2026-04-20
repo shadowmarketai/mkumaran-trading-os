@@ -194,7 +194,7 @@ class Settings:
     # PER_CYCLE: max signals per 15-min scan (spreads signals through the day)
     # PER_DAY: hard daily ceiling (0 = unlimited)
     MWA_MAX_SIGNALS_PER_CYCLE: int = int(os.getenv("MWA_MAX_SIGNALS_PER_CYCLE", "5"))
-    MWA_MAX_SIGNALS_PER_DAY: int = int(os.getenv("MWA_MAX_SIGNALS_PER_DAY", "50"))
+    MWA_MAX_SIGNALS_PER_DAY: int = int(os.getenv("MWA_MAX_SIGNALS_PER_DAY", "0"))  # 0 = unlimited
 
     # Intraday signals (ORB, VWAP, 5m momentum) — separate pipeline from MWA
     # daily-swing. Default false so turning this on is an explicit opt-in.
