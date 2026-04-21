@@ -85,10 +85,24 @@ def monitor_open_signals() -> list[dict]:
 
         provider = get_provider()
 
+        # Track tickers already closed THIS cycle to avoid sending
+        # duplicate SL/TGT alerts for the same ticker (happens when
+        # multiple Signal records exist for the same stock from earlier
+        # duplicate generation bugs).
+        closed_this_cycle: set[str] = set()
+
         for sig in open_signals:
             try:
                 ticker_raw = sig.ticker or ""
                 exchange = sig.exchange or "NSE"
+
+                # Skip if we already closed this ticker this cycle
+                dedup_key = f"{ticker_raw}:{sig.direction}"
+                if dedup_key in closed_this_cycle:
+                    # Silently close the duplicate without sending another alert
+                    sig.status = "EXPIRED"
+                    session.commit()
+                    continue
 
                 # Build fetch ticker with exchange prefix if not present
                 if ":" in ticker_raw:
@@ -126,6 +140,7 @@ def monitor_open_signals() -> list[dict]:
                     continue
 
                 # ── Signal hit! Update everything ──
+                closed_this_cycle.add(dedup_key)
                 pnl_pct, pnl_rs = _calc_pnl(direction, entry_price, current_price)
                 outcome_str = "WIN" if hit == "TARGET_HIT" else "LOSS"
                 exit_reason = "TARGET" if hit == "TARGET_HIT" else "STOPLOSS"
@@ -273,6 +288,9 @@ def monitor_open_signals() -> list[dict]:
                 except Exception:
                     pass
 
+                # Commit immediately so the next cycle won't re-process
+                session.commit()
+
                 results.append({
                     "signal_id": sig.id,
                     "ticker": sig.ticker,
@@ -288,8 +306,10 @@ def monitor_open_signals() -> list[dict]:
 
             except Exception as e:
                 logger.error("Monitor error for signal %s: %s", sig.ticker, e)
-
-        session.commit()
+                try:
+                    session.rollback()
+                except Exception:
+                    pass
 
     except Exception as e:
         logger.error("Signal monitor failed: %s", e)
