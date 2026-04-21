@@ -2672,21 +2672,16 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
 
             is_suppressed = bool(getattr(db_signal, "suppressed", False))
             if is_suppressed:
-                loss_prob = float(getattr(db_signal, "loss_probability", 0) or 0)
-                msg = (
-                    "\U0001f6ab MWA Signal SUPPRESSED\n"
-                    f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
-                    f"Ticker: {sig['ticker']}\n"
-                    f"Segment: {segment} | {sig['asset_class']}\n"
-                    f"Direction: {sig['direction']}\n"
-                    f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
-                    f"Entry: \u20b9{sig['entry']:.1f} | SL: \u20b9{sig['sl']:.1f} | TGT: \u20b9{sig['target']:.1f}\n"
-                    f"RRR: {sig['rrr']:.1f}\n"
-                    f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
-                    f"P(loss): {loss_prob:.0%}\n"
-                    f"Reason: {getattr(db_signal, 'suppression_reason', 'predictor block')}\n"
-                    f"Signal ID: {record_result.get('signal_id', 'N/A')} (not traded)"
+                # Suppressed signals are logged but NOT sent to Telegram.
+                # The user doesn't need to see signals that won't be traded —
+                # it's just noise. The suppression is recorded in DB + Sheets
+                # for the learning loop to analyze.
+                logger.info(
+                    "MWA signal SUPPRESSED (silent): %s %s P(loss)=%.2f",
+                    sig["ticker"], sig["direction"],
+                    float(getattr(db_signal, "loss_probability", 0) or 0),
                 )
+                continue
             else:
                 # Flag stale entries so user sees why CMP drifted. Computed
                 # above (live_price vs sig["entry"]); we reuse is_stale.

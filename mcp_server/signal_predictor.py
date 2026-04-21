@@ -216,6 +216,12 @@ class SignalPredictor:
                 "reason": "only one class present",
             }
 
+        # Compute sample weights to handle class imbalance (85% losses
+        # in early training data caused the model to predict "always loss").
+        # class_weight rebalances so wins and losses contribute equally.
+        from sklearn.utils.class_weight import compute_sample_weight
+        sample_weights = compute_sample_weight("balanced", y_arr)
+
         model = GradientBoostingClassifier(
             n_estimators=150,
             max_depth=3,
@@ -225,7 +231,7 @@ class SignalPredictor:
         )
 
         try:
-            model.fit(X_mat, y_arr)
+            model.fit(X_mat, y_arr, sample_weight=sample_weights)
         except Exception as e:
             return {"status": "error", "reason": f"fit failed: {e}"}
 
