@@ -51,28 +51,93 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
     """Fetch option chain + IV rank + PCR + spot for a symbol.
 
     Tries Dhan first, then Kite. Returns None if both fail.
+    Index options (NIFTY/BANKNIFTY/FINNIFTY/MIDCPNIFTY) use NFO segment
+    for chain + expiry; stocks use NSE for spot + NSE for chain lookup.
     """
     try:
         from mcp_server.data_provider import get_provider
         provider = get_provider()
 
-        # Spot price
+        is_index = symbol in INDEX_UNIVERSE
+        # Spot price — try NSE first, indices may need different handling
         quote = provider.get_quote(symbol, exchange="NSE")
         spot = quote.get("ltp", 0) if quote else 0
         if not spot:
+            # Indices may not have NSE_EQ quote — try via NSE India
+            try:
+                nse_quote = provider.nse.get_quote(symbol)
+                spot = nse_quote.get("ltp", 0) if nse_quote else 0
+            except Exception:
+                pass
+        if not spot:
+            logger.debug("Options: no spot price for %s", symbol)
             return None
 
         # Option chain from Dhan
+        # Indices use IDX_I segment for security_id, NSE_FNO for chain
+        # Stocks use NSE_EQ for security_id, NSE_FNO for chain
         chain: dict = {}
         expiry_str: str = ""
         dhan = provider.dhan
         if dhan and dhan.logged_in:
-            expiry_list = dhan.get_expiry_list(symbol, exchange="NSE")
+            # Dhan uses different exchange segments:
+            #   Indices (NIFTY, BANKNIFTY) → IDX_I for underlying
+            #   Stocks (RELIANCE, INFY) → NSE_EQ for underlying
+            # But the option chain itself is always on NSE_FNO
+            if is_index:
+                # Direct Dhan API call with IDX_I segment
+                try:
+                    idx_sec_id = dhan._scrip_cache.get(f"NSE:{symbol}", "")
+                    if idx_sec_id:
+                        exp_resp = dhan.client.expiry_list(
+                            under_security_id=idx_sec_id,
+                            under_exchange_segment="IDX_I",
+                        )
+                        expiry_list = [str(e) for e in (exp_resp.get("data", []) or [])]
+                except Exception as idx_err:
+                    logger.debug("Index expiry_list for %s failed: %s", symbol, idx_err)
+                    expiry_list = []
+            else:
+                expiry_list = dhan.get_expiry_list(symbol, exchange="NSE")
+
             today_str = str(date.today())
             valid = sorted([e for e in expiry_list if e >= today_str])
             if valid:
                 expiry_str = valid[0]
-                chain = dhan.get_option_chain(symbol, expiry_str, exchange="NSE")
+                # For option chain: use IDX_I for indices, NSE_EQ for stocks
+                if is_index:
+                    try:
+                        idx_sec_id = dhan._scrip_cache.get(f"NSE:{symbol}", "")
+                        if idx_sec_id:
+                            chain = dhan.client.option_chain(
+                                under_security_id=idx_sec_id,
+                                under_exchange_segment="IDX_I",
+                                expiry=expiry_str,
+                            )
+                            raw = chain.get("data", [])
+                            if isinstance(raw, list) and raw:
+                                # Normalize to our format
+                                parsed: dict = {}
+                                for row in raw:
+                                    strike = float(row.get("strikePrice", 0))
+                                    opt_type = row.get("optionType", "").upper()
+                                    if strike <= 0 or opt_type not in ("CE", "PE", "CALL", "PUT"):
+                                        continue
+                                    opt_type = "CE" if opt_type in ("CE", "CALL") else "PE"
+                                    if strike not in parsed:
+                                        parsed[strike] = {}
+                                    parsed[strike][opt_type] = {
+                                        "oi": int(row.get("oi", row.get("openInterest", 0))),
+                                        "ltp": float(row.get("ltp", row.get("lastTradedPrice", 0))),
+                                        "volume": int(row.get("volume", row.get("tradedVolume", 0))),
+                                        "iv": float(row.get("iv", row.get("impliedVolatility", 0))),
+                                    }
+                                chain = parsed
+                                logger.info("Options chain for %s via Dhan IDX_I: %d strikes", symbol, len(chain))
+                    except Exception as idx_chain_err:
+                        logger.debug("Index chain for %s failed: %s", symbol, idx_chain_err)
+                else:
+                    chain = dhan.get_option_chain(symbol, expiry_str, exchange="NSE")
 
         # Fallback to Kite
         if not chain:
