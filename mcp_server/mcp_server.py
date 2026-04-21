@@ -1140,6 +1140,7 @@ AUTH_PUBLIC_PATHS = {
     "/tools/check_signals",
     "/tools/backtest_strategy",
     "/tools/backtest_validate",
+    "/tools/eod_summary",
 }
 AUTH_PUBLIC_PREFIXES = (
     "/assets/", "/docs/", "/redoc/",
@@ -5134,6 +5135,75 @@ async def tool_signal_accuracy():
     from mcp_server.telegram_receiver import get_sheets_tracker
     tracker = get_sheets_tracker()
     return tracker.get_accuracy_stats()
+
+
+@app.get("/tools/eod_summary")
+async def tool_eod_summary():
+    """Pre-formatted EOD summary — self-contained, no Claude needed.
+
+    Returns both a JSON dict and a formatted Telegram-ready text string.
+    Covers: today's signals, accuracy, P&L, top/worst scanners, corrections.
+    """
+    today = date.today()
+    db = SessionLocal()
+    try:
+        # Today's signals
+        today_sigs = db.query(Signal).filter(Signal.signal_date == today).all()
+        today_open = sum(1 for s in today_sigs if s.status == "OPEN")
+        today_closed_ids = [s.id for s in today_sigs if s.status not in ("OPEN", "EXPIRED")]
+
+        # Today's outcomes
+        from mcp_server.models import Outcome
+        today_outcomes = db.query(Outcome).filter(Outcome.exit_date == today).all()
+        wins = sum(1 for o in today_outcomes if o.outcome == "WIN")
+        losses = sum(1 for o in today_outcomes if o.outcome == "LOSS")
+        pnl = sum(float(o.pnl_amount or 0) for o in today_outcomes)
+        wr = round(wins / max(wins + losses, 1) * 100, 1)
+
+        # All-time stats
+        total_closed = db.query(Outcome).count()
+        total_wins = db.query(Outcome).filter(Outcome.outcome == "WIN").count()
+        total_losses = db.query(Outcome).filter(Outcome.outcome == "LOSS").count()
+        all_time_wr = round(total_wins / max(total_closed, 1) * 100, 1)
+
+        # Active trades
+        active_count = db.query(ActiveTrade).count()
+
+        # Format text
+        sep = "\u2501" * 24
+        text = (
+            f"\U0001f4ca EOD Report \u2014 {today.strftime('%d/%m/%Y')}\n"
+            f"{sep}\n"
+            f"Today's Signals: {len(today_sigs)} (Open: {today_open})\n"
+            f"Closed Today: {wins + losses} | W: {wins} L: {losses}\n"
+            f"Win Rate: {wr}%\n"
+            f"Today P&L: \u20b9{pnl:,.0f}\n"
+            f"{sep}\n"
+            f"All-Time: {total_closed} closed | WR: {all_time_wr}%\n"
+            f"Active Trades: {active_count}\n"
+            f"{sep}\n"
+        )
+
+        return {
+            "report": text,
+            "today": {
+                "signals": len(today_sigs),
+                "open": today_open,
+                "wins": wins,
+                "losses": losses,
+                "win_rate": wr,
+                "pnl": round(pnl, 2),
+            },
+            "all_time": {
+                "closed": total_closed,
+                "wins": total_wins,
+                "losses": total_losses,
+                "win_rate": all_time_wr,
+            },
+            "active_trades": active_count,
+        }
+    finally:
+        db.close()
 
 
 @app.post("/tools/check_signals")
