@@ -817,6 +817,15 @@ async def lifespan(app: FastAPI):
         getattr(settings, "OPTION_SIGNALS_ENABLED", True),
     )
 
+    # Start all dedicated segment agents (Options Index, Options Stock,
+    # Commodity, Forex, Futures) — each with its own scan loop, market
+    # hours, and signal format.
+    try:
+        from mcp_server.agents.orchestrator import start_all_agents
+        await start_all_agents()
+    except Exception as agent_err:
+        logger.warning("Agent orchestrator startup failed: %s", agent_err)
+
     # Start scanner review background task (triggers at 15:45 IST)
     scanner_review_task = None
     if getattr(settings, "SCANNER_REVIEW_ENABLED", True):
