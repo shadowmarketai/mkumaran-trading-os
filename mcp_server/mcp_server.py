@@ -5148,14 +5148,13 @@ async def tool_reset_sheets():
     try:
         from mcp_server.telegram_receiver import get_sheets_tracker
         tracker = get_sheets_tracker()
-        ws = tracker.master_ws
+        ws = tracker._worksheet
         if ws is None:
             return {"status": "error", "message": "Sheets not connected"}
 
         # Get row count, clear all data rows (keep header row 1)
         all_rows = ws.get_all_values()
         if len(all_rows) > 1:
-            # Delete rows 2 to end (keep header)
             ws.delete_rows(2, len(all_rows))
             cleared = len(all_rows) - 1
         else:
@@ -5165,7 +5164,7 @@ async def tool_reset_sheets():
         seg_cleared = 0
         for seg_name in ["NSE Equity", "F&O", "Commodity", "Forex", "Intraday"]:
             try:
-                seg_ws = tracker.spreadsheet.worksheet(seg_name)
+                seg_ws = tracker._sheet.worksheet(seg_name)
                 seg_rows = seg_ws.get_all_values()
                 if len(seg_rows) > 1:
                     seg_ws.delete_rows(2, len(seg_rows))
