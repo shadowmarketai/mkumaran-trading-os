@@ -46,6 +46,24 @@ class BaseAgent(ABC):
             self._signals_today = 0
             self._sent_keys.clear()
             self._last_date = today
+            # Pre-populate sent_keys from DB to survive restarts/deploys.
+            # Without this, every deploy re-sends today's signals.
+            try:
+                from mcp_server.db import SessionLocal
+                from mcp_server.models import Signal
+                db = SessionLocal()
+                try:
+                    today_sigs = db.query(Signal).filter(
+                        Signal.signal_date == date.today()
+                    ).all()
+                    for s in today_sigs:
+                        key = f"{s.ticker}:{s.direction}:{s.source or ''}"
+                        self._sent_keys.add(key)
+                    self._signals_today = len(today_sigs)
+                finally:
+                    db.close()
+            except Exception:
+                pass
 
     def is_market_open(self) -> bool:
         now = now_ist().time()

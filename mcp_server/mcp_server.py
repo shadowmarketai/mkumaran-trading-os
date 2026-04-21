@@ -1141,6 +1141,7 @@ AUTH_PUBLIC_PATHS = {
     "/tools/backtest_strategy",
     "/tools/backtest_validate",
     "/tools/eod_summary",
+    "/tools/reset_sheets",
 }
 AUTH_PUBLIC_PREFIXES = (
     "/assets/", "/docs/", "/redoc/",
@@ -5135,6 +5136,55 @@ async def tool_signal_accuracy():
     from mcp_server.telegram_receiver import get_sheets_tracker
     tracker = get_sheets_tracker()
     return tracker.get_accuracy_stats()
+
+
+@app.post("/tools/reset_sheets")
+async def tool_reset_sheets():
+    """Clear all existing signal data from Google Sheets and start fresh.
+
+    Deletes all rows from the SIGNALS tab (preserves headers) so new
+    entries are captured cleanly without stale data corrupting accuracy.
+    """
+    try:
+        from mcp_server.telegram_receiver import get_sheets_tracker
+        tracker = get_sheets_tracker()
+        ws = tracker.master_ws
+        if ws is None:
+            return {"status": "error", "message": "Sheets not connected"}
+
+        # Get row count, clear all data rows (keep header row 1)
+        all_rows = ws.get_all_values()
+        if len(all_rows) > 1:
+            # Delete rows 2 to end (keep header)
+            ws.delete_rows(2, len(all_rows))
+            cleared = len(all_rows) - 1
+        else:
+            cleared = 0
+
+        # Also clear segment sheets if they exist
+        seg_cleared = 0
+        for seg_name in ["NSE Equity", "F&O", "Commodity", "Forex", "Intraday"]:
+            try:
+                seg_ws = tracker.spreadsheet.worksheet(seg_name)
+                seg_rows = seg_ws.get_all_values()
+                if len(seg_rows) > 1:
+                    seg_ws.delete_rows(2, len(seg_rows))
+                    seg_cleared += len(seg_rows) - 1
+            except Exception:
+                pass
+
+        logger.info(
+            "Sheets reset: cleared %d master rows + %d segment rows",
+            cleared, seg_cleared,
+        )
+        return {
+            "status": "ok",
+            "master_rows_cleared": cleared,
+            "segment_rows_cleared": seg_cleared,
+        }
+    except Exception as e:
+        logger.error("Sheets reset failed: %s", e)
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/tools/eod_summary")
