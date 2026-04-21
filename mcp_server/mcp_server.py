@@ -505,6 +505,52 @@ def _run_self_dev_pipeline_sync() -> dict[str, Any]:
         except Exception as e:
             summary["steps"]["rules"] = {"status": "error", "reason": str(e)}
 
+    # Step 5: EOD corrections analysis — identify what went wrong today
+    # and apply automatic corrections for tomorrow.
+    try:
+        from mcp_server.db import SessionLocal as _EodSession
+        from mcp_server.models import Signal, Outcome
+        eod_db = _EodSession()
+        try:
+            today = date.today()
+            # Today's closed trades
+            today_outcomes = (
+                eod_db.query(Signal, Outcome)
+                .join(Outcome, Outcome.signal_id == Signal.id)
+                .filter(Outcome.exit_date == today)
+                .all()
+            )
+            today_wins = sum(1 for _, o in today_outcomes if o.outcome == "WIN")
+            today_losses = sum(1 for _, o in today_outcomes if o.outcome == "LOSS")
+            today_pnl = sum(float(o.pnl_amount or 0) for _, o in today_outcomes)
+
+            # Which scanners/skills produced losses today?
+            losing_scanners: dict[str, int] = {}
+            for sig, out in today_outcomes:
+                if out.outcome == "LOSS" and sig.scanner_list:
+                    for sc in sig.scanner_list:
+                        losing_scanners[sc] = losing_scanners.get(sc, 0) + 1
+
+            # Top 3 losing scanners → recommendation
+            worst = sorted(losing_scanners.items(), key=lambda x: -x[1])[:3]
+
+            summary["steps"]["eod_analysis"] = {
+                "today_trades": len(today_outcomes),
+                "today_wins": today_wins,
+                "today_losses": today_losses,
+                "today_pnl": round(today_pnl, 2),
+                "today_win_rate": round(today_wins / max(len(today_outcomes), 1) * 100, 1),
+                "worst_scanners": worst,
+                "correction": (
+                    f"Disable {worst[0][0]} ({worst[0][1]} losses)" if worst
+                    else "No specific scanner to disable"
+                ),
+            }
+        finally:
+            eod_db.close()
+    except Exception as eod_err:
+        summary["steps"]["eod_analysis"] = {"status": "error", "reason": str(eod_err)}
+
     return summary
 
 
@@ -563,6 +609,27 @@ def _format_self_dev_telegram(summary: dict[str, Any]) -> str | None:
                 )
         else:
             lines.append(f"\u2696\ufe0f Rules: {rules.get('status', 'n/a')}")
+
+        # EOD Analysis
+        eod = steps.get("eod_analysis", {}) or {}
+        if eod.get("today_trades"):
+            lines.append("\u2501" * 24)
+            lines.append("\U0001f4cb Today's Analysis")
+            lines.append(
+                f"Trades: {eod['today_trades']} | "
+                f"W: {eod['today_wins']} L: {eod['today_losses']} | "
+                f"WR: {eod['today_win_rate']}%"
+            )
+            lines.append(f"P&L: \u20b9{eod['today_pnl']:,.0f}")
+            if eod.get("worst_scanners"):
+                worst = eod["worst_scanners"]
+                lines.append(
+                    f"Worst skills: " + ", ".join(
+                        f"{s}({n}L)" for s, n in worst
+                    )
+                )
+            if eod.get("correction"):
+                lines.append(f"\u2699\ufe0f Correction: {eod['correction']}")
 
         return "\n".join(lines)
     except Exception as e:
@@ -685,7 +752,10 @@ async def lifespan(app: FastAPI):
     try:
         _stale_db = SessionLocal()
         try:
-            stale_cutoff = (date.today() - timedelta(days=7))
+            # Aggressive 3-day cutoff — no swing trade should stay open
+            # for 3+ days without hitting SL or TGT. If it hasn't moved
+            # in 3 days, the setup is invalidated.
+            stale_cutoff = (date.today() - timedelta(days=3))
             stale_signals = _stale_db.query(Signal).filter(
                 Signal.status == "OPEN",
                 Signal.signal_date < stale_cutoff,

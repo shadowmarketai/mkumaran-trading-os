@@ -439,7 +439,11 @@ def run_batch_postmortems(lookback_days: int = 7) -> dict[str, Any]:
     finally:
         session.close()
 
-    for sid in signal_ids:
+    # Limit batch to 10 per run to avoid API timeout. The self-dev loop
+    # runs daily so it catches up over time. Most important: process
+    # the MOST RECENT closures first (they're freshest for learning).
+    max_batch = 10
+    for sid in signal_ids[-max_batch:]:
         try:
             res = run_postmortem(sid)
             if res.get("status") == "ok":
