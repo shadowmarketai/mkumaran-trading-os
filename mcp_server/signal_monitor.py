@@ -281,7 +281,21 @@ def monitor_open_signals() -> list[dict]:
                 except Exception as pm_err:
                     logger.debug("Postmortem skipped for %s: %s", sig.ticker, pm_err)
 
-                # 8) Invalidate similarity cache so the new trade appears
+                # 8) Feed outcome to NeuroLinked brain
+                try:
+                    from mcp_server.brain_bridge import observe_outcome, observe_postmortem
+                    observe_outcome(
+                        ticker=sig.ticker, direction=direction,
+                        outcome=outcome_str, entry=entry_price,
+                        exit_price=current_price, pnl_pct=pnl_pct,
+                        days_held=days_held, reason=exit_reason,
+                    )
+                    if pm_result and pm_result.get("root_cause"):
+                        observe_postmortem(sig.ticker, outcome_str, pm_result["root_cause"])
+                except Exception:
+                    pass
+
+                # 9) Invalidate similarity cache so the new trade appears
                 try:
                     from mcp_server.signal_similarity import invalidate_cache
                     invalidate_cache()

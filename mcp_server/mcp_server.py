@@ -2878,6 +2878,13 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                 sig["ticker"], sig["direction"], confidence, is_suppressed,
             )
 
+            # Feed signal to NeuroLinked brain for pattern learning
+            try:
+                from mcp_server.brain_bridge import observe_signal
+                observe_signal(sig, confidence=confidence, recommendation=recommendation)
+            except Exception:
+                pass
+
         # Post-scan summary — one compact Telegram line so the user sees
         # the full picture of each scan cycle including how many signals
         # were suppressed or tagged stale (previously invisible).
@@ -2900,6 +2907,19 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                 f"Time: {_now_ist().strftime('%H:%M IST')}"
             )
             _fire_and_forget(send_telegram_message(summary_msg, force=True))
+
+            # Feed scan summary to NeuroLinked brain
+            try:
+                from mcp_server.brain_bridge import observe_scan_summary
+                observe_scan_summary(
+                    direction=score["direction"],
+                    bull_pct=score["bull_pct"],
+                    bear_pct=score["bear_pct"],
+                    signals_count=total,
+                    suppressed=suppressed_count,
+                )
+            except Exception:
+                pass
 
     except Exception as e:
         logger.error("MWA signal generation failed: %s", e)
