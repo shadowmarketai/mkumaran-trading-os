@@ -225,6 +225,12 @@ def get_promoted_stocks(
         "nfo_range_breakout_bull",
         "nfo_stk_ema_crossover", "nfo_stk_rsi_oversold", "nfo_stk_vol_squeeze_bull",
         "nfo_stk_range_breakout_bull",
+        # Institutional Chartink scanners (Layer 15)
+        "high_delivery_rise", "bulk_deal_breakout", "ma_stack_bullish",
+        "darvas_box_breakout", "hammer_reversal", "bullish_engulfing",
+        "supertrend_buy_daily", "gap_up_high_volume", "rsi_bullish_divergence",
+        "narrow_range_7", "inside_bar_breakout", "ema_ribbon_bull",
+        "high_volume_breakout_consolidation", "weekly_breakout", "adx_strong_trend",
     ]
 
     stock_counts: dict[str, int] = {}
