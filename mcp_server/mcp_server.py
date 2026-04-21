@@ -505,7 +505,15 @@ def _run_self_dev_pipeline_sync() -> dict[str, Any]:
         except Exception as e:
             summary["steps"]["rules"] = {"status": "error", "reason": str(e)}
 
-    # Step 5: EOD corrections analysis — identify what went wrong today
+    # Step 5: Auto-disable underperforming scanners
+    try:
+        from mcp_server.scanner_bayesian import auto_disable_underperformers
+        disable_result = auto_disable_underperformers()
+        summary["steps"]["auto_disable"] = disable_result
+    except Exception as e:
+        summary["steps"]["auto_disable"] = {"status": "error", "reason": str(e)}
+
+    # Step 6: EOD corrections analysis — identify what went wrong today
     # and apply automatic corrections for tomorrow.
     try:
         from mcp_server.db import SessionLocal as _EodSession
@@ -609,6 +617,21 @@ def _format_self_dev_telegram(summary: dict[str, Any]) -> str | None:
                 )
         else:
             lines.append(f"\u2696\ufe0f Rules: {rules.get('status', 'n/a')}")
+
+        # Auto-disable report
+        ad = steps.get("auto_disable", {}) or {}
+        if ad.get("newly_disabled") or ad.get("re_enabled"):
+            lines.append("\u2501" * 24)
+            lines.append("\U0001f6a8 Scanner Auto-Management")
+            if ad.get("newly_disabled_list"):
+                lines.append("DISABLED (losing):")
+                for d in ad["newly_disabled_list"]:
+                    lines.append(f"  \u274c {d['key']} ({d['wins']}W/{d['losses']}L = {d['wr']})")
+            if ad.get("re_enabled_list"):
+                lines.append("RE-ENABLED (improved):")
+                for r in ad["re_enabled_list"]:
+                    lines.append(f"  \u2705 {r['key']} ({r['wins']}W/{r['losses']}L = {r['wr']})")
+            lines.append(f"Total disabled: {ad.get('total_disabled', 0)}/{ad.get('total_tracked', 0)}")
 
         # EOD Analysis
         eod = steps.get("eod_analysis", {}) or {}

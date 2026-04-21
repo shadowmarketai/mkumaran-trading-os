@@ -225,6 +225,108 @@ def get_underperforming_scanners() -> list[dict[str, Any]]:
     return out
 
 
+# ── Runtime auto-disable set ───────────────────────────────────
+# Scanners disabled by the self-dev pipeline based on Bayesian stats.
+# Persisted to data/disabled_scanners.json so it survives restarts.
+# Re-evaluated daily: a scanner can be re-enabled if new data improves
+# its stats above the threshold.
+
+_DISABLED_FILE = STATE_DIR / "disabled_scanners.json"
+
+
+def _load_disabled() -> dict[str, Any]:
+    if _DISABLED_FILE.exists():
+        try:
+            return json.loads(_DISABLED_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {"scanners": {}, "updated_at": None}
+
+
+def _save_disabled(data: dict) -> None:
+    _DISABLED_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _DISABLED_FILE.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def get_disabled_scanners() -> set[str]:
+    """Return the set of currently auto-disabled scanner names."""
+    data = _load_disabled()
+    return set(data.get("scanners", {}).keys())
+
+
+def auto_disable_underperformers() -> dict[str, Any]:
+    """Evaluate all scanners and auto-disable/re-enable based on stats.
+
+    Disable: scanner has ≥10 samples AND 90% CI upper < 35% win rate
+    Re-enable: scanner was disabled but new data pushed CI above threshold
+    """
+    state = _load_state()
+    scanners = state.get("scanners") or {}
+    disabled = _load_disabled()
+    currently_disabled = disabled.get("scanners", {})
+
+    newly_disabled: list[dict] = []
+    re_enabled: list[dict] = []
+
+    for key, stats in scanners.items():
+        is_under = stats.get("underperforming", False)
+        was_disabled = key in currently_disabled
+
+        if is_under and not was_disabled:
+            # Disable: consistently losing
+            currently_disabled[key] = {
+                "reason": (
+                    f"Win rate CI90: {stats['ci90_low']:.0%}-{stats['ci90_high']:.0%} "
+                    f"(below {RETIREMENT_THRESHOLD:.0%} threshold). "
+                    f"Record: {stats['wins']}W/{stats['losses']}L "
+                    f"over {stats['samples']} trades."
+                ),
+                "disabled_at": datetime.utcnow().isoformat(),
+                "stats": {
+                    "wins": stats["wins"],
+                    "losses": stats["losses"],
+                    "posterior_mean": stats["posterior_mean"],
+                    "ci90_high": stats["ci90_high"],
+                },
+            }
+            newly_disabled.append({"key": key, **stats})
+            logger.info(
+                "Scanner AUTO-DISABLED: %s (WR: %d/%d = %.0f%%, CI90 upper: %.0f%%)",
+                key, stats["wins"], stats["losses"],
+                stats["posterior_mean"] * 100, stats["ci90_high"] * 100,
+            )
+
+        elif was_disabled and not is_under and stats.get("samples", 0) >= MIN_SAMPLES:
+            # Re-enable: new data improved performance
+            reason = currently_disabled.pop(key)
+            re_enabled.append({"key": key, "old_reason": reason, **stats})
+            logger.info(
+                "Scanner RE-ENABLED: %s (new WR: %.0f%%, CI90: %.0f%%)",
+                key, stats["posterior_mean"] * 100, stats["ci90_high"] * 100,
+            )
+
+    disabled["scanners"] = currently_disabled
+    disabled["updated_at"] = datetime.utcnow().isoformat()
+    _save_disabled(disabled)
+
+    return {
+        "total_tracked": len(scanners),
+        "total_disabled": len(currently_disabled),
+        "newly_disabled": len(newly_disabled),
+        "re_enabled": len(re_enabled),
+        "newly_disabled_list": [
+            {"key": d["key"], "wins": d["wins"], "losses": d["losses"],
+             "wr": f"{d['posterior_mean']:.0%}"} for d in newly_disabled
+        ],
+        "re_enabled_list": [
+            {"key": r["key"], "wins": r["wins"], "losses": r["losses"],
+             "wr": f"{r['posterior_mean']:.0%}"} for r in re_enabled
+        ],
+    }
+
+
 def compute_confidence_adjustment(scanner_list: list[str]) -> int:
     """
     Given the list of scanners firing on a new signal, return an integer

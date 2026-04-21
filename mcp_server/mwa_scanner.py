@@ -2265,8 +2265,19 @@ class MWAScanner:
                 }
                 if not items:
                     continue
+                # Skip auto-disabled scanners (Bayesian underperformers)
+                try:
+                    from mcp_server.scanner_bayesian import get_disabled_scanners
+                    _auto_disabled = get_disabled_scanners()
+                except Exception:
+                    _auto_disabled = set()
+
                 logger.info("[CHARTINK] Scanning layer: %s (%d scanners)", layer, len(items))
                 for key, cfg in items.items():
+                    if key in _auto_disabled:
+                        logger.info("[CHARTINK] %s: SKIPPED (auto-disabled by Bayesian stats)", key)
+                        results[key] = []
+                        continue
                     try:
                         stocks = self.fetch_chartink(cfg["slug"], cfg.get("scan_clause", ""))
                         results[key] = stocks
