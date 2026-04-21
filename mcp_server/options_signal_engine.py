@@ -170,12 +170,12 @@ def _calc_max_pain(chain: dict, spot: float) -> float:
 # ── Strategy scanners ──────────────────────────────────────────
 
 
-def strategy_iv_crush(data: dict) -> dict[str, Any] | None:
-    """IV rank > 70 → sell premium (credit strategy). IV will contract."""
-    if data["atm_iv"] < 20:  # Need meaningful IV data
+def strategy_iv_crush(data: dict, **_kw: Any) -> dict[str, Any] | None:
+    """IV high → sell premium (credit strategy). IV will contract."""
+    if data["atm_iv"] <= 0:
         return None
-    # Simple heuristic: if ATM IV > 25% for indices or > 40% for stocks
-    threshold = 25 if data["symbol"] in INDEX_UNIVERSE else 40
+    # Indian market IV norms: NIFTY ATM IV usually 10-25%, stocks 20-50%
+    threshold = 18 if data["symbol"] in INDEX_UNIVERSE else 35
     if data["atm_iv"] < threshold:
         return None
     straddle_premium = data["atm_ce_ltp"] + data["atm_pe_ltp"]
@@ -197,9 +197,9 @@ def strategy_iv_crush(data: dict) -> dict[str, Any] | None:
     }
 
 
-def strategy_cheap_premium(data: dict) -> dict[str, Any] | None:
-    """IV rank < 25 → buy options cheap. Expect volatility expansion."""
-    threshold = 15 if data["symbol"] in INDEX_UNIVERSE else 25
+def strategy_cheap_premium(data: dict, **_kw: Any) -> dict[str, Any] | None:
+    """IV low → buy options cheap. Expect volatility expansion."""
+    threshold = 12 if data["symbol"] in INDEX_UNIVERSE else 20
     if data["atm_iv"] > threshold or data["atm_iv"] <= 0:
         return None
     # Buy ATM CE or PE based on PCR sentiment
@@ -229,10 +229,10 @@ def strategy_cheap_premium(data: dict) -> dict[str, Any] | None:
     }
 
 
-def strategy_pcr_extreme(data: dict) -> dict[str, Any] | None:
+def strategy_pcr_extreme(data: dict, **_kw: Any) -> dict[str, Any] | None:
     """PCR extreme → contrarian reversal."""
     pcr = data["pcr"]
-    if 0.5 <= pcr <= 1.5:
+    if 0.6 <= pcr <= 1.3:
         return None  # Normal range, no signal
     if pcr > 1.5:
         # Too many puts — crowd is too bearish → contrarian BULL
@@ -264,7 +264,7 @@ def strategy_pcr_extreme(data: dict) -> dict[str, Any] | None:
     }
 
 
-def strategy_expiry_day(data: dict) -> dict[str, Any] | None:
+def strategy_expiry_day(data: dict, **_kw: Any) -> dict[str, Any] | None:
     """Expiry day theta decay play — sell ATM straddle in the morning."""
     if not data["is_expiry_day"]:
         return None
@@ -289,16 +289,16 @@ def strategy_expiry_day(data: dict) -> dict[str, Any] | None:
     }
 
 
-def strategy_max_pain_magnet(data: dict) -> dict[str, Any] | None:
+def strategy_max_pain_magnet(data: dict, **_kw: Any) -> dict[str, Any] | None:
     """Price far from max pain → expect mean-reversion toward it."""
     spot = data["spot"]
     max_pain = data["max_pain"]
     if not max_pain or max_pain <= 0:
         return None
     distance_pct = abs(spot - max_pain) / spot * 100
-    if distance_pct < 1.0:
+    if distance_pct < 0.5:
         return None  # Already near max pain
-    if distance_pct > 5.0:
+    if distance_pct > 3.0:
         return None  # Too far — max pain may not hold
 
     if spot > max_pain:
@@ -331,7 +331,7 @@ def strategy_max_pain_magnet(data: dict) -> dict[str, Any] | None:
     }
 
 
-def strategy_oi_wall(data: dict) -> dict[str, Any] | None:
+def strategy_oi_wall(data: dict, **_kw: Any) -> dict[str, Any] | None:
     """Highest OI strike acts as support/resistance → directional bias."""
     chain = data["chain"]
     if not chain:
@@ -417,8 +417,10 @@ def _get_vix_data() -> dict[str, float] | None:
             import yfinance as yf
             data = yf.download("^INDIAVIX", period="2d", progress=False)
             if not data.empty:
-                vix = float(data["Close"].iloc[-1])
-                prev = float(data["Close"].iloc[-2]) if len(data) > 1 else vix
+                vix_val = data["Close"].iloc[-1]
+                vix = float(vix_val.iloc[0]) if hasattr(vix_val, "iloc") else float(vix_val)
+                prev_val = data["Close"].iloc[-2] if len(data) > 1 else vix_val
+                prev = float(prev_val.iloc[0]) if hasattr(prev_val, "iloc") else float(prev_val)
                 pct = ((vix - prev) / prev * 100) if prev else 0
                 return {"vix": vix, "pct_change": pct}
         except Exception:
@@ -521,20 +523,22 @@ def run_options_scan() -> list[dict[str, Any]]:
             vix_data.get("vix", 0), vix_data.get("pct_change", 0),
         )
 
+    symbols_with_data = 0
     for symbol in universe:
         data = _get_chain_and_data(symbol)
         if not data:
+            logger.debug("[OPTIONS] %s: no chain data available", symbol)
             continue
+        symbols_with_data += 1
+        logger.debug(
+            "[OPTIONS] %s: spot=%.0f ATM=%s IV=%.1f PCR=%.2f maxpain=%.0f dte=%d",
+            symbol, data["spot"], data["atm_strike"], data["atm_iv"],
+            data["pcr"], data["max_pain"], data["days_to_expiry"],
+        )
 
         for strategy_fn in ALL_STRATEGIES:
             try:
                 result = strategy_fn(data, vix_data=vix_data)
-            except TypeError:
-                # Strategies that don't accept vix_data kwarg
-                try:
-                    result = strategy_fn(data)
-                except Exception:
-                    result = None
             except Exception as e:
                 logger.debug("Options strategy %s failed for %s: %s", strategy_fn.__name__, symbol, e)
                 result = None
