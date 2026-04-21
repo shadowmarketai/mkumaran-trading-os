@@ -41,7 +41,9 @@ async def start_all_agents() -> list[asyncio.Task]:
         tasks.append(task)
         logger.info(
             "Agent started: %s (segment=%s, interval=%ds)",
-            agent.name, agent.segment, agent.scan_interval,
+            agent.name,
+            agent.segment,
+            agent.scan_interval,
         )
 
     logger.info("All %d trading agents started", len(agents))

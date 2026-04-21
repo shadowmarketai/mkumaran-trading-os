@@ -25,8 +25,8 @@ class BaseAgent(ABC):
     """Abstract base for all trading segment agents."""
 
     name: str = "base"
-    segment: str = "NSE"           # Exchange segment code
-    scan_interval: int = 300       # Seconds between scans
+    segment: str = "NSE"  # Exchange segment code
+    scan_interval: int = 300  # Seconds between scans
     market_open_time: time = time(9, 15)
     market_close_time: time = time(15, 30)
     max_signals_per_cycle: int = 3
@@ -59,11 +59,34 @@ class BaseAgent(ABC):
         """Run analysis and return signal candidates."""
 
     def validate(self, candidates: list[dict]) -> list[dict]:
-        """AI confidence check — override for custom validation."""
-        return [c for c in candidates if c.get("confidence", 0) >= self.min_confidence]
+        """AI confidence check with Bayesian skill-level adjustment.
+
+        For each candidate, reads the skill's historical win rate from
+        Bayesian stats and adjusts confidence up/down. Skills with high
+        win rates get a boost; skills with poor track records get penalized.
+        Then applies min_confidence filter.
+        """
+        adjusted: list[dict] = []
+        for c in candidates:
+            conf = c.get("confidence", 0)
+            # Bayesian adjustment based on skill's historical performance
+            try:
+                from mcp_server.scanner_bayesian import compute_confidence_adjustment
+
+                scanner_list = c.get("scanner_list", [])
+                if scanner_list:
+                    delta = compute_confidence_adjustment(scanner_list)
+                    conf += delta
+                    c["bayesian_adjustment"] = delta
+            except Exception:
+                pass
+            c["confidence"] = max(0, min(100, conf))
+            if c["confidence"] >= self.min_confidence:
+                adjusted.append(c)
+        return adjusted
 
     def dedup_key(self, sig: dict) -> str:
-        return f"{sig.get('ticker','')}:{sig.get('direction','')}:{sig.get('pattern','')}"
+        return f"{sig.get('ticker', '')}:{sig.get('direction', '')}:{sig.get('pattern', '')}"
 
     def format_card(self, sig: dict) -> str:
         """Format signal for Telegram delivery."""
@@ -95,9 +118,11 @@ class BaseAgent(ABC):
         self._reset_daily()
         delivered = 0
 
-        for sig in signals[:self.max_signals_per_cycle]:
+        for sig in signals[: self.max_signals_per_cycle]:
             if self._signals_today >= self.max_signals_per_day:
-                logger.info("[%s] daily cap reached (%d)", self.name, self.max_signals_per_day)
+                logger.info(
+                    "[%s] daily cap reached (%d)", self.name, self.max_signals_per_day
+                )
                 break
 
             key = self.dedup_key(sig)
@@ -111,6 +136,7 @@ class BaseAgent(ABC):
                 # Broadcast to subscribers
                 try:
                     from mcp_server.telegram_saas import broadcast_signal_to_users
+
                     await broadcast_signal_to_users(msg, exchange=self.segment)
                 except Exception:
                     pass
@@ -120,7 +146,10 @@ class BaseAgent(ABC):
                 delivered += 1
                 logger.info(
                     "[%s] delivered: %s %s %s",
-                    self.name, sig.get("ticker"), sig.get("direction"), sig.get("pattern"),
+                    self.name,
+                    sig.get("ticker"),
+                    sig.get("direction"),
+                    sig.get("pattern"),
                 )
             except Exception as e:
                 logger.warning("[%s] delivery failed: %s", self.name, e)
