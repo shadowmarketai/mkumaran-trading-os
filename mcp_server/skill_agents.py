@@ -254,7 +254,6 @@ def _run_judge(agents: list[AgentScore], rrr: float, scanner_count: int,
     # Count agent verdicts
     bullish_agents = [a for a in agents if a.verdict == ("BULLISH" if is_long else "BEARISH")]
     bearish_agents = [a for a in agents if a.verdict == ("BEARISH" if is_long else "BULLISH")]
-    neutral_agents = [a for a in agents if a.verdict == "NEUTRAL"]
 
     # Weighted score from all agents
     total_score = sum(a.score for a in agents)
@@ -320,14 +319,18 @@ def _run_risk(entry: float, sl: float, target: float, rrr: float,
     min_rrr = w["min_rrr_smc"] if has_smc else w["min_rrr"]
 
     if rrr < min_rrr:
-        pts -= 30; issues.append(f"RRR {rrr:.1f} < {min_rrr}")
+        pts -= 30
+        issues.append(f"RRR {rrr:.1f} < {min_rrr}")
     risk_pct = abs(entry - sl) / entry * 100 if entry > 0 else 0
     if risk_pct > 5:
-        pts -= 20; issues.append(f"Wide SL {risk_pct:.1f}%")
+        pts -= 20
+        issues.append(f"Wide SL {risk_pct:.1f}%")
     if is_long and sl >= entry:
-        pts -= 50; issues.append("SL above entry")
+        pts -= 50
+        issues.append("SL above entry")
     if is_long and target <= entry:
-        pts -= 50; issues.append("Target below entry")
+        pts -= 50
+        issues.append("Target below entry")
 
     pts = max(0, pts)
     grade = "A" if pts >= 80 else "B" if pts >= 60 else "C" if pts >= 40 else "D"

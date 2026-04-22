@@ -20,11 +20,11 @@ class SupertrendFlipSkill(BaseSkill):
     ) -> dict[str, Any] | None:
         c = np.asarray(df["close"], dtype=float)
         h = np.asarray(df["high"], dtype=float)
-        l = np.asarray(df["low"], dtype=float)
+        low = np.asarray(df["low"], dtype=float)
         n = len(c)
-        cur_atr = atr(h, l, 10)
+        cur_atr = atr(h, low, 10)
         mult = 3.0
-        mid = (h + l) / 2.0
+        mid = (h + low) / 2.0
         up = mid - mult * cur_atr
         dn = mid + mult * cur_atr
         trend = np.ones(n)

@@ -20,10 +20,10 @@ class SwingLowBounceSkill(BaseSkill):
     ) -> dict[str, Any] | None:
         c = np.asarray(df["close"], dtype=float)
         o = np.asarray(df["open"], dtype=float)
-        l = np.asarray(df["low"], dtype=float)
-        low_20 = float(l[-21:-1].min())
+        low = np.asarray(df["low"], dtype=float)
+        low_20 = float(low[-21:-1].min())
         is_green = c[-1] > o[-1]
-        near_low = l[-1] <= low_20 * 1.015
+        near_low = low[-1] <= low_20 * 1.015
         if near_low and is_green:
             sl = round(low_20 * 0.99, 2)
             return make_signal(

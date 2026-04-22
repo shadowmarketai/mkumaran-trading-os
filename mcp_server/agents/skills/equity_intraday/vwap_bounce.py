@@ -20,17 +20,17 @@ class VWAPBounceSkill(BaseSkill):
     ) -> dict[str, Any] | None:
         c = np.asarray(df["close"], dtype=float)
         h = np.asarray(df["high"], dtype=float)
-        l = np.asarray(df["low"], dtype=float)
+        low = np.asarray(df["low"], dtype=float)
         v = np.asarray(df["volume"], dtype=float)
         cum_vol = np.cumsum(v)
-        tp = (h + l + c) / 3.0
+        tp = (h + low + c) / 3.0
         vwap = np.cumsum(tp * v) / np.where(cum_vol > 0, cum_vol, 1)
         diff = c - vwap
         if len(diff) < 4:
             return None
         # 3 bars below then cross above
         if diff[-4] < 0 and diff[-3] < 0 and diff[-2] < 0 and diff[-1] > 0:
-            sl = float(l[-3:].min())
+            sl = float(low[-3:].min())
             return make_signal(
                 ticker=symbol,
                 direction="LONG",
