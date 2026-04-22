@@ -373,7 +373,8 @@ async def cmd_dhantoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     try:
-        import base64, json as _json
+        import base64
+        import json as _json
         payload = _json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
         exp = payload.get("exp", 0)
         client_id = payload.get("dhanClientId", "?")

@@ -19,11 +19,11 @@ class ORBBreakoutSkill(BaseSkill):
         self, df: pd.DataFrame, symbol: str, context: dict[str, Any]
     ) -> dict[str, Any] | None:
         h = np.asarray(df["high"], dtype=float)
-        l = np.asarray(df["low"], dtype=float)
+        low = np.asarray(df["low"], dtype=float)
         c = np.asarray(df["close"], dtype=float)
         v = np.asarray(df["volume"], dtype=float)
         orb_high = float(h[:3].max())  # first 3 x 5m = 15 min
-        orb_low = float(l[:3].min())
+        orb_low = float(low[:3].min())
         avg_vol = float(np.mean(v[:3]))
         if avg_vol <= 0 or v[-1] < 1.2 * avg_vol:
             return None

@@ -19,11 +19,11 @@ class ForexEMACrossSkill(BaseSkill):
         self, df: pd.DataFrame, symbol: str, context: dict[str, Any]
     ) -> dict[str, Any] | None:
         c = np.asarray(df["close"], dtype=float)
-        l = np.asarray(df["low"], dtype=float)
+        low = np.asarray(df["low"], dtype=float)
         h = np.asarray(df["high"], dtype=float)
         e9, e21 = ema(c, 9), ema(c, 21)
         if e9[-1] > e21[-1] and e9[-2] <= e21[-2]:
-            sl = float(l[-3:].min())
+            sl = float(low[-3:].min())
             return make_signal(
                 ticker=symbol,
                 direction="LONG",

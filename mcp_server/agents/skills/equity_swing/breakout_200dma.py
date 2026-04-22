@@ -19,11 +19,11 @@ class Breakout200DMASkill(BaseSkill):
         self, df: pd.DataFrame, symbol: str, context: dict[str, Any]
     ) -> dict[str, Any] | None:
         c = np.asarray(df["close"], dtype=float)
-        l = np.asarray(df["low"], dtype=float)
+        low = np.asarray(df["low"], dtype=float)
         sma200 = float(np.mean(c[-200:]))
         sma200_prev = float(np.mean(c[-201:-1]))
         if c[-1] > sma200 and c[-2] <= sma200_prev:
-            sl = float(l[-5:].min())
+            sl = float(low[-5:].min())
             return make_signal(
                 ticker=symbol,
                 direction="LONG",

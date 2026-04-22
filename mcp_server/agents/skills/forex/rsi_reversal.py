@@ -19,13 +19,13 @@ class ForexRSIReversalSkill(BaseSkill):
         self, df: pd.DataFrame, symbol: str, context: dict[str, Any]
     ) -> dict[str, Any] | None:
         c = np.asarray(df["close"], dtype=float)
-        l = np.asarray(df["low"], dtype=float)
+        low = np.asarray(df["low"], dtype=float)
         h = np.asarray(df["high"], dtype=float)
         r = rsi(c, 14)
         if len(r) < 2:
             return None
         if r[-2] < 30 and r[-1] >= 30:
-            sl = float(l[-5:].min())
+            sl = float(low[-5:].min())
             return make_signal(
                 ticker=symbol,
                 direction="LONG",

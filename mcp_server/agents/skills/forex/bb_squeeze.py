@@ -19,7 +19,7 @@ class BBSqueezeSkill(BaseSkill):
         self, df: pd.DataFrame, symbol: str, context: dict[str, Any]
     ) -> dict[str, Any] | None:
         c = np.asarray(df["close"], dtype=float)
-        l = np.asarray(df["low"], dtype=float)
+        low = np.asarray(df["low"], dtype=float)
         h = np.asarray(df["high"], dtype=float)
         sma, upper, lower = bollinger_bands(c[:-1], 20, 2.0)
         if sma <= 0:
@@ -28,7 +28,7 @@ class BBSqueezeSkill(BaseSkill):
         if width_pct >= 1.0:
             return None
         if c[-1] > upper:
-            sl = float(l[-3:].min())
+            sl = float(low[-3:].min())
             return make_signal(
                 ticker=symbol,
                 direction="LONG",
