@@ -745,11 +745,9 @@ async def lifespan(app: FastAPI):
     global _main_event_loop
     _main_event_loop = asyncio.get_running_loop()
 
-    # Schema consolidation Phase 1: run Alembic migrations BEFORE init_db().
-    # Non-fatal — if Alembic fails we still let init_db()'s create_all +
-    # _add_missing_columns runtime escape hatches keep the schema in
-    # working shape. Once Phase 2 (reconciling migration) ships and soaks,
-    # those escape hatches will be retired (Phase 3).
+    # Run Alembic migrations BEFORE init_db(). Non-fatal — if Alembic
+    # fails for any reason, init_db()'s Base.metadata.create_all() still
+    # creates any missing tables so the app can boot in a degraded state.
     # See docs/SCHEMA_CONSOLIDATION_PLAN.md.
     try:
         await asyncio.to_thread(run_alembic_upgrade)

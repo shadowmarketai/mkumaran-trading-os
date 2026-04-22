@@ -140,22 +140,17 @@ def _get_daily_usage(user_email: str, feature: str) -> int:
 
 
 def _record_usage(user_email: str, feature: str):
-    """Record a feature usage event. Silently fails if table missing."""
+    """Record a feature usage event. Silently fails if table missing.
+
+    The usage_logs table is owned by Alembic migration d3b488d0416d
+    (schema consolidation Phase 2). The prior runtime CREATE TABLE
+    escape hatch was removed in Phase 3.
+    """
     try:
         db = SessionLocal()
         try:
             from sqlalchemy import text
             today = date.today()
-            # Ensure table exists
-            db.execute(text("""
-                CREATE TABLE IF NOT EXISTS usage_logs (
-                    id SERIAL PRIMARY KEY,
-                    feature VARCHAR(100) NOT NULL,
-                    count INTEGER DEFAULT 1,
-                    period_date DATE NOT NULL,
-                    created_at TIMESTAMP DEFAULT NOW()
-                )
-            """))
             # Upsert
             existing = db.execute(
                 text("SELECT id FROM usage_logs WHERE feature = :f AND period_date = :d"),

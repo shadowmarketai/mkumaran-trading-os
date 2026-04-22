@@ -42,9 +42,9 @@ def _get_user_by_chat_id(db, chat_id: str) -> dict | None:
     return dict(row) if row else None
 
 
-def _ensure_table(db):
-    from mcp_server.auth_providers import _ensure_app_users_table
-    _ensure_app_users_table(db)
+# Schema ownership moved to Alembic (schema consolidation Phase 3).
+# The app_users table is now owned by migrations c3d4e5f6a7b8 +
+# d3b488d0416d — no runtime CREATE TABLE needed here.
 
 
 # ── /login — Link Telegram to account ─────────────────────────
@@ -63,7 +63,6 @@ async def cmd_user_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     db = SessionLocal()
     try:
-        _ensure_table(db)
         from sqlalchemy import text
         from mcp_server.auth_providers import _verify_pw
 
@@ -109,7 +108,6 @@ async def cmd_segments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     chat_id = str(update.effective_chat.id)
     db = SessionLocal()
     try:
-        _ensure_table(db)
         user = _get_user_by_chat_id(db, chat_id)
         if not user:
             await update.message.reply_text("\u274c Not logged in. Use /login email password")
@@ -170,7 +168,6 @@ async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     chat_id = str(update.effective_chat.id)
     db = SessionLocal()
     try:
-        _ensure_table(db)
         user = _get_user_by_chat_id(db, chat_id)
         if not user:
             await update.message.reply_text("\u274c Not logged in. Use /login email password")
@@ -228,7 +225,6 @@ async def cmd_setkey(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     chat_id = str(update.effective_chat.id)
     db = SessionLocal()
     try:
-        _ensure_table(db)
         user = _get_user_by_chat_id(db, chat_id)
         if not user:
             await update.message.reply_text("\u274c Not logged in. Use /login email password")
@@ -257,7 +253,6 @@ async def cmd_mykeys(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     chat_id = str(update.effective_chat.id)
     db = SessionLocal()
     try:
-        _ensure_table(db)
         user = _get_user_by_chat_id(db, chat_id)
         if not user:
             await update.message.reply_text("\u274c Not logged in.")
@@ -301,7 +296,6 @@ async def cmd_removekey(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     chat_id = str(update.effective_chat.id)
     db = SessionLocal()
     try:
-        _ensure_table(db)
         user = _get_user_by_chat_id(db, chat_id)
         if not user:
             await update.message.reply_text("\u274c Not logged in.")
@@ -326,7 +320,6 @@ async def cmd_mystats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     chat_id = str(update.effective_chat.id)
     db = SessionLocal()
     try:
-        _ensure_table(db)
         user = _get_user_by_chat_id(db, chat_id)
         if not user:
             await update.message.reply_text("\u274c Not logged in.")
@@ -350,7 +343,6 @@ async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = str(update.effective_chat.id)
     db = SessionLocal()
     try:
-        _ensure_table(db)
         user = _get_user_by_chat_id(db, chat_id)
         if not user:
             await update.message.reply_text("\u274c Not logged in.")
@@ -396,7 +388,6 @@ async def broadcast_signal_to_users(signal_text: str, exchange: str = "NSE") -> 
 
     db = SessionLocal()
     try:
-        _ensure_table(db)
         from sqlalchemy import text
 
         # Find users subscribed to this segment with alerts ON
