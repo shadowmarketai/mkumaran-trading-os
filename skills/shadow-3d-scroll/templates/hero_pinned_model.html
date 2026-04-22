@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pinned 3D Hero — Shadow 3D Scroll</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --fg: #f5efe0;
+    --accent: #c9a074;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--fg); font-family: 'Inter', system-ui, sans-serif; }
+  body { overflow-x: hidden; }
+  
+  #hero {
+    position: relative;
+    height: 100vh;
+    width: 100%;
+  }
+  #hero-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .hero__copy {
+    position: relative;
+    z-index: 2;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 4vh 5vw;
+    pointer-events: none;
+  }
+  .hero__eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+  .hero__title {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: clamp(3rem, 9vw, 9rem);
+    font-weight: 400;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    max-width: 14ch;
+  }
+  .hero__scroll-hint {
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    align-self: center;
+  }
+  
+  #after {
+    min-height: 200vh;
+    padding: 20vh 5vw;
+    background: var(--fg);
+    color: var(--bg);
+  }
+  #after h2 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: clamp(2rem, 5vw, 4rem);
+    font-weight: 400;
+    max-width: 20ch;
+    line-height: 1.1;
+  }
+  
+  @media (prefers-reduced-motion: reduce) {
+    #hero { height: auto; padding: 20vh 5vw; }
+    #hero-canvas { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<section id="hero">
+  <canvas id="hero-canvas"></canvas>
+  <div class="hero__copy">
+    <div class="hero__eyebrow">SHADOW MARKET · 3D SCROLL KIT</div>
+    <h1 class="hero__title">Scroll to rotate. Stay to admire.</h1>
+    <div class="hero__scroll-hint">scroll ↓</div>
+  </div>
+</section>
+
+<section id="after">
+  <h2>The hero unpinned and the model disappeared — just like oryzo.ai. The content below flows normally.</h2>
+</section>
+
+<!-- CDN libraries -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/lenis@1.1.14/dist/lenis.min.js"></script>
+
+<script type="module">
+import * as THREE from 'three';
+
+gsap.registerPlugin(ScrollTrigger);
+
+// ─────────────────────────────────────────────────
+// 1. Smooth scroll foundation
+// ─────────────────────────────────────────────────
+const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+if (!prefersReduced) {
+  const lenis = new Lenis({
+    duration: 1.2,
+    easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+    smoothWheel: true,
+    smoothTouch: false,
+  });
+  lenis.on('scroll', ScrollTrigger.update);
+  gsap.ticker.add((time) => lenis.raf(time * 1000));
+  gsap.ticker.lagSmoothing(0);
+}
+
+// ─────────────────────────────────────────────────
+// 2. Three.js scene
+// ─────────────────────────────────────────────────
+const canvas = document.querySelector('#hero-canvas');
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0a0a0a, 4, 15);
+
+const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 6);
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+// Three-point lighting (product photography look)
+const key = new THREE.DirectionalLight(0xffffff, 1.4);
+key.position.set(4, 4, 4);
+scene.add(key);
+
+const fill = new THREE.DirectionalLight(0x8899bb, 0.6);
+fill.position.set(-4, 0, 2);
+scene.add(fill);
+
+const rim = new THREE.DirectionalLight(0xffd5a0, 1.0);
+rim.position.set(0, -2, -4);
+scene.add(rim);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+
+// ─────────────────────────────────────────────────
+// 3. The focal object — a "coaster" (cylinder) as stand-in.
+//    Replace with GLTFLoader for real product model.
+// ─────────────────────────────────────────────────
+const group = new THREE.Group();
+
+// Main body
+const coasterGeom = new THREE.CylinderGeometry(1.5, 1.5, 0.18, 96, 1);
+const coasterMat = new THREE.MeshStandardMaterial({
+  color: 0xc9a074,
+  roughness: 0.85,
+  metalness: 0.0,
+});
+const coaster = new THREE.Mesh(coasterGeom, coasterMat);
+group.add(coaster);
+
+// Top inset ring (detail)
+const ringGeom = new THREE.TorusGeometry(1.3, 0.02, 16, 96);
+const ringMat = new THREE.MeshStandardMaterial({ color: 0x8b6a4a, roughness: 0.5 });
+const ring = new THREE.Mesh(ringGeom, ringMat);
+ring.rotation.x = Math.PI / 2;
+ring.position.y = 0.091;
+group.add(ring);
+
+// Initial orientation
+group.rotation.set(-0.3, 0.4, 0);
+scene.add(group);
+
+// ─────────────────────────────────────────────────
+// 4. Render loop
+// ─────────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+animate();
+
+// ─────────────────────────────────────────────────
+// 5. Scroll-driven timeline
+// ─────────────────────────────────────────────────
+if (!prefersReduced) {
+  const tl = gsap.timeline({
+    scrollTrigger: {
+      trigger: '#hero',
+      start: 'top top',
+      end: '+=350%',
+      pin: true,
+      scrub: 1,
+      anticipatePin: 1,
+    }
+  });
+
+  // Phase 1 (0.0 → 0.6): full Y-rotation
+  tl.to(group.rotation, { y: group.rotation.y + Math.PI * 2, ease: 'none' }, 0);
+
+  // Phase 2 (0.0 → 1.0): subtle X tilt settling
+  tl.to(group.rotation, { x: 0, ease: 'power2.inOut' }, 0);
+
+  // Phase 3 (0.3 → 0.8): camera pulls back
+  tl.to(camera.position, { z: 9, ease: 'power2.inOut' }, 0.3);
+
+  // Phase 4 (0.5 → 1.0): scale up slightly for impact
+  tl.to(group.scale, { x: 1.15, y: 1.15, z: 1.15, ease: 'power2.out' }, 0.5);
+
+  // Copy fades out as user approaches end of pin
+  tl.to('.hero__copy', { opacity: 0, ease: 'none' }, 0.7);
+}
+
+// ─────────────────────────────────────────────────
+// 6. Resize
+// ─────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ─────────────────────────────────────────────────
+// 7. Refresh after layout settles
+// ─────────────────────────────────────────────────
+document.fonts.ready.then(() => ScrollTrigger.refresh());
+</script>
+
+</body>
+</html>

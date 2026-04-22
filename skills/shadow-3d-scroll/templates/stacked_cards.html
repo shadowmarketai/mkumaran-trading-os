@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stacked Cards — Shadow 3D Scroll</title>
+<style>
+  :root { --bg: #0f0f0f; --fg: #f5efe0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: 'Inter', system-ui, sans-serif; }
+  
+  .intro, .outro {
+    min-height: 60vh;
+    padding: 15vh 5vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .intro h1, .outro h2 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: clamp(2rem, 5vw, 4rem);
+    font-weight: 400;
+    line-height: 1.05;
+    max-width: 25ch;
+    text-align: center;
+  }
+  
+  .stack {
+    perspective: 1200px;
+  }
+  .stack__card {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    padding: 10vh 8vw;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    will-change: transform, filter;
+    transform-origin: center top;
+  }
+  
+  .stack__card--1 { background: #1a1a1a; color: #f5efe0; }
+  .stack__card--2 { background: #f5efe0; color: #1a1a1a; }
+  .stack__card--3 { background: #2e4033; color: #f5efe0; }
+  .stack__card--4 { background: #c9a074; color: #1a1a1a; }
+  
+  .card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+  .card__body {
+    max-width: 60ch;
+  }
+  .card__title {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: clamp(3rem, 8vw, 7rem);
+    font-weight: 400;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    margin-bottom: 2rem;
+  }
+  .card__desc {
+    font-size: 1.15rem;
+    line-height: 1.5;
+    max-width: 45ch;
+  }
+  .card__footer {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    opacity: 0.5;
+  }
+  
+  @media (prefers-reduced-motion: reduce) {
+    .stack__card {
+      position: relative;
+      transform: none !important;
+      filter: none !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<section class="intro">
+  <h1>Each section stacks on the last. Scroll to watch the deck form.</h1>
+</section>
+
+<section class="stack" id="stack">
+  
+  <article class="stack__card stack__card--1">
+    <header class="card__header">
+      <span>(I)</span>
+      <span>Origin</span>
+    </header>
+    <div class="card__body">
+      <h2 class="card__title">Formed on site.</h2>
+      <p class="card__desc">These items are formed within the places themselves. Each originates on site, shaped by material, process, and circumstance.</p>
+    </div>
+    <footer class="card__footer">
+      <span>01 / 04</span>
+      <span>Origin Objects</span>
+    </footer>
+  </article>
+
+  <article class="stack__card stack__card--2">
+    <header class="card__header">
+      <span>(II)</span>
+      <span>Connection</span>
+    </header>
+    <div class="card__body">
+      <h2 class="card__title">Item shown at point of origin.</h2>
+      <p class="card__desc">Places and items are not separate. Each item originates within a specific place, shaped by its conditions, materials, and use.</p>
+    </div>
+    <footer class="card__footer">
+      <span>02 / 04</span>
+      <span>Method</span>
+    </footer>
+  </article>
+
+  <article class="stack__card stack__card--3">
+    <header class="card__header">
+      <span>(III)</span>
+      <span>Circulation</span>
+    </header>
+    <div class="card__body">
+      <h2 class="card__title">They leave and circulate.</h2>
+      <p class="card__desc">Once completed, items leave their point of origin and circulate independently, carrying their origin without representing it directly.</p>
+    </div>
+    <footer class="card__footer">
+      <span>03 / 04</span>
+      <span>Distribution</span>
+    </footer>
+  </article>
+
+  <article class="stack__card stack__card--4">
+    <header class="card__header">
+      <span>(IV)</span>
+      <span>Admission</span>
+    </header>
+    <div class="card__body">
+      <h2 class="card__title">Commitment precedes entry.</h2>
+      <p class="card__desc">Access is considered, not assumed. A private assembly for makers. Coordinates withheld.</p>
+    </div>
+    <footer class="card__footer">
+      <span>04 / 04</span>
+      <span>Request Invite →</span>
+    </footer>
+  </article>
+
+</section>
+
+<section class="outro">
+  <h2>Stack unpinned. Normal flow resumes.</h2>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/lenis@1.1.14/dist/lenis.min.js"></script>
+
+<script>
+  gsap.registerPlugin(ScrollTrigger);
+
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (!prefersReduced) {
+    const lenis = new Lenis({ duration: 1.2, smoothWheel: true, smoothTouch: false });
+    lenis.on('scroll', ScrollTrigger.update);
+    gsap.ticker.add((time) => lenis.raf(time * 1000));
+    gsap.ticker.lagSmoothing(0);
+
+    const cards = gsap.utils.toArray('.stack__card');
+
+    cards.forEach((card, i) => {
+      if (i === cards.length - 1) return;
+      
+      gsap.to(card, {
+        scale: 0.92,
+        filter: 'brightness(0.55)',
+        borderRadius: '32px',
+        y: 40,
+        rotationX: -4,
+        scrollTrigger: {
+          trigger: cards[i + 1],
+          start: 'top bottom',
+          end: 'top top',
+          scrub: 1,
+        }
+      });
+    });
+  }
+
+  document.fonts.ready.then(() => ScrollTrigger.refresh());
+</script>
+
+</body>
+</html>

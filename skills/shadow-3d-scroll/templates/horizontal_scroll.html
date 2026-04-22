@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Horizontal Pinned Scroll — Shadow 3D Scroll</title>
+<style>
+  :root { --bg: #f5efe0; --fg: #1a1a1a; --accent: #c9a074; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: 'Inter', system-ui, sans-serif; overflow-x: hidden; }
+  
+  .intro, .outro {
+    min-height: 80vh;
+    padding: 10vh 5vw;
+    display: flex;
+    align-items: center;
+  }
+  .intro h1, .outro h2 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: clamp(2rem, 6vw, 5rem);
+    font-weight: 400;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    max-width: 20ch;
+  }
+  
+  .h-scroll {
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+  }
+  .h-scroll__track {
+    display: flex;
+    height: 100%;
+    width: max-content;
+  }
+  .h-scroll__panel {
+    flex: 0 0 100vw;
+    height: 100vh;
+    padding: 10vh 8vw;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+  }
+  
+  .h-scroll__panel--1 { background: var(--bg); }
+  .h-scroll__panel--2 { background: #e8ddc3; }
+  .h-scroll__panel--3 { background: #1a1a1a; color: var(--bg); }
+  .h-scroll__panel--4 { background: var(--accent); color: var(--bg); }
+  
+  .panel__index {
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    margin-bottom: 2rem;
+  }
+  .panel__title {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: clamp(3rem, 10vw, 9rem);
+    font-weight: 400;
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+    margin-bottom: 2rem;
+  }
+  .panel__desc {
+    font-size: 1.1rem;
+    line-height: 1.5;
+    max-width: 40ch;
+    opacity: 0.8;
+  }
+  .panel__stat {
+    position: absolute;
+    right: 8vw;
+    bottom: 10vh;
+    text-align: right;
+  }
+  .panel__stat-value {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: clamp(4rem, 10vw, 8rem);
+    line-height: 1;
+  }
+  .panel__stat-label {
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    margin-top: 0.5rem;
+  }
+  
+  .progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 2px;
+    background: var(--fg);
+    width: 0%;
+    z-index: 100;
+    transition: opacity 0.3s;
+  }
+  
+  @media (max-width: 767px) {
+    .h-scroll { height: auto; }
+    .h-scroll__track { flex-direction: column; width: 100%; }
+    .h-scroll__panel { flex: 0 0 auto; min-height: 100vh; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress-bar" id="progress"></div>
+
+<section class="intro">
+  <h1>Choose your configuration. Scroll sideways to compare tiers.</h1>
+</section>
+
+<section class="h-scroll" id="h-scroll">
+  <div class="h-scroll__track">
+    
+    <article class="h-scroll__panel h-scroll__panel--1">
+      <div class="panel__index">01 / 04 · Essential</div>
+      <h2 class="panel__title">The Original</h2>
+      <p class="panel__desc">Refined until it feels inevitable. Lifts just enough, grips just right, and quietly disappears into your day like it was never there.</p>
+      <div class="panel__stat">
+        <div class="panel__stat-value">1×</div>
+        <div class="panel__stat-label">Stack</div>
+      </div>
+    </article>
+
+    <article class="h-scroll__panel h-scroll__panel--2">
+      <div class="panel__index">02 / 04 · Pro</div>
+      <h2 class="panel__title">Twice the Cork</h2>
+      <p class="panel__desc">A little more presence. Double the cork, double the confidence — without losing the plot.</p>
+      <div class="panel__stat">
+        <div class="panel__stat-value">2×</div>
+        <div class="panel__stat-label">Stack</div>
+      </div>
+    </article>
+
+    <article class="h-scroll__panel h-scroll__panel--3">
+      <div class="panel__index">03 / 04 · Pro Max</div>
+      <h2 class="panel__title">Maximum Lift</h2>
+      <p class="panel__desc">Maximum stack for maximum unnecessary satisfaction. A bold little pedestal for your mug and a quiet flex for the whole desk.</p>
+      <div class="panel__stat">
+        <div class="panel__stat-value">3×</div>
+        <div class="panel__stat-label">Stack</div>
+      </div>
+    </article>
+
+    <article class="h-scroll__panel h-scroll__panel--4">
+      <div class="panel__index">04 / 04 · Order</div>
+      <h2 class="panel__title">Ready when<br>you are.</h2>
+      <p class="panel__desc">Pick the tier that matches your counter. Ships in a week. Arrives in kraft. Works forever.</p>
+    </article>
+
+  </div>
+</section>
+
+<section class="outro">
+  <h2>Section ends. Pin releases. Vertical scroll resumes naturally.</h2>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/lenis@1.1.14/dist/lenis.min.js"></script>
+
+<script>
+  gsap.registerPlugin(ScrollTrigger);
+
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (!prefersReduced) {
+    // Smooth scroll
+    const lenis = new Lenis({ duration: 1.2, smoothWheel: true, smoothTouch: false });
+    lenis.on('scroll', ScrollTrigger.update);
+    gsap.ticker.add((time) => lenis.raf(time * 1000));
+    gsap.ticker.lagSmoothing(0);
+  }
+
+  ScrollTrigger.matchMedia({
+    '(min-width: 768px)': () => {
+      const track = document.querySelector('.h-scroll__track');
+      const panels = gsap.utils.toArray('.h-scroll__panel');
+
+      // Main horizontal scroll
+      const hTween = gsap.to(track, {
+        x: () => -(track.scrollWidth - window.innerWidth),
+        ease: 'none',
+        scrollTrigger: {
+          trigger: '#h-scroll',
+          start: 'top top',
+          end: () => '+=' + (track.scrollWidth - window.innerWidth),
+          pin: true,
+          scrub: 1,
+          invalidateOnRefresh: true,
+          anticipatePin: 1,
+          onUpdate: (self) => {
+            document.getElementById('progress').style.width = (self.progress * 100) + '%';
+          }
+        }
+      });
+
+      // Per-panel entry animations
+      panels.forEach((panel) => {
+        const title = panel.querySelector('.panel__title');
+        const desc = panel.querySelector('.panel__desc');
+        const stat = panel.querySelector('.panel__stat');
+
+        gsap.from([title, desc, stat].filter(Boolean), {
+          y: 60,
+          opacity: 0,
+          stagger: 0.1,
+          ease: 'power3.out',
+          scrollTrigger: {
+            trigger: panel,
+            containerAnimation: hTween,
+            start: 'left 70%',
+            toggleActions: 'play none none reverse',
+          }
+        });
+      });
+    }
+  });
+
+  document.fonts.ready.then(() => ScrollTrigger.refresh());
+</script>
+
+</body>
+</html>
