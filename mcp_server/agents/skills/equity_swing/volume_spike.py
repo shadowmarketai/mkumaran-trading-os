@@ -20,14 +20,14 @@ class VolumeSpikeSkill(BaseSkill):
     ) -> dict[str, Any] | None:
         c = np.asarray(df["close"], dtype=float)
         o = np.asarray(df["open"], dtype=float)
-        l = np.asarray(df["low"], dtype=float)
+        low = np.asarray(df["low"], dtype=float)
         v = np.asarray(df["volume"], dtype=float)
         avg_vol = float(np.mean(v[-11:-1]))
         if avg_vol <= 0 or v[-1] < 2 * avg_vol:
             return None
         if c[-1] <= o[-1]:
             return None
-        sl = float(l[-3:].min())
+        sl = float(low[-3:].min())
         return make_signal(
             ticker=symbol,
             direction="LONG",

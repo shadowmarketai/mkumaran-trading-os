@@ -66,11 +66,8 @@ class TradeReflector:
         return {"success": True, "signal_id": signal_id, "lesson": lesson, "method": method}
 
     def _generate_lesson(self, record: TradeRecord) -> str:
-        """Generate lesson using Claude API (1 API call)."""
+        """Generate lesson via the multi-provider AI abstraction (1 call)."""
         from mcp_server.ai_provider import call_ai
-
-        api_key = settings.ANTHROPIC_API_KEY.strip()
-        # AI provider handles client internally
 
         prompt = (
             f"You are a trading coach reviewing a closed trade. Generate a concise lesson (1-2 sentences).\n\n"
@@ -84,14 +81,7 @@ class TradeReflector:
             f"Respond with just the lesson text, no JSON."
         )
 
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=150,
-            timeout=30.0,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        return response.content[0].text.strip()
+        return call_ai(prompt=prompt, max_tokens=150, temperature=0.3).strip()
 
     def _generate_lesson_offline(self, record: TradeRecord) -> str:
         """

@@ -1,9 +1,12 @@
 import asyncio
+import json
 import logging
+import os
+
 import pandas as pd
 from contextlib import asynccontextmanager
 from dataclasses import asdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -402,7 +405,7 @@ _kite_login_notify_cache: dict[str, str] = {}
 # Scan-in-progress lock — prevents concurrent MWA scans from the auto-scan
 # loop (every 15 min) and n8n extended monitor (every 10 min) from
 # overlapping and generating duplicate signals for the same ticker.
-import threading
+import threading  # noqa: E402 — deferred to this point to avoid circular import
 _scan_lock = threading.Lock()
 
 
@@ -647,7 +650,7 @@ def _format_self_dev_telegram(summary: dict[str, Any]) -> str | None:
             if eod.get("worst_scanners"):
                 worst = eod["worst_scanners"]
                 lines.append(
-                    f"Worst skills: " + ", ".join(
+                    "Worst skills: " + ", ".join(
                         f"{s}({n}L)" for s, n in worst
                     )
                 )
@@ -854,6 +857,7 @@ async def lifespan(app: FastAPI):
     # log the result and send a Telegram nudge only if auto-refresh is not
     # configured and the token is expiring.
     try:
+        from mcp_server.telegram_bot import send_telegram_message
         dhan_token = os.environ.get("DHAN_ACCESS_TOKEN", "")
         has_auto = bool(os.environ.get("DHAN_TOTP_KEY") and os.environ.get("DHAN_PIN"))
         if dhan_token.startswith("eyJ"):
@@ -5228,7 +5232,6 @@ async def tool_eod_summary():
         # Today's signals
         today_sigs = db.query(Signal).filter(Signal.signal_date == today).all()
         today_open = sum(1 for s in today_sigs if s.status == "OPEN")
-        today_closed_ids = [s.id for s in today_sigs if s.status not in ("OPEN", "EXPIRED")]
 
         # Today's outcomes
         from mcp_server.models import Outcome
