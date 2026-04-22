@@ -19,15 +19,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add columns to users table (if it exists — some deployments use auth differently)
-    try:
+    # Legacy "users" table ALTERs. The prior implementation wrapped
+    # these in a try/except to silently ignore the case where the table
+    # didn't exist — but in Postgres, a failed statement aborts the whole
+    # transaction, which then broke the subsequent create_table("user_settings").
+    # Use an existence check instead so we skip cleanly when the table is absent.
+    bind = op.get_bind()
+    if sa.inspect(bind).has_table("users"):
         op.add_column("users", sa.Column("phone", sa.String(15), nullable=True))
         op.add_column("users", sa.Column("name", sa.String(100), nullable=True))
         op.add_column("users", sa.Column("avatar_url", sa.String(500), nullable=True))
         op.add_column("users", sa.Column("auth_provider", sa.String(20), server_default="password"))
         op.create_index("idx_users_phone", "users", ["phone"], unique=True)
-    except Exception:
-        pass  # Table may not exist or columns already added
 
     # User settings table (for BYOK API keys and preferences)
     op.create_table(
@@ -45,11 +48,10 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("user_settings")
-    try:
+    bind = op.get_bind()
+    if sa.inspect(bind).has_table("users"):
         op.drop_index("idx_users_phone", "users")
         op.drop_column("users", "auth_provider")
         op.drop_column("users", "avatar_url")
         op.drop_column("users", "name")
         op.drop_column("users", "phone")
-    except Exception:
-        pass

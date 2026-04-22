@@ -58,3 +58,4 @@ data/trade_memory.json
 # Credentials
 data/service_account.json
 data/kite_token.json
+docs/schema_snapshots/
