@@ -3,8 +3,8 @@
 > Living document. Updated at the end of every meaningful Claude Code session.
 > Every agent reads this FIRST before doing work.
 
-**Last updated:** 2026-04-22 by `onboarder` (Claude Opus 4.7)
-**Dossier version:** 1
+**Last updated:** 2026-04-23 by Claude Opus 4.7 (Decimal Phases 2–3 + backtester boundary fix)
+**Dossier version:** 2
 
 ---
 
@@ -19,7 +19,7 @@
 | **Started** | ~2026-04-15 (first commit on current repo; code is older, history likely squashed) |
 | **Target ship date** | ongoing (daily live use; ~40 commits in April 2026 alone) |
 | **Primary contact** | shadowmarketai (mkumaran2931@gmail.com) |
-| **Current branch** | `feat/claude-agent-layer` (Shadow Market overlay, 1 commit ahead of `main`) |
+| **Current branch** | `feat/money-helpers` (Decimal enforcement Phases 1–3 + backtester fix; 5 commits ahead of `main`, not yet pushed) |
 
 ---
 
@@ -84,13 +84,13 @@ Two independent scan loops run in parallel: a **daily-swing MWA loop** (default 
 
 Ordered by priority. Top item is what `/resume` suggests next.
 
-- [ ] **HIGH** — Merge `feat/claude-agent-layer` → `main` (or decide whether to squash). The overlay is purely additive (no app-code diff) and is already committed; just needs PR + merge. Watch for CI (`ruff check .`) — overlay added many markdown files, no `.py` changes, so should pass cleanly.
-- [ ] **HIGH** — Consolidate schema sources. Three places currently hold truth: `schema.sql`, `alembic/versions/`, and `mcp_server/db.py:_add_missing_columns()` (a runtime `ALTER TABLE` escape hatch with ~50 column definitions). A schema drift between Alembic and `_add_missing_columns` is a silent bug waiting to happen.
-- [ ] **HIGH** — Enforce `Decimal` at the Python boundary for P&L math. CLAUDE.md declares it as an invariant, but current code uses `float` broadly (`RRMS_CAPITAL: float`, `RRMS_RISK_PCT: float` in `config.py:107–109`). DB uses `Numeric(10,2)` correctly.
+- [ ] **HIGH** — Push + open PR for `feat/money-helpers`. Branch has 5 commits ahead of origin: Phase 1 (`f4cd4a9`, money helpers), Phase 2 (`f63b858`, RRMS+config+order_manager), Phase 3 (`b36ee17`, monitor+portfolio+cards), backtester boundary fix (`7ab9e03`), plus the docs draft (`e9eabf5`) that preceded Phase 1. All local; never pushed.
+- [ ] **MED** — Verify Decimal migration in live paper-mode smoke run before declaring victory on CLAUDE.md invariant #2. Unit tests cover the math; paper-mode exercises the full pipeline including broker-SDK float boundaries.
 - [ ] **MED** — Break up `mcp_server/mcp_server.py` (6623 lines, 148 route decorators) into FastAPI routers by domain (auth / signals / trades / options / admin / tools).
 - [ ] **MED** — Update `AI_REPORT_MODEL` default. Currently `claude-haiku-4-5-20251001` in `config.py:214`. Claude Haiku 4.5 is supported, but Opus 4.7 / Sonnet 4.6 are the current latest — verify cost/quality trade and decide.
-- [ ] **MED** — Rotate JWT secret + strengthen auth default. `JWT_SECRET_KEY` default in `config.py:153` is the literal string `"change-this-in-production"`; safe today only because `AUTH_ENABLED=false` by default.
-- [ ] **MED** — Add frontend tests. `dashboard/package.json` has no test script, no Vitest, no Testing Library. 54 backend tests exist; frontend has zero.
+- [ ] **MED** — Rotate JWT secret + strengthen auth default. `JWT_SECRET_KEY` default in `config.py` is the literal string `"change-this-in-production"`; safe today only because `AUTH_ENABLED=false` by default.
+- [ ] **MED** — Fix 2 pre-existing `test_order_manager`/`test_paper_trading` failures asserting "Kite not connected" — message was changed to "No broker connected ..." during the Angel broker merge; tests were never updated. Unrelated to Decimal work.
+- [ ] **MED** — Fix `sector_picker.fetch_rrms_setup` stale call to non-existent `engine.calculate_from_levels` — wrapped in `try/except`, so silently returns fallback. Pre-existing dead code path.
 - [ ] **LOW** — Validate `dashboard_dist/` checked-in state. Directory exists at repo root (likely a stale pre-container build artifact). Dockerfile rebuilds dashboard in stage 1; the top-level folder may be dead weight.
 - [ ] **LOW** — Decide fate of `skills/shadow-3d-scroll/` and the landing/marketing surfaces in the dashboard. CLAUDE.md explicitly bans the scroll skill on `dashboard/` routes; usage should be limited to `LandingPage.tsx`.
 
@@ -100,6 +100,15 @@ Ordered by priority. Top item is what `/resume` suggests next.
 
 Last 10 closed, newest first.
 
+- [x] 2026-04-23 — Backtester boundary fix: `_generate_rrms_signals` casts RRMSResult Decimal fields to float at the analysis-zone boundary. Added 2 backtester tests (float-typed signal dict + explicit target-hit simulation). Caught by pre-commit advisor review; production path would have crashed on first `/tools/backtest strategy=rrms` call — `7ab9e03`
+- [x] 2026-04-23 — Phase 3 Decimal migration: `signal_monitor` (_calc_pnl returns Decimal, entry_price/exit_price stay Decimal through Outcome persistence, option premium P&L aggregation in Decimal, gspread/brain_bridge boundary casts), `portfolio_risk` (exposure Decimal, percentages float at dict boundary), `signal_cards` (all format functions accept Numeric) — `b36ee17`
+- [x] 2026-04-23 — Phase 2 Decimal migration: `config.RRMS_CAPITAL`/`RRMS_RISK_PCT` → Decimal, `rrms_engine` fully Decimal with per-exchange tick rounding, `order_manager` capital+kill-switch+validation Decimal, Kite/Angel SDK boundary casts to float. `mwa_signal_generator` analysis-zone boundary cast at `risk_amt = float(...)`. `pretrade_check.check_rrr` drops stale float() coercion — `f63b858`
+- [x] 2026-04-22 — Phase 1 Decimal migration: added `mcp_server/money.py` (to_money/round_tick/round_paise/pnl/pct_return) with per-exchange rounding (NSE/BSE/NFO/MCX=2dp, CDS=4dp) and 43 tests — `f4cd4a9`
+- [x] 2026-04-22 — Drafted Decimal-enforcement plan (`docs/DECIMAL_ENFORCEMENT_PLAN.md`) — `e9eabf5`
+- [x] 2026-04-22 — Added Vitest + Testing Library harness to dashboard with 3 smoke suites — `af78663`
+- [x] 2026-04-22 — Schema consolidation (Phase 4): retired `schema.sql` in favor of Alembic data migration — `cb52222`
+- [x] 2026-04-22 — Zeroed all ruff check errors (52 → 0) — `a49c9d3`
+- [x] 2026-04-22 — Schema consolidation Phases 1–3: Alembic on boot, reconcile drifted state, retire `_add_missing_columns()` runtime escape hatch — `59a923e` → `45751f9`
 - [x] 2026-04-22 — Overlaid Shadow Market agent/skill/rules layer (115 files, +25k LoC of docs/config, no app-code diff) — `ffd9ab8`
 - [x] 2026-04-21 — Wired Trading OS to NeuroLinked brain: fire-and-forget observe_signal / observe_outcome / observe_scan_summary — `39ad241`
 - [x] 2026-04-21 — Fixed sheets reset to use correct `_worksheet` / `_sheet` attribute names — `e9793a0`
@@ -117,7 +126,10 @@ Last 10 closed, newest first.
 
 | Date | Decision | Rationale |
 |---|---|---|
-| 2026-04-22 | Keep `schema.sql` + Alembic + runtime `_add_missing_columns()` coexisting | Historical: fresh Docker installs use `schema.sql`, existing DBs can't run it idempotently, so Alembic was bolted on, and `_add_missing_columns()` is the "forgot-to-add-a-migration" safety net. Parked — unify later. |
+| 2026-04-23 | Two-zone discipline for Decimal enforcement: Money zone (Decimal) = rrms/config/order_manager/signal_monitor/portfolio_risk/signal_cards. Analysis zone (float/numpy/pandas) = TA engines, OHLCV cache, ML features, backtester simulator. Explicit `float(decimal)` cast at crossings | Preserves exact paise math on the decision + persistence paths while keeping TA/ML performant. Backtester cast added after advisor review caught the Decimal × float multiplication risk in `_apply_slippage`. |
+| 2026-04-23 | `RRMS_MIN_RRR` stays float (not Decimal) even though other RRMS_* settings are Decimal | Dimensionless ratio — multiplied against ATR (float) in analysis-zone code (`mwa_signal_generator`, `mcp_server.py` option sizing). Converting it would force Decimal propagation into the analysis zone with no precision benefit. |
+| 2026-04-23 | Percentages (deployed_pct, sector_pct, etc.) in `portfolio_risk.get_portfolio_exposure` stay float at the output dict boundary even though money aggregates are Decimal internally | Dashboard TS consumers expect `number` and inexact floats like 20.4 don't equal `Decimal("20.4")` — keeping pct as float preserves existing test equality and UI behavior. |
+| 2026-04-22 | Keep `schema.sql` + Alembic + runtime `_add_missing_columns()` coexisting | ~~Historical:...~~ **SUPERSEDED 2026-04-22 evening:** schema.sql and `_add_missing_columns()` were retired over 4 commits (59a923e → cb52222). Alembic is now the sole source of schema truth. |
 | 2026-04-22 | Overlay Shadow Market Claude layer as pure additive (no app-code diff) | Commit message `ffd9ab8` explicitly lists everything not touched (`mcp_server/`, `dashboard/`, `alembic/`, `schema.sql`, `docker-compose*`, `TRADING.md`, `.pre-commit-config.yaml`, `requirements.txt`, `Dockerfile`, `n8n_workflows/`, `pine_script/`). |
 | 2026-04-21 | NeuroLinked brain integration is fire-and-forget, 5s timeout, never raises | Trading pipeline must never crash because the brain is unreachable. `brain_bridge.py` silently swallows network errors. |
 | 2026-04-xx | Grok (`grok-3-mini`) is primary AI provider; Claude/OpenAI kept as legacy | Cost-driven. Anthropic/OpenAI wired via `ai_provider.py` but default `AI_PRIMARY_PROVIDER=grok`. |
@@ -223,6 +235,12 @@ Sensitive env highlights:
 - Completed: `.claude/project-state.md` + `.claude/codebase-map.md` written
 - Blocked on: nothing — dossier is read-only
 - Next up: user picks one of the three handoff options below
+
+### 2026-04-23 — Decimal enforcement Phases 2–3 + backtester fix
+- Worked on: Completed the three-PR Decimal enforcement plan from `docs/DECIMAL_ENFORCEMENT_PLAN.md`; fixed one latent production bug in `backtester._generate_rrms_signals` caught by advisor review
+- Completed: Phase 2 (`f63b858`), Phase 3 (`b36ee17`), backtester boundary fix (`7ab9e03`). 189/191 targeted tests pass (2 pre-existing "Kite not connected" failures unrelated to Decimal work). Ruff clean across `mcp_server/` + `tests/`. Project dossier updated.
+- Blocked on: nothing. Branch `feat/money-helpers` has 5 local commits ahead of `origin` — user directive needed on push + PR creation.
+- Next up (user decision): (a) push + open PR for the full Decimal series, (b) run paper-mode smoke before pushing, or (c) tackle the next MED TODO (mcp_server.py router split or AI_REPORT_MODEL update).
 
 ---
 
