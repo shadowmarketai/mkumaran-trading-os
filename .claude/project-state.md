@@ -89,7 +89,8 @@ Ordered by priority. Top item is what `/resume` suggests next.
 - [ ] **MED** — Break up `mcp_server/mcp_server.py` (6623 lines, 148 route decorators) into FastAPI routers by domain (auth / signals / trades / options / admin / tools).
 - [ ] **MED** — Update `AI_REPORT_MODEL` default. Currently `claude-haiku-4-5-20251001` in `config.py:214`. Claude Haiku 4.5 is supported, but Opus 4.7 / Sonnet 4.6 are the current latest — verify cost/quality trade and decide.
 - [ ] **MED** — Rotate JWT secret + strengthen auth default. `JWT_SECRET_KEY` default in `config.py` is the literal string `"change-this-in-production"`; safe today only because `AUTH_ENABLED=false` by default.
-- [ ] **MED** — Fix 2 pre-existing `test_order_manager`/`test_paper_trading` failures asserting "Kite not connected" — message was changed to "No broker connected ..." during the Angel broker merge; tests were never updated. Unrelated to Decimal work.
+- [x] **MED** — Fixed 2 pre-existing `test_order_manager`/`test_paper_trading` failures asserting "Kite not connected" — renamed to `test_no_broker_blocks_order` / `test_live_mode_fails_without_broker` and matched the current "No broker connected" copy from `_validate_broker()` (`894d350`).
+- [ ] **HIGH** — **GitHub Actions is not firing** on any push/PR since 2026-04-22. CI last ran ~24h ago. Not a workflow-config issue (unchanged for weeks); likely repo-setting (Settings → Actions → General → Allow actions) or GitHub billing/quota. PR #11 can't be CI-verified until this is unblocked.
 - [ ] **MED** — Fix `sector_picker.fetch_rrms_setup` stale call to non-existent `engine.calculate_from_levels` — wrapped in `try/except`, so silently returns fallback. Pre-existing dead code path.
 - [ ] **LOW** — Validate `dashboard_dist/` checked-in state. Directory exists at repo root (likely a stale pre-container build artifact). Dockerfile rebuilds dashboard in stage 1; the top-level folder may be dead weight.
 - [ ] **LOW** — Decide fate of `skills/shadow-3d-scroll/` and the landing/marketing surfaces in the dashboard. CLAUDE.md explicitly bans the scroll skill on `dashboard/` routes; usage should be limited to `LandingPage.tsx`.
@@ -241,6 +242,12 @@ Sensitive env highlights:
 - Completed: Phase 2 (`f63b858`), Phase 3 (`b36ee17`), backtester boundary fix (`7ab9e03`). 189/191 targeted tests pass (2 pre-existing "Kite not connected" failures unrelated to Decimal work). Ruff clean across `mcp_server/` + `tests/`. Project dossier updated.
 - Blocked on: nothing. Branch `feat/money-helpers` has 5 local commits ahead of `origin` — user directive needed on push + PR creation.
 - Next up (user decision): (a) push + open PR for the full Decimal series, (b) run paper-mode smoke before pushing, or (c) tackle the next MED TODO (mcp_server.py router split or AI_REPORT_MODEL update).
+
+### 2026-04-23 (continued) — PR bundling + test hygiene
+- Worked on: pushed `feat/money-helpers`; retargeted PR #11 from `docs/decimal-enforcement-plan` to `main`, bundling the full 14-commit stack (Claude overlay → schema consolidation Phases 1–4 → Vitest harness → Decimal Phases 1–3 → backtester fix → dossier + this session log). PR body updated to list the seven superseded PRs (#3 #4 #5 #6 #8 #9 #10) that auto-close on merge.
+- Also cleared 2 pre-existing stale-assertion failures (`test_no_kite_blocks_order`, `test_live_mode_fails_without_kite`) that would have blocked CI-green (`894d350`).
+- Blocked on: **GitHub Actions not firing on any branch since 2026-04-22 — repo-level setting or billing issue, needs owner action.** PR #11 has no CI checks attached. Already tried empty-commit force-push + close/reopen PR — no dice.
+- Next up: (a) repo owner investigates Actions settings so CI can verify PR #11, or (b) merge without CI verification (risky — main's last CI run was red with many pre-existing assertion failures unrelated to this PR), or (c) move on to paper-mode smoke / next MED TODO while Actions is debugged.
 
 ---
 
