@@ -54,7 +54,7 @@ NEUROLINKED_TOKEN=...    # tenant: trading_os. Request from brain.shadowmarket.a
 | **Broker (Goodwill)** | `GWC_API_KEY`, `GWC_API_SECRET`, `GWC_CLIENT_ID`, `GWC_REDIRECT_URL`, `GOODWILL_PASSWORD`, `GOODWILL_TOTP_KEY` | optional | OAuth-based. |
 | **AI providers** | `AI_PRIMARY_PROVIDER` | optional | `grok` (default), `kimi`, `anthropic`, `openai`. |
 | | `GROK_API_KEY` / `KIMI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | **≥1 required** | Whichever matches `AI_PRIMARY_PROVIDER`. Debate validator uses whichever is configured. |
-| | `AI_REPORT_MODEL` | optional | Default `claude-haiku-4-5-20251001`. Only used if Anthropic is configured. |
+| | `CLAUDE_MODEL` | optional | Default `claude-haiku-4-5-20251001` (consumed in `ai_provider.py`). Set to `claude-sonnet-4-6` or `claude-opus-4-7` for higher quality at higher cost. |
 | **Alerts** | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | **required in practice** | Signal delivery mechanism. Bot must be in the chat. `TELEGRAM_SIGNALS_ONLY=true` by default. |
 | **Google Sheets** | `GOOGLE_SHEET_ID` | optional | Enables accuracy-tracking auto-sync. |
 | | `GOOGLE_SHEETS_CREDENTIALS` | optional | Defaults to `data/service_account.json`. |
