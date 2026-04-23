@@ -310,12 +310,13 @@ class TestOrderManagerSafety:
         from mcp_server.order_manager import OrderManager
         return OrderManager(kite=None, capital=capital)
 
-    def test_no_kite_blocks_order(self):
-        """Without Kite connection, orders must be rejected."""
+    def test_no_broker_blocks_order(self):
+        """Without Kite OR Angel connection, orders must be rejected."""
         mgr = self._manager()
         result = mgr.place_order("NSE:RELIANCE", "BUY", qty=10, price=2500)
         assert result.success is False
-        assert "Kite not connected" in result.message
+        # Message changed from "Kite not connected" when Angel broker support landed.
+        assert "No broker connected" in result.message
 
     def test_max_positions_limit(self):
         from mcp_server.order_manager import MAX_OPEN_POSITIONS
@@ -426,7 +427,11 @@ class TestOrderManagerSafety:
 class TestOrderEndpoints:
 
     @pytest.mark.asyncio
-    async def test_place_order_no_kite(self, async_client):
+    async def test_place_order_rejects_oversize(self, async_client):
+        # CI runs with PAPER_MODE=true, so the broker check is bypassed.
+        # qty=10 × price=2500 = ₹25k order value, which is 25% of the default
+        # ₹100k capital and exceeds the 10% per-position safety limit —
+        # the order must still be rejected, just on a different code path.
         resp = await async_client.post("/tools/place_order", json={
             "ticker": "NSE:RELIANCE",
             "direction": "BUY",
@@ -436,7 +441,7 @@ class TestOrderEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is False
-        assert "Kite not connected" in data["message"]
+        assert "Position size" in data["message"] or "No broker connected" in data["message"]
 
     @pytest.mark.asyncio
     async def test_order_status_endpoint(self, async_client):
