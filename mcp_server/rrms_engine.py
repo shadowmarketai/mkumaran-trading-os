@@ -3,31 +3,40 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
+from decimal import Decimal
 
 import pandas as pd
 
 from mcp_server.config import settings
+from mcp_server.money import Numeric, round_tick, to_money
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class RRMSResult:
-    """Result of RRMS calculation."""
+    """Result of an RRMS calculation.
+
+    Money-shaped fields are Decimal (rounded to exchange tick via
+    mcp_server.money.round_tick). `rrr` is dimensionless but kept as
+    Decimal so a single exact-arithmetic chain runs from inputs to
+    output. Integer position size, boolean validity flag, and string
+    ticker/direction/reason stay in their natural types.
+    """
     ticker: str
     direction: str
-    cmp: float
-    ltrp: float
-    pivot_high: float
-    entry_price: float
-    stop_loss: float
-    target: float
-    risk_per_share: float
-    reward_per_share: float
-    rrr: float
+    cmp: Decimal
+    ltrp: Decimal
+    pivot_high: Decimal
+    entry_price: Decimal
+    stop_loss: Decimal
+    target: Decimal
+    risk_per_share: Decimal
+    reward_per_share: Decimal
+    rrr: Decimal
     qty: int
-    risk_amt: float
-    potential_profit: float
+    risk_amt: Decimal
+    potential_profit: Decimal
     is_valid: bool
     rejection_reason: str
 
@@ -47,21 +56,22 @@ class RRMSEngine:
 
     def __init__(
         self,
-        capital: float = 0,
-        risk_pct: float = 0,
+        capital: Numeric = 0,
+        risk_pct: Numeric = 0,
         min_rrr: float = 0,
     ):
-        self.capital = capital or settings.RRMS_CAPITAL
-        self.risk_pct = risk_pct or settings.RRMS_RISK_PCT
-        self.min_rrr = min_rrr or settings.RRMS_MIN_RRR
-        self.risk_amt = self.capital * self.risk_pct
+        # `or` semantics: a zero-valued override falls back to settings.
+        self.capital: Decimal = to_money(capital) if capital else settings.RRMS_CAPITAL
+        self.risk_pct: Decimal = to_money(risk_pct) if risk_pct else settings.RRMS_RISK_PCT
+        self.min_rrr: float = min_rrr or settings.RRMS_MIN_RRR
+        self.risk_amt: Decimal = self.capital * self.risk_pct
 
     def calculate(
         self,
         ticker: str,
-        cmp: float,
-        ltrp: float,
-        pivot_high: float,
+        cmp: Numeric,
+        ltrp: Numeric,
+        pivot_high: Numeric,
         direction: str = "LONG",
     ) -> RRMSResult:
         """
@@ -77,31 +87,39 @@ class RRMSEngine:
         Returns:
             RRMSResult with all position sizing details
         """
+        cmp_d = to_money(cmp)
+        ltrp_d = to_money(ltrp)
+        pivot_d = to_money(pivot_high)
         if direction == "LONG":
-            return self._calculate_long(ticker, cmp, ltrp, pivot_high)
+            return self._calculate_long(ticker, cmp_d, ltrp_d, pivot_d)
         else:
-            return self._calculate_short(ticker, cmp, ltrp, pivot_high)
+            return self._calculate_short(ticker, cmp_d, ltrp_d, pivot_d)
 
     def _calculate_long(
-        self, ticker: str, cmp: float, ltrp: float, pivot_high: float
+        self,
+        ticker: str,
+        cmp: Decimal,
+        ltrp: Decimal,
+        pivot_high: Decimal,
     ) -> RRMSResult:
         """Calculate for LONG position."""
         # Entry trigger: CMP must be within 2% of LTRP
-        entry_zone_upper = ltrp * 1.02
+        entry_zone_upper = ltrp * Decimal("1.02")
+        zero = Decimal("0")
 
         if cmp > entry_zone_upper:
             return RRMSResult(
                 ticker=ticker, direction="LONG", cmp=cmp,
                 ltrp=ltrp, pivot_high=pivot_high,
-                entry_price=cmp, stop_loss=0, target=pivot_high,
-                risk_per_share=0, reward_per_share=0, rrr=0,
-                qty=0, risk_amt=self.risk_amt, potential_profit=0,
+                entry_price=cmp, stop_loss=zero, target=pivot_high,
+                risk_per_share=zero, reward_per_share=zero, rrr=zero,
+                qty=0, risk_amt=self.risk_amt, potential_profit=zero,
                 is_valid=False,
                 rejection_reason=f"CMP {cmp:.2f} > entry zone {entry_zone_upper:.2f} (LTRP*1.02)",
             )
 
         # Stop loss: 0.5% below LTRP
-        stop_loss = ltrp * 0.995
+        stop_loss = ltrp * Decimal("0.995")
 
         # Risk and reward
         risk_per_share = cmp - stop_loss
@@ -112,19 +130,19 @@ class RRMSEngine:
                 ticker=ticker, direction="LONG", cmp=cmp,
                 ltrp=ltrp, pivot_high=pivot_high,
                 entry_price=cmp, stop_loss=stop_loss, target=pivot_high,
-                risk_per_share=0, reward_per_share=reward_per_share, rrr=0,
-                qty=0, risk_amt=self.risk_amt, potential_profit=0,
+                risk_per_share=zero, reward_per_share=reward_per_share, rrr=zero,
+                qty=0, risk_amt=self.risk_amt, potential_profit=zero,
                 is_valid=False,
                 rejection_reason="CMP below stop loss -- no valid entry",
             )
 
         rrr = reward_per_share / risk_per_share
 
-        # Position sizing
+        # Position sizing — both operands are Decimal, math.floor truncates to int.
         qty = math.floor(self.risk_amt / risk_per_share)
         potential_profit = qty * reward_per_share
 
-        # Validate minimum RRR
+        # Validate minimum RRR (Decimal vs float comparison is supported)
         is_valid = rrr >= self.min_rrr and qty > 0
         rejection_reason = ""
         if rrr < self.min_rrr:
@@ -135,13 +153,13 @@ class RRMSEngine:
         result = RRMSResult(
             ticker=ticker, direction="LONG", cmp=cmp,
             ltrp=ltrp, pivot_high=pivot_high,
-            entry_price=cmp, stop_loss=stop_loss, target=pivot_high,
-            risk_per_share=round(risk_per_share, 2),
-            reward_per_share=round(reward_per_share, 2),
-            rrr=round(rrr, 2),
+            entry_price=cmp, stop_loss=round_tick(stop_loss, ticker), target=pivot_high,
+            risk_per_share=round_tick(risk_per_share, ticker),
+            reward_per_share=round_tick(reward_per_share, ticker),
+            rrr=round_tick(rrr, "NSE"),  # dimensionless ratio, 2dp
             qty=qty,
-            risk_amt=round(self.risk_amt, 2),
-            potential_profit=round(potential_profit, 2),
+            risk_amt=round_tick(self.risk_amt, ticker),
+            potential_profit=round_tick(potential_profit, ticker),
             is_valid=is_valid,
             rejection_reason=rejection_reason,
         )
@@ -154,24 +172,29 @@ class RRMSEngine:
         return result
 
     def _calculate_short(
-        self, ticker: str, cmp: float, ltrp: float, pivot_high: float
+        self,
+        ticker: str,
+        cmp: Decimal,
+        ltrp: Decimal,
+        pivot_high: Decimal,
     ) -> RRMSResult:
         """Calculate for SHORT position (reversed logic)."""
+        zero = Decimal("0")
         # For shorts: entry near pivot_high, target at ltrp, SL above pivot_high
-        entry_zone_lower = pivot_high * 0.98
+        entry_zone_lower = pivot_high * Decimal("0.98")
 
         if cmp < entry_zone_lower:
             return RRMSResult(
                 ticker=ticker, direction="SHORT", cmp=cmp,
                 ltrp=ltrp, pivot_high=pivot_high,
-                entry_price=cmp, stop_loss=0, target=ltrp,
-                risk_per_share=0, reward_per_share=0, rrr=0,
-                qty=0, risk_amt=self.risk_amt, potential_profit=0,
+                entry_price=cmp, stop_loss=zero, target=ltrp,
+                risk_per_share=zero, reward_per_share=zero, rrr=zero,
+                qty=0, risk_amt=self.risk_amt, potential_profit=zero,
                 is_valid=False,
                 rejection_reason=f"CMP {cmp:.2f} < entry zone {entry_zone_lower:.2f} (pivot*0.98)",
             )
 
-        stop_loss = pivot_high * 1.005
+        stop_loss = pivot_high * Decimal("1.005")
         risk_per_share = stop_loss - cmp
         reward_per_share = cmp - ltrp
 
@@ -180,8 +203,8 @@ class RRMSEngine:
                 ticker=ticker, direction="SHORT", cmp=cmp,
                 ltrp=ltrp, pivot_high=pivot_high,
                 entry_price=cmp, stop_loss=stop_loss, target=ltrp,
-                risk_per_share=0, reward_per_share=reward_per_share, rrr=0,
-                qty=0, risk_amt=self.risk_amt, potential_profit=0,
+                risk_per_share=zero, reward_per_share=reward_per_share, rrr=zero,
+                qty=0, risk_amt=self.risk_amt, potential_profit=zero,
                 is_valid=False,
                 rejection_reason="CMP above stop loss -- no valid short entry",
             )
@@ -200,13 +223,13 @@ class RRMSEngine:
         return RRMSResult(
             ticker=ticker, direction="SHORT", cmp=cmp,
             ltrp=ltrp, pivot_high=pivot_high,
-            entry_price=cmp, stop_loss=round(stop_loss, 2), target=ltrp,
-            risk_per_share=round(risk_per_share, 2),
-            reward_per_share=round(reward_per_share, 2),
-            rrr=round(rrr, 2),
+            entry_price=cmp, stop_loss=round_tick(stop_loss, ticker), target=ltrp,
+            risk_per_share=round_tick(risk_per_share, ticker),
+            reward_per_share=round_tick(reward_per_share, ticker),
+            rrr=round_tick(rrr, "NSE"),
             qty=qty,
-            risk_amt=round(self.risk_amt, 2),
-            potential_profit=round(potential_profit, 2),
+            risk_amt=round_tick(self.risk_amt, ticker),
+            potential_profit=round_tick(potential_profit, ticker),
             is_valid=is_valid,
             rejection_reason=rejection_reason,
         )
@@ -214,7 +237,7 @@ class RRMSEngine:
     def auto_calculate(
         self,
         ticker: str,
-        cmp: float,
+        cmp: Numeric,
         df: pd.DataFrame,
         direction: str = "LONG",
         lookback: int = 20,

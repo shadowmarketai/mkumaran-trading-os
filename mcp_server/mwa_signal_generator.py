@@ -165,8 +165,10 @@ def generate_mwa_signals(
 
         rrr = (abs(target - entry)) / risk
 
-        # RRMS position sizing
-        risk_amt = settings.RRMS_CAPITAL * settings.RRMS_RISK_PCT
+        # RRMS position sizing — settings are Decimal (money zone); cast to
+        # float here because `risk` was computed from ATR/float OHLCV and this
+        # function is in the analysis zone.
+        risk_amt = float(settings.RRMS_CAPITAL * settings.RRMS_RISK_PCT)
         qty = floor(risk_amt / risk)
         if qty <= 0:
             qty = 1

@@ -1,6 +1,7 @@
 """Tests for OrderManager — trailing SL, partial exit, market hours, portfolio risk."""
 
 import pytest
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from datetime import date
 
@@ -173,8 +174,9 @@ class TestTrailingSL:
         # SHORT entry 600, SL 630, current 570 = +5% profit
         result = manager_with_short.update_trailing_sl("NSE:TATAMOTORS", 570.0)
         assert result["updated"]
-        # New SL = 570 * (1 + 0.02) = 581.4
-        assert result["new_sl"] == 581.40
+        # New SL = 570 * (1 + 0.02) = 581.40 exactly in Decimal; 581.4 in float
+        # is 581.3999…, so compare against the exact Decimal value.
+        assert result["new_sl"] == Decimal("581.40")
 
     def test_trail_short_only_moves_down(self, manager_with_short):
         # First trail
