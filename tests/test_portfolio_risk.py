@@ -1,5 +1,7 @@
 """Tests for portfolio risk management — sector concentration, asset class limits."""
 
+from decimal import Decimal
+
 from mcp_server.portfolio_risk import (
     get_sector,
     check_sector_concentration,
@@ -166,3 +168,27 @@ class TestPortfolioExposure:
         exp = get_portfolio_exposure([], 500000)
         assert exp["limits"]["max_sector_pct"] == MAX_SECTOR_PCT * 100
         assert exp["limits"]["max_asset_class_pct"] == MAX_ASSET_CLASS_PCT * 100
+
+    def test_exposure_values_are_decimal(self):
+        # Aggregate exposure lives in the Decimal zone; percentages stay float
+        # for stable dashboard-side equality. Assert both.
+        positions = [
+            {"ticker": "NSE:RELIANCE", "entry_price": 2500, "qty": 10},
+        ]
+        exp = get_portfolio_exposure(positions, 500000)
+        assert isinstance(exp["total_deployed"], Decimal)
+        assert isinstance(exp["deployed_pct"], float)
+        energy = exp["sector_breakdown"]["ENERGY"]
+        assert isinstance(energy["value"], Decimal)
+        assert isinstance(energy["pct"], float)
+
+    def test_decimal_entry_prices_dont_break_aggregation(self):
+        # OrderManager now stores entry_price as Decimal; portfolio_risk must
+        # aggregate them without TypeError and still return accurate values.
+        positions = [
+            {"ticker": "NSE:RELIANCE", "entry_price": Decimal("2500.50"), "qty": 10},
+            {"ticker": "NSE:TCS",      "entry_price": Decimal("3800.75"), "qty": 5},
+        ]
+        exp = get_portfolio_exposure(positions, 500000)
+        # 2500.50 × 10 + 3800.75 × 5 = 25005.00 + 19003.75 = 44008.75
+        assert exp["total_deployed"] == Decimal("44008.75")

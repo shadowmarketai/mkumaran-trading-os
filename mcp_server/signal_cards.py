@@ -1,6 +1,8 @@
 """Signal card formatters for Telegram messages."""
 import logging
 
+from mcp_server.money import Numeric, to_money
+
 logger = logging.getLogger(__name__)
 
 
@@ -8,12 +10,12 @@ def format_buy_signal(
     signal_id: int,
     ticker: str,
     company_name: str,
-    entry_price: float,
-    stop_loss: float,
-    target: float,
-    rrr: float,
+    entry_price: Numeric,
+    stop_loss: Numeric,
+    target: Numeric,
+    rrr: Numeric,
     qty: int,
-    risk_amt: float,
+    risk_amt: Numeric,
     pattern: str,
     ai_confidence: int,
     ai_reasoning: str,
@@ -22,16 +24,26 @@ def format_buy_signal(
     tv_confirmed: bool,
     tier: int,
     source: str,
-    ltrp: float = 0,
+    ltrp: Numeric = 0,
     technical_summary: str = "",
     fundamental_screen: dict | None = None,
     boosts: list[str] | None = None,
 ) -> str:
-    """Format a BUY signal card for Telegram."""
+    """Format a BUY signal card for Telegram.
+
+    Accepts Numeric for money fields so callers can pass Decimal (from
+    RRMSResult/DB) or float (legacy) without wrapping. All internal
+    arithmetic runs in Decimal to keep the upside% exact.
+    """
+    entry_price = to_money(entry_price)
+    stop_loss = to_money(stop_loss)
+    target = to_money(target)
+    risk_amt = to_money(risk_amt)
+    ltrp_d = to_money(ltrp)
     tv_badge = " \u00b7 TV CONFIRMED" if tv_confirmed else ""
     total_cost = qty * entry_price
     upside_pct = round((target - entry_price) / entry_price * 100, 1)
-    ltrp_suffix = f" \u00b7 within 2% of LTRP \u20b9{ltrp:,.2f}" if ltrp else ""
+    ltrp_suffix = f" \u00b7 within 2% of LTRP \u20b9{ltrp_d:,.2f}" if ltrp_d else ""
 
     card = f"""\U0001f7e2 BUY SIGNAL \u2014 SWING TRADE{tv_badge}
 Tier {tier} \u00b7 {source} \u00b7 #{signal_id:03d}
@@ -87,12 +99,12 @@ def format_short_signal(
     signal_id: int,
     ticker: str,
     company_name: str,
-    entry_price: float,
-    stop_loss: float,
-    target: float,
-    rrr: float,
+    entry_price: Numeric,
+    stop_loss: Numeric,
+    target: Numeric,
+    rrr: Numeric,
     qty: int,
-    risk_amt: float,
+    risk_amt: Numeric,
     pattern: str,
     ai_confidence: int,
     ai_reasoning: str,
@@ -105,6 +117,10 @@ def format_short_signal(
     boosts: list[str] | None = None,
 ) -> str:
     """Format a SHORT signal card for Telegram."""
+    entry_price = to_money(entry_price)
+    stop_loss = to_money(stop_loss)
+    target = to_money(target)
+    risk_amt = to_money(risk_amt)
     tv_badge = " \u00b7 TV CONFIRMED" if tv_confirmed else ""
     total_cost = qty * entry_price
     downside_pct = round((entry_price - target) / entry_price * 100, 1)
@@ -162,10 +178,16 @@ def format_fo_signal(
 def format_alert(
     alert_type: str,
     ticker: str,
-    cmp: float,
+    cmp: Numeric,
     details: dict,
 ) -> str:
-    """Format alert messages (entry zone, target hit, SL hit, deteriorating)."""
+    """Format alert messages (entry zone, target hit, SL hit, deteriorating).
+
+    `cmp` accepted as Numeric so callers can forward Decimal LTP values
+    straight from the money zone. `details` dict values are formatted in
+    place via f-string specifiers that handle both Decimal and float.
+    """
+    cmp = to_money(cmp)
     if alert_type == "ENTRY_ZONE":
         return f"""\u26a1 ENTRY ZONE ALERT \u2014 {ticker}
 CMP: \u20b9{cmp:,.2f} \u00b7 Within 2% of LTRP \u20b9{details.get('ltrp', 0):,.2f}

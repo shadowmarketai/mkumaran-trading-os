@@ -1,5 +1,6 @@
 """Tests for Signal Cards and Validator."""
 
+from decimal import Decimal
 from unittest.mock import patch
 
 from mcp_server.signal_cards import (
@@ -28,6 +29,21 @@ def test_buy_signal_basic():
     assert "TV CONFIRMED" in card
     assert "2,500.00" in card
     assert "#001" in card
+
+
+def test_buy_signal_accepts_decimal_money_fields():
+    # Callers flowing straight from RRMSResult pass Decimal — must not error.
+    card = format_buy_signal(
+        signal_id=42, ticker="NSE:TCS", company_name="TCS",
+        entry_price=Decimal("3800.75"), stop_loss=Decimal("3750.50"),
+        target=Decimal("3950.00"), rrr=Decimal("3.0"), qty=10,
+        risk_amt=Decimal("502.50"), pattern="Breakout",
+        ai_confidence=70, ai_reasoning="Strong",
+        mwa_direction="BULL", scanner_count=10, tv_confirmed=False,
+        tier=2, source="RRMS",
+    )
+    assert "3,800.75" in card
+    assert "3,950.00" in card
 
 
 def test_buy_signal_with_ltrp():
