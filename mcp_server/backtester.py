@@ -215,15 +215,19 @@ def _generate_rrms_signals(
 
         result = engine.calculate(ticker, cmp, ltrp, pivot)
         if result.is_valid:
+            # RRMSResult lives in the Decimal zone; backtester lives in the
+            # analysis zone (numpy/pandas OHLCV). Cross the boundary here so
+            # downstream _simulate_trades can multiply against float slippage
+            # and pandas float64 high/low columns without Decimal×float errors.
             signals.append({
                 "bar_idx": i,
                 "direction": "LONG",
-                "entry": result.entry_price,
-                "stop_loss": result.stop_loss,
-                "target": result.target,
+                "entry": float(result.entry_price),
+                "stop_loss": float(result.stop_loss),
+                "target": float(result.target),
                 "qty": result.qty,
-                "risk_per_share": result.risk_per_share,
-                "reward_per_share": result.reward_per_share,
+                "risk_per_share": float(result.risk_per_share),
+                "reward_per_share": float(result.reward_per_share),
                 "source": "rrms",
                 "confidence": 60,
             })
