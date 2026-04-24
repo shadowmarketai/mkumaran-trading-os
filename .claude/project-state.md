@@ -3,9 +3,9 @@
 > Living document. Updated at the end of every meaningful Claude Code session.
 > Every agent reads this FIRST before doing work.
 
-**Last updated:** 2026-04-24 by Claude Opus 4.7 (Decimal series merged + test-debt swept)
-**Dossier version:** 3
-**Prior versions:** v1 2026-04-22 (`onboarder` initial dossier) → v2 2026-04-23 (Decimal Phase 2–3 + backtester boundary fix)
+**Last updated:** 2026-04-24 by Claude Opus 4.7 (router split complete — mcp_server.py 6,635→2,761 lines, 148 routes → 15 domain routers)
+**Dossier version:** 4
+**Prior versions:** v1 2026-04-22 (`onboarder` initial dossier) → v2 2026-04-23 (Decimal Phase 2–3 + backtester boundary fix) → v3 2026-04-24 AM (Decimal series merged + test-debt swept)
 
 ---
 
@@ -20,7 +20,7 @@
 | **Started** | ~2026-04-15 (first commit on current repo; code is older, history likely squashed) |
 | **Target ship date** | ongoing (daily live use; ~40 commits in April 2026 alone) |
 | **Primary contact** | shadowmarketai (mkumaran2931@gmail.com) |
-| **Current branch** | `main` — everything shipped as of 2026-04-24. No in-flight feature branches. |
+| **Current branch** | `refactor/router-split-phase-4-cleanup` → PR #32 open (Phase 4, supersedes #27). Earlier phases 1–3 all merged to main. |
 
 ---
 
@@ -28,7 +28,7 @@
 
 | Layer | Technology | Version | Notes |
 |---|---|---|---|
-| Backend | Python + FastAPI | 3.11 / 0.104.1 | Single monolith: `mcp_server/mcp_server.py` (6623 lines, 148 routes) |
+| Backend | Python + FastAPI | 3.11 / 0.104.1 | Factory + 15 domain routers under `mcp_server/routers/` (health, webhooks, wallstreet, watchlist, brokers, options, fno, selfdev, signals, trades, scanners, backtest, market_data, admin, auth). `mcp_server/mcp_server.py` is down to 2,761 lines — lifespan, middleware, DB wiring, exception handler. No `@app.<method>` route decorators remain. |
 | ORM / DB driver | SQLAlchemy + psycopg2 | 2.0.23 / 2.9.9 | Declarative models in `mcp_server/models.py` |
 | Migrations | Alembic | ≥1.13 | **Sole source of schema truth** as of 2026-04-22: `schema.sql` retired, `_add_missing_columns()` runtime escape hatch removed. Alembic runs on backend boot via `db.run_alembic_upgrade()`. |
 | Database | PostgreSQL | 16-alpine | `pool_size=10, max_overflow=20`. Fresh installs and existing DBs both bootstrap via Alembic upgrade-to-head on app startup. |
