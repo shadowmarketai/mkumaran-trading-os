@@ -1082,6 +1082,7 @@ app = FastAPI(
 
 # ── Per-domain routers (progressive extraction) ─────────────
 # See docs/MCP_SERVER_ROUTER_SPLIT_PLAN.md for the full layout.
+from mcp_server.routers import backtest as _router_backtest  # noqa: E402
 from mcp_server.routers import brokers as _router_brokers  # noqa: E402
 from mcp_server.routers import fno as _router_fno  # noqa: E402
 from mcp_server.routers import health as _router_health  # noqa: E402
@@ -1092,6 +1093,7 @@ from mcp_server.routers import trades as _router_trades  # noqa: E402
 from mcp_server.routers import wallstreet as _router_wallstreet  # noqa: E402
 from mcp_server.routers import watchlist as _router_watchlist  # noqa: E402
 from mcp_server.routers import webhooks as _router_webhooks  # noqa: E402
+app.include_router(_router_backtest.router)
 app.include_router(_router_brokers.router)
 app.include_router(_router_fno.router)
 app.include_router(_router_health.router)
@@ -1634,31 +1636,7 @@ async def api_chart_ohlcv(
     return {"status": "ok", "ticker": ticker, "interval": interval, "bars": bars}
 
 
-@app.post("/tools/run_rrms")
-async def tool_run_rrms(
-    ticker: str,
-    cmp: float = 0,
-    ltrp: float = 0,
-    pivot_high: float = 0,
-    direction: str = "LONG",
-):
-    """Run RRMS position sizing calculation."""
-    from mcp_server.rrms_engine import RRMSEngine
-
-    engine = RRMSEngine()
-
-    if cmp <= 0:
-        # Try to fetch live price via yfinance
-        from mcp_server.nse_scanner import get_stock_data
-
-        df = await asyncio.to_thread(get_stock_data, ticker, "5d", "1d")
-        if df is not None and not df.empty:
-            cmp = float(df["Close"].iloc[-1])
-        else:
-            return {"status": "error", "message": "CMP required (auto-fetch failed)"}
-
-    result = engine.calculate(ticker, cmp, ltrp, pivot_high, direction)
-    return {"status": "ok", "tool": "run_rrms", **asdict(result)}
+# run_rrms moved to mcp_server.routers.backtest in Phase 3b.
 
 
 @app.post("/tools/detect_pattern")
@@ -1799,13 +1777,7 @@ async def tool_detect_rl(ticker: str, timeframe: str = "day"):
     }
 
 
-@app.post("/tools/backtest_confluence")
-async def tool_backtest_confluence(ticker: str, days: int = 365):
-    """Compare all strategies side-by-side on a stock."""
-    from mcp_server.backtester import run_backtest_all_strategies
-
-    result = run_backtest_all_strategies(ticker, days=days)
-    return {"status": "ok", "tool": "backtest_confluence", **result}
+# backtest_confluence moved to mcp_server.routers.backtest in Phase 3b.
 
 
 @app.post("/tools/get_mwa_score")
@@ -2960,66 +2932,10 @@ async def _auto_sync_sheets(signal_data: dict = None, mwa_data: dict = None):
         logger.debug("Stitch auto-sync skipped: %s", e)
 
 
-@app.post("/tools/backtest_strategy")
-async def tool_backtest_strategy(
-    ticker: str,
-    strategy: str = "rrms",
-    days: int = 365,
-):
-    """Backtest a strategy on historical data."""
-    from mcp_server.backtester import run_backtest
-
-    result = run_backtest(ticker, strategy=strategy, days=days)
-    return {"status": "ok", "tool": "backtest_strategy", **result}
+# backtest_strategy moved to mcp_server.routers.backtest in Phase 3b.
 
 
-@app.post("/tools/backtest_validate")
-async def tool_backtest_validate(
-    ticker: str,
-    strategy: str = "rrms",
-    days: int = 1095,
-    n_simulations: int = 1000,
-    n_bootstrap: int = 1000,
-    n_windows: int = 5,
-):
-    """Run a backtest and then put its results through three statistical
-    validation tests — Monte Carlo permutation, Bootstrap Sharpe CI, and
-    Walk-Forward consistency — to check whether the observed edge is real
-    or a lucky path. Adapted from Vibe-Trading's validation suite.
-
-    Interpretation guide:
-      - monte_carlo.p_value_sharpe < 0.05  → strategy beats random ordering
-      - bootstrap.ci_crosses_zero == false → Sharpe is robustly positive
-      - walk_forward.consistency_rate ≥ 0.6 → durable across regimes
-    """
-    from mcp_server.backtest_validation import run_full_validation, summarise
-    from mcp_server.backtester import run_backtest
-
-    def _compute() -> dict:
-        bt = run_backtest(ticker, strategy=strategy, days=days)
-        validation = run_full_validation(
-            bt,
-            monte_carlo_kwargs={"n_simulations": n_simulations},
-            bootstrap_kwargs={"n_bootstrap": n_bootstrap},
-            walk_forward_kwargs={"n_windows": n_windows},
-        )
-        return {
-            "status": "ok",
-            "tool": "backtest_validate",
-            "ticker": ticker,
-            "strategy": strategy,
-            "summary": summarise(validation),
-            "backtest_metrics": {
-                k: bt.get(k) for k in (
-                    "total_trades", "win_rate", "profit_factor",
-                    "sharpe_ratio", "max_drawdown_pct",
-                )
-            },
-            "validation": validation,
-        }
-
-    # Monte Carlo + bootstrap loops are CPU-bound; run off the event loop.
-    return await asyncio.to_thread(_compute)
+# backtest_validate moved to mcp_server.routers.backtest in Phase 3b.
 
 
 # `/tools/manage_watchlist` moved to mcp_server.routers.watchlist in Phase 1d.
@@ -3377,50 +3293,12 @@ async def api_accuracy(
     }
 
 
-class BacktestRequest(BaseModel):
-    ticker: str
-    strategy: str = "rrms"
-    days: int = 180
+# backtest_request_models moved to mcp_server.routers.backtest in Phase 3b.
+
+# api_backtest moved to mcp_server.routers.backtest in Phase 3b.
 
 
-class BacktestCompareRequest(BaseModel):
-    ticker: str
-    days: int = 1095
-
-
-@app.post("/api/backtest")
-async def api_backtest(req: BacktestRequest):
-    """Run backtest from dashboard."""
-    from mcp_server.backtester import run_backtest
-
-    result = run_backtest(req.ticker, strategy=req.strategy, days=req.days)
-    return result
-
-
-@app.post("/api/backtest/compare")
-async def api_backtest_compare(req: BacktestCompareRequest):
-    """Compare all 6 strategies side-by-side with equity curves."""
-    from mcp_server.backtester import run_backtest_all_strategies
-
-    result = run_backtest_all_strategies(req.ticker, days=req.days)
-
-    # Reshape comparison into strategies array for frontend
-    strategies = result.get("comparison", [])
-
-    # Extract equity curves per strategy from detail results
-    equity_curves: dict = {}
-    details = result.get("details", {})
-    for strat_name, detail in details.items():
-        if isinstance(detail, dict) and "equity_curve" in detail:
-            equity_curves[strat_name] = detail["equity_curve"]
-
-    return {
-        "ticker": result.get("ticker", req.ticker),
-        "period": result.get("period", f"{req.days} days"),
-        "strategies": strategies,
-        "equity_curves": equity_curves,
-        "best_strategy": result.get("best_strategy", "none"),
-    }
+# api_backtest_compare moved to mcp_server.routers.backtest in Phase 3b.
 
 
 # ============================================================
