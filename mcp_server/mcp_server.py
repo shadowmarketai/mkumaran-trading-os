@@ -3,14 +3,12 @@ import json
 import logging
 import os
 
-import pandas as pd
 from contextlib import asynccontextmanager
-from dataclasses import asdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Depends, Query, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -23,15 +21,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from mcp_server.config import settings
-from mcp_server.db import get_db, init_db, run_alembic_upgrade, SessionLocal
+from mcp_server.db import init_db, run_alembic_upgrade, SessionLocal
 from mcp_server.models import (
     ActiveTrade,
     MWAScore,
-    ScannerReview,
     Signal,
-)
-from mcp_server.asset_registry import (
-    parse_ticker, get_asset_class,
 )
 
 logger = logging.getLogger(__name__)
@@ -1087,6 +1081,7 @@ from mcp_server.routers import fno as _router_fno  # noqa: E402
 from mcp_server.routers import health as _router_health  # noqa: E402
 from mcp_server.routers import market_data as _router_market_data  # noqa: E402
 from mcp_server.routers import options as _router_options  # noqa: E402
+from mcp_server.routers import scanners as _router_scanners  # noqa: E402
 from mcp_server.routers import selfdev as _router_selfdev  # noqa: E402
 from mcp_server.routers import signals as _router_signals  # noqa: E402
 from mcp_server.routers import trades as _router_trades  # noqa: E402
@@ -1101,6 +1096,7 @@ app.include_router(_router_fno.router)
 app.include_router(_router_health.router)
 app.include_router(_router_market_data.router)
 app.include_router(_router_options.router)
+app.include_router(_router_scanners.router)
 app.include_router(_router_selfdev.router)
 app.include_router(_router_signals.router)
 app.include_router(_router_trades.router)
@@ -1245,7 +1241,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(AuthMiddleware)
 
 
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled error on %s: %s", request.url.path, exc, exc_info=True)
@@ -1259,9 +1254,6 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-
-
-
 # `/api/info`, `/health`, `/api/exchanges` were moved to
 # `mcp_server.routers.health` in the Phase 1a router split — see
 # docs/MCP_SERVER_ROUTER_SPLIT_PLAN.md. Router is included further down
@@ -1273,49 +1265,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ============================================================
 
 
-# auth_login moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_me moved to mcp_server.routers.auth in Phase 3e.
-
-
 # ── Multi-Auth: Register, Login, Google, OTP ──────────────────
-
-# auth_google moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_send_otp moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_verify_otp moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_register moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_user_login moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_reset_password moved to mcp_server.routers.auth in Phase 3e.
 
 
 # ── BYOK: User API Keys ──────────────────────────────────────
 
-# save_api_keys moved to mcp_server.routers.auth in Phase 3e.
-
-
-# get_api_keys moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_config moved to mcp_server.routers.auth in Phase 3e.
-
 
 # ── Tier Enforcement API ──────────────────────────────────────
-
-# api_user_tier moved to mcp_server.routers.auth in Phase 3e.
-
-
-# api_check_feature moved to mcp_server.routers.auth in Phase 3e.
 
 
 # ============================================================
@@ -1324,278 +1280,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # `/api/exchanges` moved to mcp_server.routers.health in Phase 1a.
-
-
-@app.post("/tools/get_stock_data")
-async def tool_get_stock_data(
-    ticker: str,
-    timeframe: str = "day",
-    days: int = 365,
-):
-    """Get OHLCV data for any instrument via yfinance. Supports NSE, BSE, MCX, CDS, NFO."""
-    from mcp_server.nse_scanner import get_stock_data
-
-    # get_stock_data does blocking network calls — run in worker thread
-    df = await asyncio.to_thread(get_stock_data, ticker, "1y", "1d")
-    if df is None or df.empty:
-        return {"status": "error", "message": f"No data for {ticker}"}
-
-    exchange_str, symbol = parse_ticker(ticker)
-
-    return {
-        "status": "ok",
-        "tool": "get_stock_data",
-        "ticker": ticker,
-        "exchange": exchange_str,
-        "asset_class": get_asset_class(ticker).value,
-        "timeframe": timeframe,
-        "bars": len(df),
-        "latest": {
-            "date": str(df.index[-1]),
-            "open": round(float(df["open"].iloc[-1]), 2),
-            "high": round(float(df["high"].iloc[-1]), 2),
-            "low": round(float(df["low"].iloc[-1]), 2),
-            "close": round(float(df["close"].iloc[-1]), 2),
-            "volume": int(df["volume"].iloc[-1]),
-        },
-    }
-
-
-@app.get("/api/chart/{ticker:path}")
-async def api_chart_ohlcv(
-    ticker: str,
-    interval: str = Query("1D", regex="^(1m|5m|15m|1h|1H|1D|1d)$"),
-    days: int = Query(30, ge=1, le=365),
-):
-    """Return chart-ready OHLCV bars for lightweight-charts frontend."""
-    from mcp_server.data_provider import get_stock_data
-
-    # Map frontend intervals to data_provider intervals
-    _interval_map = {
-        "1m": "1m", "5m": "5m", "15m": "15m",
-        "1h": "1h", "1H": "1h", "1D": "1d", "1d": "1d",
-    }
-    data_interval = _interval_map.get(interval, "1d")
-
-    # Map days to period string
-    if days <= 5:
-        period = "5d"
-    elif days <= 30:
-        period = "1mo"
-    elif days <= 90:
-        period = "3mo"
-    elif days <= 180:
-        period = "6mo"
-    else:
-        period = "1y"
-
-    df = await asyncio.to_thread(get_stock_data, ticker, period, data_interval)
-    if df is None or df.empty:
-        return {"status": "error", "bars": [], "message": f"No data for {ticker}"}
-
-    bars = []
-    for idx, row in df.iterrows():
-        # idx may be a DatetimeIndex or a column
-        ts = idx
-        if hasattr(ts, "timestamp"):
-            time_val = int(ts.timestamp())
-        else:
-            time_val = int(pd.Timestamp(ts).timestamp()) if ts else 0
-        bars.append({
-            "time": time_val,
-            "open": round(float(row["open"]), 2),
-            "high": round(float(row["high"]), 2),
-            "low": round(float(row["low"]), 2),
-            "close": round(float(row["close"]), 2),
-            "volume": int(row["volume"]) if "volume" in row and row["volume"] == row["volume"] else 0,
-        })
-
-    return {"status": "ok", "ticker": ticker, "interval": interval, "bars": bars}
-
-
-# run_rrms moved to mcp_server.routers.backtest in Phase 3b.
-
-
-@app.post("/tools/detect_pattern")
-async def tool_detect_pattern(ticker: str, timeframe: str = "day"):
-    """Detect all 12 price patterns on a stock."""
-    from mcp_server.pattern_engine import PatternEngine
-    from mcp_server.nse_scanner import get_stock_data
-
-    df = await asyncio.to_thread(get_stock_data, ticker)
-    if df is None or df.empty:
-        return {"status": "error", "message": f"No data for {ticker}"}
-
-    engine = PatternEngine()
-    patterns = engine.detect_all(df)
-
-    return {
-        "status": "ok",
-        "tool": "detect_pattern",
-        "ticker": ticker,
-        "timeframe": timeframe,
-        "patterns_found": len(patterns),
-        "patterns": [asdict(p) for p in patterns],
-    }
-
-
-@app.post("/tools/detect_smc")
-async def tool_detect_smc(ticker: str, timeframe: str = "day"):
-    """Detect Smart Money Concepts (SMC/ICT) patterns on a stock."""
-    from mcp_server.smc_engine import SMCEngine
-    from mcp_server.nse_scanner import get_stock_data
-
-    df = await asyncio.to_thread(get_stock_data, ticker)
-    if df is None or df.empty:
-        return {"status": "error", "message": f"No data for {ticker}"}
-
-    engine = SMCEngine()
-    patterns = engine.detect_all(df)
-
-    return {
-        "status": "ok",
-        "tool": "detect_smc",
-        "ticker": ticker,
-        "timeframe": timeframe,
-        "patterns_found": len(patterns),
-        "patterns": [asdict(p) for p in patterns],
-    }
-
-
-@app.post("/tools/detect_wyckoff")
-async def tool_detect_wyckoff(ticker: str, timeframe: str = "day"):
-    """Detect Wyckoff market cycle patterns on a stock."""
-    from mcp_server.wyckoff_engine import WyckoffEngine
-    from mcp_server.nse_scanner import get_stock_data
-
-    df = await asyncio.to_thread(get_stock_data, ticker)
-    if df is None or df.empty:
-        return {"status": "error", "message": f"No data for {ticker}"}
-
-    engine = WyckoffEngine()
-    patterns = engine.detect_all(df)
-
-    return {
-        "status": "ok",
-        "tool": "detect_wyckoff",
-        "ticker": ticker,
-        "timeframe": timeframe,
-        "patterns_found": len(patterns),
-        "patterns": [asdict(p) for p in patterns],
-    }
-
-
-@app.post("/tools/detect_vsa")
-async def tool_detect_vsa(ticker: str, timeframe: str = "day"):
-    """Detect Volume Spread Analysis patterns on a stock."""
-    from mcp_server.vsa_engine import VSAEngine
-    from mcp_server.nse_scanner import get_stock_data
-
-    df = await asyncio.to_thread(get_stock_data, ticker)
-    if df is None or df.empty:
-        return {"status": "error", "message": f"No data for {ticker}"}
-
-    engine = VSAEngine()
-    patterns = engine.detect_all(df)
-
-    return {
-        "status": "ok",
-        "tool": "detect_vsa",
-        "ticker": ticker,
-        "timeframe": timeframe,
-        "patterns_found": len(patterns),
-        "patterns": [asdict(p) for p in patterns],
-    }
-
-
-@app.post("/tools/detect_harmonic")
-async def tool_detect_harmonic(ticker: str, timeframe: str = "day"):
-    """Detect Harmonic price patterns on a stock."""
-    from mcp_server.harmonic_engine import HarmonicEngine
-    from mcp_server.nse_scanner import get_stock_data
-
-    df = await asyncio.to_thread(get_stock_data, ticker)
-    if df is None or df.empty:
-        return {"status": "error", "message": f"No data for {ticker}"}
-
-    engine = HarmonicEngine()
-    patterns = engine.detect_all(df)
-
-    return {
-        "status": "ok",
-        "tool": "detect_harmonic",
-        "ticker": ticker,
-        "timeframe": timeframe,
-        "patterns_found": len(patterns),
-        "patterns": [asdict(p) for p in patterns],
-    }
-
-
-@app.post("/tools/detect_rl")
-async def tool_detect_rl(ticker: str, timeframe: str = "day"):
-    """Detect RL-inspired patterns (regime, VWAP, momentum, optimal entry) on a stock."""
-    from mcp_server.rl_engine import RLEngine
-    from mcp_server.nse_scanner import get_stock_data
-
-    df = await asyncio.to_thread(get_stock_data, ticker)
-    if df is None or df.empty:
-        return {"status": "error", "message": f"No data for {ticker}"}
-
-    engine = RLEngine()
-    patterns = engine.detect_all(df)
-
-    return {
-        "status": "ok",
-        "tool": "detect_rl",
-        "ticker": ticker,
-        "timeframe": timeframe,
-        "patterns_found": len(patterns),
-        "patterns": [asdict(p) for p in patterns],
-    }
-
-
-# backtest_confluence moved to mcp_server.routers.backtest in Phase 3b.
-
-
-@app.post("/tools/get_mwa_score")
-async def tool_get_mwa_score(db: Session = Depends(get_db)):
-    """Get current MWA breadth score from DB or calculate fresh."""
-    # Try to get today's score from DB
-    today = date.today()
-    score = db.query(MWAScore).filter(MWAScore.score_date == today).first()
-
-    if score:
-        return {
-            "status": "ok",
-            "tool": "get_mwa_score",
-            "date": str(score.score_date),
-            "direction": score.direction,
-            "bull_score": float(score.bull_score or 0),
-            "bear_score": float(score.bear_score or 0),
-            "bull_pct": float(score.bull_pct or 0),
-            "bear_pct": float(score.bear_pct or 0),
-            "promoted_stocks": score.promoted_stocks or [],
-            "fii_net": float(score.fii_net or 0),
-            "dii_net": float(score.dii_net or 0),
-        }
-
-    # No score yet today — return latest available
-    latest = db.query(MWAScore).order_by(desc(MWAScore.score_date)).first()
-    if latest:
-        return {
-            "status": "ok",
-            "tool": "get_mwa_score",
-            "date": str(latest.score_date),
-            "direction": latest.direction,
-            "bull_score": float(latest.bull_score or 0),
-            "bear_score": float(latest.bear_score or 0),
-            "bull_pct": float(latest.bull_pct or 0),
-            "bear_pct": float(latest.bear_pct or 0),
-            "promoted_stocks": latest.promoted_stocks or [],
-            "note": "Using latest available (not today)",
-        }
-
-    return {"status": "ok", "tool": "get_mwa_score", "message": "No MWA scores available yet"}
 
 
 # ── Background MWA scan jobs ─────────────────────────────────
@@ -1635,65 +1319,6 @@ def _run_mwa_scan_background(job_id: str) -> None:
         _mwa_jobs[job_id]["status"] = "failed"
         _mwa_jobs[job_id]["result"] = {"error": str(e), "traceback": traceback.format_exc()}
     _mwa_jobs[job_id]["finished"] = _now_ist().isoformat()
-
-
-@app.get("/tools/mwa_scan_status/{job_id}")
-async def tool_mwa_scan_status(job_id: str):
-    """Poll for MWA scan job status."""
-    job = _mwa_jobs.get(job_id)
-    if not job:
-        return {"error": "Job not found", "job_id": job_id}
-    resp = {"job_id": job_id, "status": job["status"], "started": job["started"]}
-    if job["status"] in ("completed", "failed"):
-        resp["finished"] = job.get("finished")
-        resp["result"] = job.get("result")
-    return resp
-
-
-@app.post("/tools/run_mwa_scan")
-@limiter.limit("30/minute")
-async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
-    """Run the full 98-scanner MWA scan and persist score to DB."""
-    import threading
-
-    # ── Holiday / weekend / after-hours gate ─────────────────
-    from mcp_server.market_calendar import is_market_holiday, is_market_open, is_weekend
-
-    today = date.today()
-    if is_weekend(today):
-        return {"status": "skipped", "tool": "run_mwa_scan",
-                "reason": f"Weekend ({today.strftime('%A')}). Scan not needed."}
-    if is_market_holiday("NSE", today):
-        return {"status": "skipped", "tool": "run_mwa_scan",
-                "reason": f"Market holiday ({today}). Scan not needed."}
-    # Prevent after-hours scans triggered by n8n or manual API calls.
-    # At least one segment must be open, otherwise we're generating
-    # signals on stale data and spamming Telegram post-close.
-    any_open = is_market_open("NSE") or is_market_open("MCX") or is_market_open("CDS")
-    if not any_open:
-        return {"status": "skipped", "tool": "run_mwa_scan",
-                "reason": "All markets closed. Scan skipped to prevent after-hours signals."}
-
-    # ── Async mode: return job_id immediately, run in background ──
-    mode = request.query_params.get("mode", "async")
-    if mode == "async":
-        import uuid
-        job_id = uuid.uuid4().hex[:12]
-        _mwa_jobs[job_id] = {
-            "status": "queued", "result": None,
-            "started": _now_ist().isoformat(), "finished": None,
-        }
-        t = threading.Thread(target=_run_mwa_scan_background, args=(job_id,), daemon=True)
-        t.start()
-        return {
-            "status": "accepted", "tool": "run_mwa_scan",
-            "job_id": job_id,
-            "poll_url": f"/tools/mwa_scan_status/{job_id}",
-            "message": "Scan started in background. Poll the status URL for results.",
-        }
-
-    # ── Sync mode (mode=sync): run inline and return result ──
-    return _execute_mwa_scan(db)
 
 
 def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
@@ -2709,22 +2334,7 @@ async def _auto_sync_sheets(signal_data: dict = None, mwa_data: dict = None):
         logger.debug("Stitch auto-sync skipped: %s", e)
 
 
-# backtest_strategy moved to mcp_server.routers.backtest in Phase 3b.
-
-
-# backtest_validate moved to mcp_server.routers.backtest in Phase 3b.
-
-
 # `/tools/manage_watchlist` moved to mcp_server.routers.watchlist in Phase 1d.
-
-
-# get_active_trades moved to mcp_server.routers.signals in Phase 2d.
-
-
-# validate_signal moved to mcp_server.routers.signals in Phase 2d.
-
-
-# get_fo_signal moved to mcp_server.routers.fno in Phase 2b.
 
 
 # ── F&O Stock Endpoints ───────────────────────────────────────
@@ -2742,39 +2352,6 @@ def _get_kite_for_fo():
     return None
 
 
-# scan_oi_buildup moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_oi_buildup moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_fno_snapshot moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_iv_rank moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_volatility_setup moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_fno_expiry moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_option_greeks moved to mcp_server.routers.options in Phase 2a.
-
-
-# api_option_universe moved to mcp_server.routers.options in Phase 2a.
-
-
-# api_option_recommendation moved to mcp_server.routers.options in Phase 2a.
-
-
-# run_fno_analytics moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_fno_analytics_state moved to mcp_server.routers.fno in Phase 2b.
-
-
 # ============================================================
 # Wall Street AI Prompt Tool Endpoints
 # ============================================================
@@ -2788,93 +2365,10 @@ def _get_kite_for_fo():
 # ============================================================
 
 
-# api_overview moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# api_signals moved to mcp_server.routers.signals in Phase 2d.
-
-
-# cleanup_duplicates moved to mcp_server.routers.signals in Phase 2d.
-
-
-# delete_signal moved to mcp_server.routers.signals in Phase 2d.
-
-
-# api_active_trades moved to mcp_server.routers.trades in Phase 2e.
-
-
-@app.get("/api/mwa/latest")
-async def api_mwa_latest(db: Session = Depends(get_db)):
-    """Latest MWA score for dashboard."""
-    score = db.query(MWAScore).order_by(desc(MWAScore.score_date)).first()
-    if not score:
-        return {"status": "no_data"}
-
-    # Normalize scanner_results: upgrade old int-count format to ScannerResult.
-    # Pre-seed with ALL scanners from SCANNERS dict so every segment (NSE /
-    # MCX / CDS / NFO) renders a full heatmap even when the persisted record
-    # only contains a subset (e.g. segments that were closed when the scan
-    # ran, or Chartink fetches that failed). Overlays actual stored values.
-    raw_sr = score.scanner_results or {}
-    scanner_results: dict = {}
-    from mcp_server.mwa_scanner import SCANNERS
-    for k, cfg in SCANNERS.items():
-        if cfg.get("type") in ("UNKNOWN",):
-            continue
-        scanner_results[k] = {
-            "name": k,
-            "group": cfg.get("layer", "Other"),
-            "weight": cfg.get("weight", 0),
-            "count": 0,
-            "direction": cfg.get("type", "NEUTRAL"),
-            "stocks": [],
-        }
-    for k, v in raw_sr.items():
-        if isinstance(v, dict) and "name" in v:
-            scanner_results[k] = v  # already structured
-        else:
-            cfg = SCANNERS.get(k, {})
-            count = v if isinstance(v, (int, float)) else 0
-            scanner_results[k] = {
-                "name": k,
-                "group": cfg.get("layer", "Other"),
-                "weight": cfg.get("weight", 0),
-                "count": int(count),
-                "direction": cfg.get("type", "NEUTRAL"),
-                "stocks": [],
-            }
-
-    return {
-        "id": score.id,
-        "score_date": str(score.score_date),
-        "direction": score.direction,
-        "bull_score": float(score.bull_score or 0),
-        "bear_score": float(score.bear_score or 0),
-        "bull_pct": float(score.bull_pct or 0),
-        "bear_pct": float(score.bear_pct or 0),
-        "scanner_results": scanner_results,
-        "promoted_stocks": score.promoted_stocks or [],
-        "fii_net": float(score.fii_net or 0),
-        "dii_net": float(score.dii_net or 0),
-        "sector_strength": score.sector_strength or {},
-    }
-
-
 # _serialize_watchlist + /api/watchlist{,/:id{,/toggle}} moved to mcp_server.routers.watchlist in Phase 1d.
 
 
 # DELETE + PATCH /api/watchlist/{item_id}* moved to mcp_server.routers.watchlist in Phase 1d.
-
-
-# api_accuracy moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# backtest_request_models moved to mcp_server.routers.backtest in Phase 3b.
-
-# api_backtest moved to mcp_server.routers.backtest in Phase 3b.
-
-
-# api_backtest_compare moved to mcp_server.routers.backtest in Phase 3b.
 
 
 # ============================================================
@@ -2883,10 +2377,6 @@ async def api_mwa_latest(db: Session = Depends(get_db)):
 
 
 # GreeksRequest+OptionChainRequest+models_pre moved to mcp_server.routers.options in Phase 2a.
-# api_options_greeks moved to mcp_server.routers.options in Phase 2a.
-
-
-# api_options_chain moved to mcp_server.routers.options in Phase 2a.
 
 
 # ============================================================
@@ -2895,25 +2385,12 @@ async def api_mwa_latest(db: Session = Depends(get_db)):
 
 
 # PayoffLeg+PayoffRequest moved to mcp_server.routers.options in Phase 2a.
-# api_options_payoff moved to mcp_server.routers.options in Phase 2a.
-
-
-# strategy_presets moved to mcp_server.routers.options in Phase 2a.
-
-
-# api_options_strategies moved to mcp_server.routers.options in Phase 2a.
-
-
-# StrategyBuildRequest moved to mcp_server.routers.options in Phase 2a.
-# api_options_strategy_build moved to mcp_server.routers.options in Phase 2a.
 
 
 # ============================================================
 # Order Execution Endpoints (Live Trading with Safety Controls)
 # ============================================================
 
-
-# order_request_models moved to mcp_server.routers.trades in Phase 2e.
 
 # Singleton order manager — initialized without Kite (connect later)
 _order_manager = None
@@ -2928,27 +2405,6 @@ def _get_order_manager():
             kite=None, capital=100000, paper_mode=settings.PAPER_MODE,
         )
     return _order_manager
-
-
-# place_order moved to mcp_server.routers.trades in Phase 2e.
-
-
-# cancel_order moved to mcp_server.routers.trades in Phase 2e.
-
-
-# close_position moved to mcp_server.routers.trades in Phase 2e.
-
-
-# close_all moved to mcp_server.routers.trades in Phase 2e.
-
-
-# order_status moved to mcp_server.routers.trades in Phase 2e.
-
-
-# update_pnl moved to mcp_server.routers.trades in Phase 2e.
-
-
-# update_trailing_sl moved to mcp_server.routers.trades in Phase 2e.
 
 
 def _get_live_ltp(ticker: str) -> float | None:
@@ -2976,58 +2432,9 @@ def _get_live_ltp(ticker: str) -> float | None:
     return ltp if ltp and ltp > 0 else None
 
 
-# update_all_trailing_sl moved to mcp_server.routers.trades in Phase 2e.
-
-
-# refresh_trade_prices moved to mcp_server.routers.trades in Phase 2e.
-
-
-@app.post("/tools/tier3_monitor")
-async def tool_tier3_monitor(db: Session = Depends(get_db)):
-    """Run Tier 3 active trade monitoring — updates prices, checks SL/target hits."""
-    from mcp_server.tier_monitor import tier3_monitor
-    alerts = tier3_monitor(db)
-    return {"alerts": len(alerts), "details": alerts}
-
-
-@app.post("/tools/tier2_monitor")
-async def tool_tier2_monitor(db: Session = Depends(get_db)):
-    """Run Tier 2 watchlist monitoring — checks entry zones, S&R breaches."""
-    from mcp_server.tier_monitor import tier2_monitor
-    alerts = tier2_monitor(db)
-    return {"alerts": len(alerts), "details": alerts}
-
-
-# portfolio_exposure moved to mcp_server.routers.trades in Phase 2e.
-
-
-# check_exit_strategies moved to mcp_server.routers.trades in Phase 2e.
-
-
-# connect_kite moved to mcp_server.routers.trades in Phase 2e.
-
-
-# orphan_refresh_kite_fragment moved to mcp_server.routers.trades in Phase 2e.
-
-
-# orphan_refresh_gwc_fragment moved to mcp_server.routers.trades in Phase 2e.
-
-
-# connect_gwc moved to mcp_server.routers.trades in Phase 2e.
-
-
 # ============================================================
 # Angel One SmartAPI Integration
 # ============================================================
-
-
-# connect_angel moved to mcp_server.routers.trades in Phase 2e.
-
-
-# orphan_refresh_angel_fragment moved to mcp_server.routers.trades in Phase 2e.
-
-
-# angel_status moved to mcp_server.routers.trades in Phase 2e.
 
 
 # ============================================================
@@ -3035,21 +2442,9 @@ async def tool_tier2_monitor(db: Session = Depends(get_db)):
 # ============================================================
 
 
-# api_kite_callback moved to mcp_server.routers.brokers in Phase 1e.
-
-
-# api_kite_login_url moved to mcp_server.routers.brokers in Phase 1e.
-
-
 # ============================================================
 # GWC (Goodwill) OAuth Login
 # ============================================================
-
-
-# api_gwc_callback moved to mcp_server.routers.brokers in Phase 1e.
-
-
-# api_gwc_login_url moved to mcp_server.routers.brokers in Phase 1e.
 
 
 # ============================================================
@@ -3162,65 +2557,10 @@ def get_system_health() -> dict:
 # ============================================================
 
 
-# signal_request_models moved to mcp_server.routers.signals in Phase 2d.
-
-
-# record_signal moved to mcp_server.routers.signals in Phase 2d.
-
-
-# update_signal moved to mcp_server.routers.signals in Phase 2d.
-
-
-# signal_accuracy moved to mcp_server.routers.signals in Phase 2d.
-
-
-# reset_sheets moved to mcp_server.routers.admin in Phase 3d.
-
-
-# eod_summary moved to mcp_server.routers.signals in Phase 2d.
-
-
-# check_signals moved to mcp_server.routers.signals in Phase 2d.
-
-
-# backfill_sheets_outcomes moved to mcp_server.routers.admin in Phase 3d.
-
-
-# pretrade_check moved to mcp_server.routers.trades in Phase 2e.
-
-
-# clear_sheets moved to mcp_server.routers.admin in Phase 3d.
-
-
 # ── Stitch Data endpoints ───────────────────────────────────────────
-
-# stitch_status moved to mcp_server.routers.admin in Phase 3d.
-
-
-# StitchPushRequest moved to mcp_server.routers.admin in Phase 3d.
-# stitch_push moved to mcp_server.routers.admin in Phase 3d.
-
-
-# stitch_push_signals moved to mcp_server.routers.admin in Phase 3d.
-
-
-# stitch_push_trades moved to mcp_server.routers.admin in Phase 3d.
-
-
-# stitch_validate moved to mcp_server.routers.admin in Phase 3d.
 
 
 # `/api/telegram_webhook` moved to mcp_server.routers.webhooks in Phase 1b.
-
-
-# reflect_request_models moved to mcp_server.routers.selfdev in Phase 2c.
-# reflect_trades moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# reflect_single moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# trade_memory_stats moved to mcp_server.routers.selfdev in Phase 2c.
 
 
 # `/api/tv_webhook` moved to mcp_server.routers.webhooks in Phase 1b.
@@ -3231,32 +2571,9 @@ def get_system_health() -> dict:
 # ============================================================
 
 
-# api_news moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# tool_market_news moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# check_news_alerts moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# ai_report moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# news_sentiment moved to mcp_server.routers.market_data in Phase 3c.
-
-
 # ============================================================
 # Momentum Ranking Module
 # ============================================================
-
-# api_momentum moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# momentum_rankings moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# momentum_rebalance moved to mcp_server.routers.market_data in Phase 3c.
 
 
 # ============================================================
@@ -3379,31 +2696,12 @@ def _fetch_market_movers() -> dict:
     return results
 
 
-# api_market_movers moved to mcp_server.routers.market_data in Phase 3c.
-
-
 # ============================================================
 # OHLCV Cache Management
 # ============================================================
 
 
-# api_cache_stats moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# CacheRefreshRequest moved to mcp_server.routers.market_data in Phase 3c.
-# cache_refresh moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# CachePurgeRequest moved to mcp_server.routers.market_data in Phase 3c.
-# cache_purge moved to mcp_server.routers.market_data in Phase 3c.
-
-
 # ── RealtimeEngine API endpoints ──────────────────────────────────────────────
-
-# api_live_prices moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# api_realtime_status moved to mcp_server.routers.market_data in Phase 3c.
 
 
 # ============================================================
@@ -3411,134 +2709,9 @@ def _fetch_market_movers() -> dict:
 # ============================================================
 
 
-@app.get("/api/scanner-review/today")
-async def api_scanner_review_today(db: Session = Depends(get_db)):
-    """Today's review (or most recent)."""
-    row = (
-        db.query(ScannerReview)
-        .order_by(ScannerReview.review_date.desc())
-        .first()
-    )
-    if not row:
-        return {"status": "no_data", "reason": "no_reviews_yet"}
-    return row.review_payload or {
-        "review_date": str(row.review_date),
-        "market_direction": row.market_direction,
-        "overall_hit_rate": float(row.overall_hit_rate or 0),
-        "scanner_hit_rates": row.scanner_hit_rates,
-        "missed_opportunities": row.missed_opportunities,
-        "false_positives": row.false_positives,
-        "segment_performance": row.segment_performance,
-        "chain_accuracy": row.chain_accuracy,
-        "promoted_performance": row.promoted_performance,
-        "best_scanners": row.best_scanners,
-        "worst_scanners": row.worst_scanners,
-    }
-
-
-@app.get("/api/scanner-review/history")
-async def api_scanner_review_history(
-    days: int = Query(default=30, ge=1, le=365),
-    db: Session = Depends(get_db),
-):
-    """Rolling review history."""
-    from datetime import timedelta as _td
-
-    cutoff = date.today() - _td(days=days)
-    rows = (
-        db.query(ScannerReview)
-        .filter(ScannerReview.review_date >= cutoff)
-        .order_by(ScannerReview.review_date.desc())
-        .all()
-    )
-    return {
-        "days": days,
-        "count": len(rows),
-        "reviews": [
-            {
-                "review_date": str(r.review_date),
-                "market_direction": r.market_direction,
-                "overall_hit_rate": float(r.overall_hit_rate or 0),
-                "best_scanners": r.best_scanners,
-                "worst_scanners": r.worst_scanners,
-                "promoted_performance": r.promoted_performance,
-            }
-            for r in rows
-        ],
-    }
-
-
-@app.post("/tools/run_scanner_review")
-async def tool_run_scanner_review():
-    """Manual trigger for scanner review (n8n compatible)."""
-    from mcp_server.scanner_review import ScannerReviewEngine
-
-    engine = ScannerReviewEngine()
-    result = await engine.run_review()
-    return result
-
-
-@app.get("/api/scanner-review/leaderboard")
-async def api_scanner_review_leaderboard(
-    days: int = Query(default=30, ge=1, le=365),
-):
-    """Scanner ranking by rolling performance."""
-    from mcp_server.scanner_review import get_leaderboard, get_rolling_stats
-
-    board = get_leaderboard(days)
-    stats = get_rolling_stats(days)
-    return {
-        "days": days,
-        "entries": stats.get("entries", 0),
-        "leaderboard": board,
-    }
-
-
 # ============================================================
 # Self-Development System — API endpoints
 # ============================================================
-
-
-# selfdev_status moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# run_self_development moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# selfdev_postmortem moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# run_postmortems moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# retrain_predictor moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# selfdev_predictor moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# selfdev_bayesian moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# selfdev_bayesian_under moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# update_bayesian_stats moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# selfdev_rules moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# mine_rules moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# activate_rule moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# deactivate_rule moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# selfdev_similar moved to mcp_server.routers.selfdev in Phase 2c.
 
 
 # ============================================================
