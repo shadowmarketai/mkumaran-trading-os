@@ -59,11 +59,13 @@ def manager_with_short(manager):
 # ── Basic Order Tests ────────────────────────────────────────
 
 class TestBasicOrders:
-    def test_no_kite_blocks_order(self):
+    def test_no_broker_blocks_order(self):
+        # After Angel broker support landed, the rejection message switched
+        # from "Kite not connected" to "No broker connected".
         m = OrderManager(kite=None, capital=100000)
         result = m.place_order("NSE:RELIANCE", "BUY", qty=10, price=2500)
         assert not result.success
-        assert "Kite not connected" in result.message
+        assert "No broker connected" in result.message
 
     @patch("mcp_server.order_manager.validate_order_timing", return_value=None)
     @patch("mcp_server.order_manager.validate_portfolio_risk", return_value=None)
