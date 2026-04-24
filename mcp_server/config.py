@@ -152,7 +152,10 @@ class Settings:
     # Paper Trading (set PAPER_MODE=true to trade without Kite)
     PAPER_MODE: bool = os.getenv("PAPER_MODE", "false").lower() == "true"
 
-    # Authentication (opt-in — set AUTH_ENABLED=true to require login)
+    # Authentication (opt-in — set AUTH_ENABLED=true to require login).
+    # JWT_SECRET_KEY MUST be overridden when AUTH_ENABLED=true — see the
+    # fail-closed check in __post_init__ below. Generate with:
+    #   openssl rand -hex 32
     AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "false").lower() == "true"
     ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "sales@shadowmarket.ai")
     ADMIN_PASSWORD_HASH: str = os.getenv("ADMIN_PASSWORD_HASH", "")
@@ -216,8 +219,33 @@ class Settings:
     # When true: only send actual trade signal cards to Telegram
     # When false: also send MWA scan summaries, reports, etc.
 
-    # AI model for reports (use haiku for cost savings, sonnet for quality)
-    AI_REPORT_MODEL: str = os.getenv("AI_REPORT_MODEL", "claude-haiku-4-5-20251001")
+    # Note: AI_REPORT_MODEL was declared here but never consumed. The actual
+    # Claude model selection lives in mcp_server/ai_provider.py via
+    # CLAUDE_MODEL. Removed to avoid confusion; if per-report-endpoint model
+    # routing is needed later, wire it into ai_provider.py alongside the
+    # existing provider config dict.
+
+
+_PLACEHOLDER_JWT_SECRET = "change-this-in-production"
+
+
+def _fail_closed_secrets_check(s: "Settings") -> None:
+    """Refuse to start with insecure secrets when auth is enabled.
+
+    Runs at import time after Settings() is instantiated. Designed to be
+    a no-op for the default dev config (AUTH_ENABLED=false) and for CI
+    (which sets AUTH_ENABLED=false), but to hard-fail a production boot
+    where the operator enabled auth without rotating the placeholder.
+    """
+    if not s.AUTH_ENABLED:
+        return
+    if s.JWT_SECRET_KEY == _PLACEHOLDER_JWT_SECRET or not s.JWT_SECRET_KEY:
+        raise RuntimeError(
+            "AUTH_ENABLED=true but JWT_SECRET_KEY is the placeholder default. "
+            "Generate a strong secret with `openssl rand -hex 32` and set "
+            "JWT_SECRET_KEY in your environment. Refusing to start."
+        )
 
 
 settings = Settings()
+_fail_closed_secrets_check(settings)

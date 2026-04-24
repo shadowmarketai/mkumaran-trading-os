@@ -64,6 +64,7 @@ class TestBasicOrders:
         # After Angel broker support landed, the rejection message switched
         # from "Kite not connected" to "No broker connected". Assertion
         # matches the current copy in OrderManager._validate_broker().
+        # from "Kite not connected" to "No broker connected".
         m = OrderManager(kite=None, capital=100000)
         result = m.place_order("NSE:RELIANCE", "BUY", qty=10, price=2500)
         assert not result.success

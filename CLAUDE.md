@@ -15,6 +15,7 @@
 - **Backend:** Python (MCP server, Alembic migrations, Dhan/Angel broker APIs, n8n workflows)
 - **Frontend:** React + Vite + TypeScript + Tailwind (`dashboard/`)
 - **Database:** Postgres (Alembic-owned schema + data migrations in `alembic/versions/`)
+- **Database:** Postgres (schema in `schema.sql`, migrations in `alembic/`)
 - **Integrations:** Dhan API, Angel One SmartAPI, Telegram bot, n8n workflows, Pine Script for TradingView
 - **AI:** Debate validator with 8 specialist agents (SMC, ICT, VSA, Wyckoff, Classical, Harmonic, etc.) + self-learning pipeline
 
@@ -131,6 +132,7 @@ See `agents/ORCHESTRATOR.md` for the full call graph. Entry point is the orchest
 | `backend-agent` | MCP server, strategy engines, brokers, n8n workflows |
 | `frontend-agent` | dashboard/ (React + Vite) |
 | `database-agent` | Alembic migrations (structure + seed data), query performance |
+| `database-agent` | Alembic migrations, schema.sql, DB performance |
 | `devops-agent` | Docker, CI, deploy |
 | `security-reviewer` | Credential handling, RRMS leaks, injection, secrets |
 | `python-reviewer` / `typescript-reviewer` | Per-language review |

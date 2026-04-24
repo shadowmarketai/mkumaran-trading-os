@@ -18,8 +18,20 @@ import requests
 logger = logging.getLogger(__name__)
 
 BRAIN_URL = os.environ.get("NEUROLINKED_URL", "https://brain.shadowmarket.ai")
-BRAIN_TOKEN = os.environ.get("NEUROLINKED_TOKEN", "nlkd_8wPJ3KKdw71R9MKsnWXsQ2QFTN2PdZn0")
-BRAIN_ENABLED = os.environ.get("NEUROLINKED_ENABLED", "true").lower() == "true"
+BRAIN_TOKEN = os.environ.get("NEUROLINKED_TOKEN", "")
+# Disabled unless an explicit token is supplied. Prior versions shipped a
+# hardcoded fallback token — that has been revoked and must be rotated at
+# the brain side. See docs/DEPLOYMENT.md.
+BRAIN_ENABLED = (
+    os.environ.get("NEUROLINKED_ENABLED", "true").lower() == "true"
+    and bool(BRAIN_TOKEN)
+)
+
+if not BRAIN_TOKEN and os.environ.get("NEUROLINKED_ENABLED", "true").lower() == "true":
+    logger.warning(
+        "NEUROLINKED_TOKEN not set — brain observations disabled. "
+        "Set NEUROLINKED_TOKEN env var or NEUROLINKED_ENABLED=false to silence."
+    )
 
 _SESSION = requests.Session()
 _SESSION.headers.update({

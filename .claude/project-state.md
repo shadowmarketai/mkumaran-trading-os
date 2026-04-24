@@ -5,6 +5,8 @@
 
 **Last updated:** 2026-04-23 by Claude Opus 4.7 (Decimal Phases 2–3 + backtester boundary fix)
 **Dossier version:** 2
+**Last updated:** 2026-04-22 by `onboarder` (Claude Opus 4.7)
+**Dossier version:** 1
 
 ---
 
@@ -20,6 +22,7 @@
 | **Target ship date** | ongoing (daily live use; ~40 commits in April 2026 alone) |
 | **Primary contact** | shadowmarketai (mkumaran2931@gmail.com) |
 | **Current branch** | `feat/money-helpers` (Decimal enforcement Phases 1–3 + backtester fix; 5 commits ahead of `main`, not yet pushed) |
+| **Current branch** | `feat/claude-agent-layer` (Shadow Market overlay, 1 commit ahead of `main`) |
 
 ---
 
@@ -92,6 +95,13 @@ Ordered by priority. Top item is what `/resume` suggests next.
 - [x] **MED** — Fixed 2 pre-existing `test_order_manager`/`test_paper_trading` failures asserting "Kite not connected" — renamed to `test_no_broker_blocks_order` / `test_live_mode_fails_without_broker` and matched the current "No broker connected" copy from `_validate_broker()` (`894d350`).
 - [ ] **HIGH** — **GitHub Actions is not firing** on any push/PR since 2026-04-22. CI last ran ~24h ago. Not a workflow-config issue (unchanged for weeks); likely repo-setting (Settings → Actions → General → Allow actions) or GitHub billing/quota. PR #11 can't be CI-verified until this is unblocked.
 - [ ] **MED** — Fix `sector_picker.fetch_rrms_setup` stale call to non-existent `engine.calculate_from_levels` — wrapped in `try/except`, so silently returns fallback. Pre-existing dead code path.
+- [ ] **HIGH** — Merge `feat/claude-agent-layer` → `main` (or decide whether to squash). The overlay is purely additive (no app-code diff) and is already committed; just needs PR + merge. Watch for CI (`ruff check .`) — overlay added many markdown files, no `.py` changes, so should pass cleanly.
+- [ ] **HIGH** — Consolidate schema sources. Three places currently hold truth: `schema.sql`, `alembic/versions/`, and `mcp_server/db.py:_add_missing_columns()` (a runtime `ALTER TABLE` escape hatch with ~50 column definitions). A schema drift between Alembic and `_add_missing_columns` is a silent bug waiting to happen.
+- [ ] **HIGH** — Enforce `Decimal` at the Python boundary for P&L math. CLAUDE.md declares it as an invariant, but current code uses `float` broadly (`RRMS_CAPITAL: float`, `RRMS_RISK_PCT: float` in `config.py:107–109`). DB uses `Numeric(10,2)` correctly.
+- [ ] **MED** — Break up `mcp_server/mcp_server.py` (6623 lines, 148 route decorators) into FastAPI routers by domain (auth / signals / trades / options / admin / tools).
+- [ ] **MED** — Update `AI_REPORT_MODEL` default. Currently `claude-haiku-4-5-20251001` in `config.py:214`. Claude Haiku 4.5 is supported, but Opus 4.7 / Sonnet 4.6 are the current latest — verify cost/quality trade and decide.
+- [ ] **MED** — Rotate JWT secret + strengthen auth default. `JWT_SECRET_KEY` default in `config.py:153` is the literal string `"change-this-in-production"`; safe today only because `AUTH_ENABLED=false` by default.
+- [ ] **MED** — Add frontend tests. `dashboard/package.json` has no test script, no Vitest, no Testing Library. 54 backend tests exist; frontend has zero.
 - [ ] **LOW** — Validate `dashboard_dist/` checked-in state. Directory exists at repo root (likely a stale pre-container build artifact). Dockerfile rebuilds dashboard in stage 1; the top-level folder may be dead weight.
 - [ ] **LOW** — Decide fate of `skills/shadow-3d-scroll/` and the landing/marketing surfaces in the dashboard. CLAUDE.md explicitly bans the scroll skill on `dashboard/` routes; usage should be limited to `LandingPage.tsx`.
 
@@ -131,6 +141,7 @@ Last 10 closed, newest first.
 | 2026-04-23 | `RRMS_MIN_RRR` stays float (not Decimal) even though other RRMS_* settings are Decimal | Dimensionless ratio — multiplied against ATR (float) in analysis-zone code (`mwa_signal_generator`, `mcp_server.py` option sizing). Converting it would force Decimal propagation into the analysis zone with no precision benefit. |
 | 2026-04-23 | Percentages (deployed_pct, sector_pct, etc.) in `portfolio_risk.get_portfolio_exposure` stay float at the output dict boundary even though money aggregates are Decimal internally | Dashboard TS consumers expect `number` and inexact floats like 20.4 don't equal `Decimal("20.4")` — keeping pct as float preserves existing test equality and UI behavior. |
 | 2026-04-22 | Keep `schema.sql` + Alembic + runtime `_add_missing_columns()` coexisting | ~~Historical:...~~ **SUPERSEDED 2026-04-22 evening:** schema.sql and `_add_missing_columns()` were retired over 4 commits (59a923e → cb52222). Alembic is now the sole source of schema truth. |
+| 2026-04-22 | Keep `schema.sql` + Alembic + runtime `_add_missing_columns()` coexisting | Historical: fresh Docker installs use `schema.sql`, existing DBs can't run it idempotently, so Alembic was bolted on, and `_add_missing_columns()` is the "forgot-to-add-a-migration" safety net. Parked — unify later. |
 | 2026-04-22 | Overlay Shadow Market Claude layer as pure additive (no app-code diff) | Commit message `ffd9ab8` explicitly lists everything not touched (`mcp_server/`, `dashboard/`, `alembic/`, `schema.sql`, `docker-compose*`, `TRADING.md`, `.pre-commit-config.yaml`, `requirements.txt`, `Dockerfile`, `n8n_workflows/`, `pine_script/`). |
 | 2026-04-21 | NeuroLinked brain integration is fire-and-forget, 5s timeout, never raises | Trading pipeline must never crash because the brain is unreachable. `brain_bridge.py` silently swallows network errors. |
 | 2026-04-xx | Grok (`grok-3-mini`) is primary AI provider; Claude/OpenAI kept as legacy | Cost-driven. Anthropic/OpenAI wired via `ai_provider.py` but default `AI_PRIMARY_PROVIDER=grok`. |
