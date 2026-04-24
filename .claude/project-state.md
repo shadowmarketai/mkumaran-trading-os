@@ -185,6 +185,7 @@ Things parked intentionally. Do NOT "fix" without checking here first.
 - Signal dedup key = `symbol + timeframe + strategy + timestamp-minute`. See `signal_similarity.py`.
 - Money math: DB is `Numeric`, Python code is `Decimal` in the money zone (rrms / order_manager / signal_monitor / portfolio_risk / signal_cards) and `float` in the analysis zone (TA / numpy / backtester). Cross zones via explicit `float(dec)` or `to_money(x)`. `mcp_server/money.py` is the canonical helper module. CLAUDE.md invariant #2 is enforced as of 2026-04-24.
 - `AUTH_ENABLED=false` and `PAPER_MODE=true` are CI defaults — tests will fail otherwise.
+- **Any PR that touches `dashboard/package.json` MUST also regenerate `dashboard/package-lock.json`** (`cd dashboard && npm install --package-lock-only --no-audit`). Coolify's Dockerfile uses `npm ci` which hard-fails on any lockfile/package.json drift, taking prod down. Learned the hard way on 2026-04-24 when PR #11 merged the Vitest harness without the lockfile update — caught + fixed via hotfix PR #14. Add `npm ci` as a local verification step before merging any dashboard-deps PR.
 - Timezone: all datetimes should route through `mcp_server.market_calendar.now_ist()` — server timezone is unreliable in Docker.
 - Telegram gate: `TELEGRAM_SIGNALS_ONLY=true` by default — only actual signal cards hit the chat, scan summaries are suppressed.
 - `brain_bridge.py` tenant is hardcoded `trading_os`; token env is `NEUROLINKED_TOKEN` (not in `.env.example` yet — TODO).
