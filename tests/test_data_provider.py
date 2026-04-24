@@ -66,7 +66,11 @@ def test_load_instrument_cache_success(mock_kite_fn):
     ]
 
     import mcp_server.data_provider as dp
+    # Reset all three guard flags: a prior test in the same CI run can leave
+    # _kite_failed_today set to today's date, which short-circuits
+    # _load_instrument_cache and the cache stays empty even with a good mock.
     dp._cache_loaded_date = None
+    dp._kite_failed_today = None
     dp._instrument_cache.clear()
 
     _load_instrument_cache()

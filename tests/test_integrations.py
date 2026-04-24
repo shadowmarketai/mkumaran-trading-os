@@ -105,11 +105,16 @@ class TestN8nWorkflows:
         assert any("tv_webhook" in u for u in urls)
         assert any("telegram_webhook" in u for u in urls)
 
-    def test_eod_calls_signal_accuracy_and_reflection(self):
+    def test_eod_calls_summary_and_momentum(self):
+        # EOD workflow was simplified to a two-phase flow: pull `eod_summary`
+        # (aggregate P&L, accuracy, open signals) and `momentum` (end-of-day
+        # momentum snapshot), each followed by a Telegram push. The earlier
+        # `signal_accuracy` + `reflect_trades` endpoints were folded into
+        # `eod_summary` server-side.
         data = self._load_workflow("03_eod_report.json")
         urls = [n.get("parameters", {}).get("url", "") for n in data["nodes"]]
-        assert any("signal_accuracy" in u for u in urls)
-        assert any("reflect_trades" in u for u in urls)
+        assert any("eod_summary" in u for u in urls), "EOD should pull aggregate summary"
+        assert any("momentum" in u for u in urls), "EOD should pull momentum snapshot"
 
     def test_market_monitor_has_kill_switch_and_fo(self):
         data = self._load_workflow("02_market_monitor.json")

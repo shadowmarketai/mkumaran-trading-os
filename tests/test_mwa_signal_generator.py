@@ -1,5 +1,7 @@
 """Tests for MWA Signal Generator — ATR-based trade levels."""
 
+from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
 
@@ -130,7 +132,15 @@ def test_generate_mwa_signals_short():
     assert sig["sl"] > sig["entry"] > sig["target"]
 
 
-def test_generate_mwa_signals_empty_stock_data():
+# On-the-fly fetch fallback was added to generate_mwa_signals — when the
+# stock_data dict is missing or has insufficient bars for a promoted ticker,
+# it calls nse_scanner.get_stock_data to fetch fresh data. These two tests
+# want to verify the SKIP behavior, which means the fallback must also
+# fail. Patch it to return an empty DataFrame.
+
+
+@patch("mcp_server.nse_scanner.get_stock_data", return_value=pd.DataFrame())
+def test_generate_mwa_signals_empty_stock_data(mock_fetch):
     signals = generate_mwa_signals(
         promoted=["RELIANCE"],
         stock_data={},
@@ -140,7 +150,8 @@ def test_generate_mwa_signals_empty_stock_data():
     assert signals == []
 
 
-def test_generate_mwa_signals_insufficient_bars():
+@patch("mcp_server.nse_scanner.get_stock_data", return_value=pd.DataFrame())
+def test_generate_mwa_signals_insufficient_bars(mock_fetch):
     stock_data = {"TCS": _make_ohlcv(5)}
     signals = generate_mwa_signals(
         promoted=["TCS"],
