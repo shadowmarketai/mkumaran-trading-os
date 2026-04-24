@@ -1085,12 +1085,14 @@ app = FastAPI(
 # ── Per-domain routers (progressive extraction) ─────────────
 # See docs/MCP_SERVER_ROUTER_SPLIT_PLAN.md for the full layout.
 from mcp_server.routers import brokers as _router_brokers  # noqa: E402
+from mcp_server.routers import fno as _router_fno  # noqa: E402
 from mcp_server.routers import health as _router_health  # noqa: E402
 from mcp_server.routers import options as _router_options  # noqa: E402
 from mcp_server.routers import wallstreet as _router_wallstreet  # noqa: E402
 from mcp_server.routers import watchlist as _router_watchlist  # noqa: E402
 from mcp_server.routers import webhooks as _router_webhooks  # noqa: E402
 app.include_router(_router_brokers.router)
+app.include_router(_router_fno.router)
 app.include_router(_router_health.router)
 app.include_router(_router_options.router)
 app.include_router(_router_wallstreet.router)
@@ -3078,13 +3080,7 @@ async def tool_validate_signal(
     return {"status": "ok", "tool": "validate_signal", **result}
 
 
-@app.post("/tools/get_fo_signal")
-async def tool_get_fo_signal():
-    """Combined F&O signal: OI + PCR + EMA."""
-    from mcp_server.fo_module import get_fo_signal
-
-    result = get_fo_signal()
-    return {"status": "ok", "tool": "get_fo_signal", **result}
+# get_fo_signal moved to mcp_server.routers.fno in Phase 2b.
 
 
 # ── F&O Stock Endpoints ───────────────────────────────────────
@@ -3102,66 +3098,22 @@ def _get_kite_for_fo():
     return None
 
 
-@app.post("/tools/scan_oi_buildup")
-async def tool_scan_oi_buildup(symbols: str | None = None):
-    """
-    OI buildup scan across F&O indices + stocks.
-
-    symbols: optional comma-separated list (default: all indices + F&O stocks).
-    Returns LONG_BUILDUP / SHORT_BUILDUP / SHORT_COVERING / LONG_UNWINDING per symbol.
-    """
-    from mcp_server.fo_module import scan_oi_buildup
-
-    sym_list = [s.strip().upper() for s in symbols.split(",")] if symbols else None
-    kite = _get_kite_for_fo()
-    result = await asyncio.to_thread(scan_oi_buildup, kite, sym_list)
-    return {"status": "ok", "tool": "scan_oi_buildup", **result}
+# scan_oi_buildup moved to mcp_server.routers.fno in Phase 2b.
 
 
-@app.get("/api/fno/oi_buildup")
-async def api_oi_buildup(symbols: str | None = None):
-    """GET variant of OI buildup scan for dashboard consumption."""
-    from mcp_server.fo_module import scan_oi_buildup
-
-    sym_list = [s.strip().upper() for s in symbols.split(",")] if symbols else None
-    kite = _get_kite_for_fo()
-    return await asyncio.to_thread(scan_oi_buildup, kite, sym_list)
+# api_oi_buildup moved to mcp_server.routers.fno in Phase 2b.
 
 
-@app.get("/api/fno/snapshot/{symbol}")
-async def api_fno_snapshot(symbol: str):
-    """Full F&O snapshot for any symbol: futures OI + chain + IV + buildup + expiry."""
-    from mcp_server.fo_module import get_stock_fo_snapshot
-
-    kite = _get_kite_for_fo()
-    return await asyncio.to_thread(get_stock_fo_snapshot, kite, symbol.upper())
+# api_fno_snapshot moved to mcp_server.routers.fno in Phase 2b.
 
 
-@app.get("/api/fno/iv_rank/{symbol}")
-async def api_iv_rank(symbol: str):
-    """IV rank + percentile for a symbol (NIFTY, BANKNIFTY, RELIANCE, ...)."""
-    from mcp_server.fo_module import get_iv_rank
-
-    kite = _get_kite_for_fo()
-    return await asyncio.to_thread(get_iv_rank, kite, symbol.upper())
+# api_iv_rank moved to mcp_server.routers.fno in Phase 2b.
 
 
-@app.get("/api/fno/volatility_setup/{symbol}")
-async def api_volatility_setup(symbol: str):
-    """Detect long/short straddle setup based on IV rank."""
-    from mcp_server.fo_module import detect_volatility_setup
-
-    kite = _get_kite_for_fo()
-    return await asyncio.to_thread(detect_volatility_setup, kite, symbol.upper())
+# api_volatility_setup moved to mcp_server.routers.fno in Phase 2b.
 
 
-@app.get("/api/fno/expiry/{symbol}")
-async def api_fno_expiry(symbol: str):
-    """Check if today is expiry day for a given symbol."""
-    from mcp_server.fo_module import is_expiry_day
-
-    kite = _get_kite_for_fo()
-    return await asyncio.to_thread(is_expiry_day, kite, symbol.upper())
+# api_fno_expiry moved to mcp_server.routers.fno in Phase 2b.
 
 
 # api_option_greeks moved to mcp_server.routers.options in Phase 2a.
@@ -3173,37 +3125,10 @@ async def api_fno_expiry(symbol: str):
 # api_option_recommendation moved to mcp_server.routers.options in Phase 2a.
 
 
-@app.post("/tools/run_fno_analytics")
-async def tool_run_fno_analytics():
-    """
-    Manually trigger one F&O analytics cycle.
-
-    Returns alerts + per-symbol snapshots and updates the persisted state.
-    Useful for n8n hooks or for testing alert wiring outside market hours.
-    """
-    from mcp_server.fno_analytics_monitor import check_fno_analytics_once, _send_alerts
-
-    result = await asyncio.to_thread(check_fno_analytics_once)
-    alerts = result.get("alerts", [])
-    if alerts:
-        try:
-            await _send_alerts(alerts)
-        except Exception as e:
-            logger.warning("F&O alerts dispatch failed: %s", e)
-    return {"status": "ok", "tool": "run_fno_analytics", **result}
+# run_fno_analytics moved to mcp_server.routers.fno in Phase 2b.
 
 
-@app.get("/api/fno/analytics/state")
-async def api_fno_analytics_state():
-    """Return the most recent F&O analytics monitor snapshot/state file."""
-    from mcp_server.fno_analytics_monitor import _load_state, STATE_FILE
-
-    state = _load_state()
-    return {
-        "exists": STATE_FILE.exists(),
-        "path": str(STATE_FILE),
-        "state": state,
-    }
+# api_fno_analytics_state moved to mcp_server.routers.fno in Phase 2b.
 
 
 # ============================================================
