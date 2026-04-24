@@ -213,8 +213,11 @@ class Settings:
     # When true: only send actual trade signal cards to Telegram
     # When false: also send MWA scan summaries, reports, etc.
 
-    # AI model for reports (use haiku for cost savings, sonnet for quality)
-    AI_REPORT_MODEL: str = os.getenv("AI_REPORT_MODEL", "claude-haiku-4-5-20251001")
+    # Note: AI_REPORT_MODEL was declared here but never consumed. The actual
+    # Claude model selection lives in mcp_server/ai_provider.py via
+    # CLAUDE_MODEL. Removed to avoid confusion; if per-report-endpoint model
+    # routing is needed later, wire it into ai_provider.py alongside the
+    # existing provider config dict.
 
 
 _PLACEHOLDER_JWT_SECRET = "change-this-in-production"
