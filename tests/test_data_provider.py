@@ -198,8 +198,15 @@ def test_yfinance_fetch_nse(mock_dl):
     mock_dl.assert_called_once_with("RELIANCE.NS", period="5d", interval="1d")
 
 
-def test_yfinance_fetch_nfo_returns_data():
+@patch("mcp_server.data_provider._rate_limited_download")
+def test_yfinance_fetch_nfo_returns_data(mock_dl):
     """yfinance NFO support via proxy — returns NIFTY index data."""
+    # Mock the downloader so this test doesn't depend on network + yfinance
+    # availability in CI.
+    mock_dl.return_value = pd.DataFrame({
+        "Open": [24000], "High": [24100], "Low": [23900],
+        "Close": [24050], "Volume": [0],
+    })
     df = _yfinance_fetch("NFO:NIFTY")
     assert not df.empty
     assert list(df.columns) == ["open", "high", "low", "close", "volume"]
@@ -207,7 +214,12 @@ def test_yfinance_fetch_nfo_returns_data():
 
 @patch("mcp_server.data_provider._rate_limited_download")
 def test_yfinance_fetch_mcx_proxy(mock_dl):
-    """yfinance resolves MCX:GOLD to GC=F proxy."""
+    """yfinance resolves MCX:GOLD to GC=F proxy.
+
+    Futures symbols (=F) use start/end dates instead of period strings
+    because the period-based call returns only 1 bar. Assert against the
+    current futures-aware call path rather than the old period-based form.
+    """
     mock_df = pd.DataFrame({
         "Open": [1900], "High": [1920], "Low": [1890], "Close": [1915], "Volume": [10000],
     })
@@ -215,7 +227,13 @@ def test_yfinance_fetch_mcx_proxy(mock_dl):
 
     df = _yfinance_fetch("MCX:GOLD")
     assert not df.empty
-    mock_dl.assert_called_once_with("GC=F", period="1y", interval="1d")
+    # Just verify the right symbol was resolved + downloader was invoked.
+    # Exact start/end dates are wall-clock dependent; asserting kwargs-style.
+    assert mock_dl.call_count == 1
+    args, kwargs = mock_dl.call_args
+    assert args[0] == "GC=F"
+    assert kwargs.get("interval") == "1d"
+    assert "start" in kwargs and "end" in kwargs
 
 
 @patch("mcp_server.data_provider._rate_limited_download")
