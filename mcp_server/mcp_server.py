@@ -1241,7 +1241,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(AuthMiddleware)
 
 
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled error on %s: %s", request.url.path, exc, exc_info=True)
@@ -1255,9 +1254,6 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-
-
-
 # `/api/info`, `/health`, `/api/exchanges` were moved to
 # `mcp_server.routers.health` in the Phase 1a router split — see
 # docs/MCP_SERVER_ROUTER_SPLIT_PLAN.md. Router is included further down
@@ -1269,49 +1265,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ============================================================
 
 
-# auth_login moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_me moved to mcp_server.routers.auth in Phase 3e.
-
-
 # ── Multi-Auth: Register, Login, Google, OTP ──────────────────
-
-# auth_google moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_send_otp moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_verify_otp moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_register moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_user_login moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_reset_password moved to mcp_server.routers.auth in Phase 3e.
 
 
 # ── BYOK: User API Keys ──────────────────────────────────────
 
-# save_api_keys moved to mcp_server.routers.auth in Phase 3e.
-
-
-# get_api_keys moved to mcp_server.routers.auth in Phase 3e.
-
-
-# auth_config moved to mcp_server.routers.auth in Phase 3e.
-
 
 # ── Tier Enforcement API ──────────────────────────────────────
-
-# api_user_tier moved to mcp_server.routers.auth in Phase 3e.
-
-
-# api_check_feature moved to mcp_server.routers.auth in Phase 3e.
 
 
 # ============================================================
@@ -1320,39 +1280,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # `/api/exchanges` moved to mcp_server.routers.health in Phase 1a.
-
-
-# get_stock_data moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# api_chart_ohlcv moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# run_rrms moved to mcp_server.routers.backtest in Phase 3b.
-
-
-# detect_pattern moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# detect_smc moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# detect_wyckoff moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# detect_vsa moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# detect_harmonic moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# detect_rl moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# backtest_confluence moved to mcp_server.routers.backtest in Phase 3b.
-
-
-# get_mwa_score moved to mcp_server.routers.scanners in Phase 3a.
 
 
 # ── Background MWA scan jobs ─────────────────────────────────
@@ -1392,12 +1319,6 @@ def _run_mwa_scan_background(job_id: str) -> None:
         _mwa_jobs[job_id]["status"] = "failed"
         _mwa_jobs[job_id]["result"] = {"error": str(e), "traceback": traceback.format_exc()}
     _mwa_jobs[job_id]["finished"] = _now_ist().isoformat()
-
-
-# mwa_scan_status moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# run_mwa_scan moved to mcp_server.routers.scanners in Phase 3a.
 
 
 def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
@@ -2413,22 +2334,7 @@ async def _auto_sync_sheets(signal_data: dict = None, mwa_data: dict = None):
         logger.debug("Stitch auto-sync skipped: %s", e)
 
 
-# backtest_strategy moved to mcp_server.routers.backtest in Phase 3b.
-
-
-# backtest_validate moved to mcp_server.routers.backtest in Phase 3b.
-
-
 # `/tools/manage_watchlist` moved to mcp_server.routers.watchlist in Phase 1d.
-
-
-# get_active_trades moved to mcp_server.routers.signals in Phase 2d.
-
-
-# validate_signal moved to mcp_server.routers.signals in Phase 2d.
-
-
-# get_fo_signal moved to mcp_server.routers.fno in Phase 2b.
 
 
 # ── F&O Stock Endpoints ───────────────────────────────────────
@@ -2446,39 +2352,6 @@ def _get_kite_for_fo():
     return None
 
 
-# scan_oi_buildup moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_oi_buildup moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_fno_snapshot moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_iv_rank moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_volatility_setup moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_fno_expiry moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_option_greeks moved to mcp_server.routers.options in Phase 2a.
-
-
-# api_option_universe moved to mcp_server.routers.options in Phase 2a.
-
-
-# api_option_recommendation moved to mcp_server.routers.options in Phase 2a.
-
-
-# run_fno_analytics moved to mcp_server.routers.fno in Phase 2b.
-
-
-# api_fno_analytics_state moved to mcp_server.routers.fno in Phase 2b.
-
-
 # ============================================================
 # Wall Street AI Prompt Tool Endpoints
 # ============================================================
@@ -2492,39 +2365,10 @@ def _get_kite_for_fo():
 # ============================================================
 
 
-# api_overview moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# api_signals moved to mcp_server.routers.signals in Phase 2d.
-
-
-# cleanup_duplicates moved to mcp_server.routers.signals in Phase 2d.
-
-
-# delete_signal moved to mcp_server.routers.signals in Phase 2d.
-
-
-# api_active_trades moved to mcp_server.routers.trades in Phase 2e.
-
-
-# api_mwa_latest moved to mcp_server.routers.scanners in Phase 3a.
-
-
 # _serialize_watchlist + /api/watchlist{,/:id{,/toggle}} moved to mcp_server.routers.watchlist in Phase 1d.
 
 
 # DELETE + PATCH /api/watchlist/{item_id}* moved to mcp_server.routers.watchlist in Phase 1d.
-
-
-# api_accuracy moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# backtest_request_models moved to mcp_server.routers.backtest in Phase 3b.
-
-# api_backtest moved to mcp_server.routers.backtest in Phase 3b.
-
-
-# api_backtest_compare moved to mcp_server.routers.backtest in Phase 3b.
 
 
 # ============================================================
@@ -2533,10 +2377,6 @@ def _get_kite_for_fo():
 
 
 # GreeksRequest+OptionChainRequest+models_pre moved to mcp_server.routers.options in Phase 2a.
-# api_options_greeks moved to mcp_server.routers.options in Phase 2a.
-
-
-# api_options_chain moved to mcp_server.routers.options in Phase 2a.
 
 
 # ============================================================
@@ -2545,25 +2385,12 @@ def _get_kite_for_fo():
 
 
 # PayoffLeg+PayoffRequest moved to mcp_server.routers.options in Phase 2a.
-# api_options_payoff moved to mcp_server.routers.options in Phase 2a.
-
-
-# strategy_presets moved to mcp_server.routers.options in Phase 2a.
-
-
-# api_options_strategies moved to mcp_server.routers.options in Phase 2a.
-
-
-# StrategyBuildRequest moved to mcp_server.routers.options in Phase 2a.
-# api_options_strategy_build moved to mcp_server.routers.options in Phase 2a.
 
 
 # ============================================================
 # Order Execution Endpoints (Live Trading with Safety Controls)
 # ============================================================
 
-
-# order_request_models moved to mcp_server.routers.trades in Phase 2e.
 
 # Singleton order manager — initialized without Kite (connect later)
 _order_manager = None
@@ -2578,27 +2405,6 @@ def _get_order_manager():
             kite=None, capital=100000, paper_mode=settings.PAPER_MODE,
         )
     return _order_manager
-
-
-# place_order moved to mcp_server.routers.trades in Phase 2e.
-
-
-# cancel_order moved to mcp_server.routers.trades in Phase 2e.
-
-
-# close_position moved to mcp_server.routers.trades in Phase 2e.
-
-
-# close_all moved to mcp_server.routers.trades in Phase 2e.
-
-
-# order_status moved to mcp_server.routers.trades in Phase 2e.
-
-
-# update_pnl moved to mcp_server.routers.trades in Phase 2e.
-
-
-# update_trailing_sl moved to mcp_server.routers.trades in Phase 2e.
 
 
 def _get_live_ltp(ticker: str) -> float | None:
@@ -2626,48 +2432,9 @@ def _get_live_ltp(ticker: str) -> float | None:
     return ltp if ltp and ltp > 0 else None
 
 
-# update_all_trailing_sl moved to mcp_server.routers.trades in Phase 2e.
-
-
-# refresh_trade_prices moved to mcp_server.routers.trades in Phase 2e.
-
-
-# tier3_monitor moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# tier2_monitor moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# portfolio_exposure moved to mcp_server.routers.trades in Phase 2e.
-
-
-# check_exit_strategies moved to mcp_server.routers.trades in Phase 2e.
-
-
-# connect_kite moved to mcp_server.routers.trades in Phase 2e.
-
-
-# orphan_refresh_kite_fragment moved to mcp_server.routers.trades in Phase 2e.
-
-
-# orphan_refresh_gwc_fragment moved to mcp_server.routers.trades in Phase 2e.
-
-
-# connect_gwc moved to mcp_server.routers.trades in Phase 2e.
-
-
 # ============================================================
 # Angel One SmartAPI Integration
 # ============================================================
-
-
-# connect_angel moved to mcp_server.routers.trades in Phase 2e.
-
-
-# orphan_refresh_angel_fragment moved to mcp_server.routers.trades in Phase 2e.
-
-
-# angel_status moved to mcp_server.routers.trades in Phase 2e.
 
 
 # ============================================================
@@ -2675,21 +2442,9 @@ def _get_live_ltp(ticker: str) -> float | None:
 # ============================================================
 
 
-# api_kite_callback moved to mcp_server.routers.brokers in Phase 1e.
-
-
-# api_kite_login_url moved to mcp_server.routers.brokers in Phase 1e.
-
-
 # ============================================================
 # GWC (Goodwill) OAuth Login
 # ============================================================
-
-
-# api_gwc_callback moved to mcp_server.routers.brokers in Phase 1e.
-
-
-# api_gwc_login_url moved to mcp_server.routers.brokers in Phase 1e.
 
 
 # ============================================================
@@ -2802,65 +2557,10 @@ def get_system_health() -> dict:
 # ============================================================
 
 
-# signal_request_models moved to mcp_server.routers.signals in Phase 2d.
-
-
-# record_signal moved to mcp_server.routers.signals in Phase 2d.
-
-
-# update_signal moved to mcp_server.routers.signals in Phase 2d.
-
-
-# signal_accuracy moved to mcp_server.routers.signals in Phase 2d.
-
-
-# reset_sheets moved to mcp_server.routers.admin in Phase 3d.
-
-
-# eod_summary moved to mcp_server.routers.signals in Phase 2d.
-
-
-# check_signals moved to mcp_server.routers.signals in Phase 2d.
-
-
-# backfill_sheets_outcomes moved to mcp_server.routers.admin in Phase 3d.
-
-
-# pretrade_check moved to mcp_server.routers.trades in Phase 2e.
-
-
-# clear_sheets moved to mcp_server.routers.admin in Phase 3d.
-
-
 # ── Stitch Data endpoints ───────────────────────────────────────────
-
-# stitch_status moved to mcp_server.routers.admin in Phase 3d.
-
-
-# StitchPushRequest moved to mcp_server.routers.admin in Phase 3d.
-# stitch_push moved to mcp_server.routers.admin in Phase 3d.
-
-
-# stitch_push_signals moved to mcp_server.routers.admin in Phase 3d.
-
-
-# stitch_push_trades moved to mcp_server.routers.admin in Phase 3d.
-
-
-# stitch_validate moved to mcp_server.routers.admin in Phase 3d.
 
 
 # `/api/telegram_webhook` moved to mcp_server.routers.webhooks in Phase 1b.
-
-
-# reflect_request_models moved to mcp_server.routers.selfdev in Phase 2c.
-# reflect_trades moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# reflect_single moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# trade_memory_stats moved to mcp_server.routers.selfdev in Phase 2c.
 
 
 # `/api/tv_webhook` moved to mcp_server.routers.webhooks in Phase 1b.
@@ -2871,32 +2571,9 @@ def get_system_health() -> dict:
 # ============================================================
 
 
-# api_news moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# tool_market_news moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# check_news_alerts moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# ai_report moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# news_sentiment moved to mcp_server.routers.market_data in Phase 3c.
-
-
 # ============================================================
 # Momentum Ranking Module
 # ============================================================
-
-# api_momentum moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# momentum_rankings moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# momentum_rebalance moved to mcp_server.routers.market_data in Phase 3c.
 
 
 # ============================================================
@@ -3019,31 +2696,12 @@ def _fetch_market_movers() -> dict:
     return results
 
 
-# api_market_movers moved to mcp_server.routers.market_data in Phase 3c.
-
-
 # ============================================================
 # OHLCV Cache Management
 # ============================================================
 
 
-# api_cache_stats moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# CacheRefreshRequest moved to mcp_server.routers.market_data in Phase 3c.
-# cache_refresh moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# CachePurgeRequest moved to mcp_server.routers.market_data in Phase 3c.
-# cache_purge moved to mcp_server.routers.market_data in Phase 3c.
-
-
 # ── RealtimeEngine API endpoints ──────────────────────────────────────────────
-
-# api_live_prices moved to mcp_server.routers.market_data in Phase 3c.
-
-
-# api_realtime_status moved to mcp_server.routers.market_data in Phase 3c.
 
 
 # ============================================================
@@ -3051,63 +2709,9 @@ def _fetch_market_movers() -> dict:
 # ============================================================
 
 
-# scanner_review_today moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# scanner_review_history moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# run_scanner_review moved to mcp_server.routers.scanners in Phase 3a.
-
-
-# scanner_review_leaderboard moved to mcp_server.routers.scanners in Phase 3a.
-
-
 # ============================================================
 # Self-Development System — API endpoints
 # ============================================================
-
-
-# selfdev_status moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# run_self_development moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# selfdev_postmortem moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# run_postmortems moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# retrain_predictor moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# selfdev_predictor moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# selfdev_bayesian moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# selfdev_bayesian_under moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# update_bayesian_stats moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# selfdev_rules moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# mine_rules moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# activate_rule moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# deactivate_rule moved to mcp_server.routers.selfdev in Phase 2c.
-
-
-# selfdev_similar moved to mcp_server.routers.selfdev in Phase 2c.
 
 
 # ============================================================
