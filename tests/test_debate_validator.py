@@ -128,65 +128,74 @@ def test_build_memory_context_with_trades():
 # ── Agent calls (mocked) ────────────────────────────────────────
 
 
-def test_call_bull_analyst():
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _mock_claude_response(
-        {"confidence": 78, "argument": "Strong MWA alignment with breakout pattern."}
-    )
+# Agent-level tests patch the internal `_call_claude` helper because the
+# debate_validator now routes through ai_provider.call_ai_with_system rather
+# than the Anthropic client.messages.create API. The `client` parameter on
+# _call_bull_analyst etc. is vestigial — preserved for signature compat but
+# unused; a MagicMock is passed only to satisfy the signature.
 
-    result = _call_bull_analyst(mock_client, "signal ctx", "memory ctx")
+
+@patch("mcp_server.debate_validator._call_claude")
+def test_call_bull_analyst(mock_claude):
+    mock_claude.return_value = {
+        "confidence": 78,
+        "argument": "Strong MWA alignment with breakout pattern.",
+    }
+    result = _call_bull_analyst(MagicMock(), "signal ctx", "memory ctx")
     assert result.role == "bull"
     assert result.round_num == 1
     assert result.confidence == 78
     assert "Strong MWA" in result.argument
 
 
-def test_call_bull_analyst_rebuttal():
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _mock_claude_response(
-        {"confidence": 82, "argument": "Bear concerns are valid but manageable."}
-    )
-
-    result = _call_bull_analyst(mock_client, "ctx", "mem", bear_argument="Weak volume")
+@patch("mcp_server.debate_validator._call_claude")
+def test_call_bull_analyst_rebuttal(mock_claude):
+    mock_claude.return_value = {
+        "confidence": 82,
+        "argument": "Bear concerns are valid but manageable.",
+    }
+    result = _call_bull_analyst(MagicMock(), "ctx", "mem", bear_argument="Weak volume")
     assert result.round_num == 2
 
 
-def test_call_bear_analyst():
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _mock_claude_response(
-        {"confidence": 35, "argument": "Weak delivery percentage suggests distribution."}
-    )
-
-    result = _call_bear_analyst(mock_client, "signal ctx", "memory ctx")
+@patch("mcp_server.debate_validator._call_claude")
+def test_call_bear_analyst(mock_claude):
+    mock_claude.return_value = {
+        "confidence": 35,
+        "argument": "Weak delivery percentage suggests distribution.",
+    }
+    result = _call_bear_analyst(MagicMock(), "signal ctx", "memory ctx")
     assert result.role == "bear"
     assert result.round_num == 1
     assert result.confidence == 35
 
 
-def test_call_judge():
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _mock_claude_response(
-        {"confidence": 68, "reasoning": "Bull arguments stronger but bear has valid risk points.",
-         "recommendation": "WATCHLIST"}
-    )
-
+@patch("mcp_server.debate_validator._call_claude")
+def test_call_judge(mock_claude):
+    mock_claude.return_value = {
+        "confidence": 68,
+        "reasoning": "Bull arguments stronger but bear has valid risk points.",
+        "recommendation": "WATCHLIST",
+    }
     transcript = [
         DebateMessage(role="bull", round_num=1, argument="Strong", confidence=78),
         DebateMessage(role="bear", round_num=1, argument="Weak volume", confidence=35),
     ]
-    result = _call_judge(mock_client, "ctx", transcript)
+    result = _call_judge(MagicMock(), "ctx", transcript)
     assert result["confidence"] == 68
     assert result["recommendation"] == "WATCHLIST"
 
 
-def test_call_risk_assessment():
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _mock_claude_response(
-        {"confidence": 65, "risk_assessment": "Moderate risk. Conservative says no, aggressive says yes.",
-         "adjustment": -3}
+@patch("mcp_server.debate_validator._call_claude")
+def test_call_risk_assessment(mock_claude):
+    mock_claude.return_value = {
+        "confidence": 65,
+        "risk_assessment": "Moderate risk. Conservative says no, aggressive says yes.",
+        "adjustment": -3,
+    }
+    result = _call_risk_assessment(
+        MagicMock(), "ctx", {"confidence": 68, "reasoning": "..."},
     )
-
-    result = _call_risk_assessment(mock_client, "ctx", {"confidence": 68, "reasoning": "..."})
     assert result["adjustment"] == -3
     assert "Moderate risk" in result["risk_assessment"]
 
@@ -194,12 +203,26 @@ def test_call_risk_assessment():
 # ── Full debate flow (mocked) ───────────────────────────────────
 
 
+# Orchestrator tests — the primary run_debate path now calls
+# run_skill_debate() first (zero API calls, method="skill_debate"). To test
+# the LLM fallback path these tests want to exercise, skill_agents must be
+# forced to raise so the code falls through to the LLM branch.
+
+_SKILL_FAIL = patch(
+    "mcp_server.skill_agents.run_skill_debate",
+    side_effect=Exception("skill agents unavailable"),
+)
+
+
+@_SKILL_FAIL
 @patch("mcp_server.debate_validator.settings")
 @patch("mcp_server.debate_validator._call_risk_assessment")
 @patch("mcp_server.debate_validator._call_judge")
 @patch("mcp_server.debate_validator._call_bear_analyst")
 @patch("mcp_server.debate_validator._call_bull_analyst")
-def test_run_debate_full_flow(mock_bull, mock_bear, mock_judge, mock_risk, mock_settings):
+def test_run_debate_full_flow(
+    mock_bull, mock_bear, mock_judge, mock_risk, mock_settings, _skill_fail,
+):
     """Full debate should use 6 API calls and return DebateResult."""
     mock_settings.DEBATE_ENABLED = True
     mock_settings.DEBATE_UNCERTAIN_LOW = 40
@@ -226,9 +249,12 @@ def test_run_debate_full_flow(mock_bull, mock_bear, mock_judge, mock_risk, mock_
 # ── Single-pass for clear signals ────────────────────────────────
 
 
+@_SKILL_FAIL
 @patch("mcp_server.debate_validator.settings")
 @patch("mcp_server.validator.validate_signal")
-def test_run_debate_high_confidence_uses_single_pass(mock_validate, mock_settings):
+def test_run_debate_high_confidence_uses_single_pass(
+    mock_validate, mock_settings, _skill_fail,
+):
     """Signals with pre_confidence > 75 should use single-pass."""
     mock_settings.DEBATE_ENABLED = True
     mock_settings.DEBATE_UNCERTAIN_LOW = 40
@@ -248,9 +274,12 @@ def test_run_debate_high_confidence_uses_single_pass(mock_validate, mock_setting
     mock_validate.assert_called_once()
 
 
+@_SKILL_FAIL
 @patch("mcp_server.debate_validator.settings")
 @patch("mcp_server.validator.validate_signal")
-def test_run_debate_low_confidence_uses_single_pass(mock_validate, mock_settings):
+def test_run_debate_low_confidence_uses_single_pass(
+    mock_validate, mock_settings, _skill_fail,
+):
     """Signals with pre_confidence < 40 should use single-pass."""
     mock_settings.DEBATE_ENABLED = True
     mock_settings.DEBATE_UNCERTAIN_LOW = 40
@@ -270,9 +299,10 @@ def test_run_debate_low_confidence_uses_single_pass(mock_validate, mock_settings
 # ── Debate disabled ──────────────────────────────────────────────
 
 
+@_SKILL_FAIL
 @patch("mcp_server.debate_validator.settings")
 @patch("mcp_server.validator.validate_signal")
-def test_run_debate_disabled(mock_validate, mock_settings):
+def test_run_debate_disabled(mock_validate, mock_settings, _skill_fail):
     """When DEBATE_ENABLED=false, always use single-pass."""
     mock_settings.DEBATE_ENABLED = False
 
@@ -289,10 +319,13 @@ def test_run_debate_disabled(mock_validate, mock_settings):
 # ── Fallback chain ───────────────────────────────────────────────
 
 
+@_SKILL_FAIL
 @patch("mcp_server.debate_validator.settings")
 @patch("mcp_server.validator.validate_signal")
 @patch("mcp_server.debate_validator._run_full_debate", side_effect=Exception("API timeout"))
-def test_debate_failure_falls_back_to_single_pass(mock_full, mock_validate, mock_settings):
+def test_debate_failure_falls_back_to_single_pass(
+    mock_full, mock_validate, mock_settings, _skill_fail,
+):
     """If debate fails, falls back to single-pass."""
     mock_settings.DEBATE_ENABLED = True
     mock_settings.DEBATE_UNCERTAIN_LOW = 40
@@ -309,11 +342,12 @@ def test_debate_failure_falls_back_to_single_pass(mock_full, mock_validate, mock
     assert result.final_confidence == 55
 
 
+@_SKILL_FAIL
 @patch("mcp_server.debate_validator.settings")
 @patch("mcp_server.debate_validator._run_single_pass", side_effect=Exception("Total failure"))
 @patch("mcp_server.debate_validator._run_full_debate", side_effect=Exception("Debate failed"))
-def test_total_failure_blocks(mock_full, mock_single, mock_settings):
-    """If both debate and single-pass fail, signal is BLOCKED."""
+def test_total_failure_blocks(mock_full, mock_single, mock_settings, _skill_fail):
+    """If both skill-agents and debate and single-pass fail, signal is BLOCKED."""
     mock_settings.DEBATE_ENABLED = True
     mock_settings.DEBATE_UNCERTAIN_LOW = 40
     mock_settings.DEBATE_UNCERTAIN_HIGH = 75
@@ -345,12 +379,15 @@ def test_debate_message_structure():
 # ── Risk adjustment bounds ───────────────────────────────────────
 
 
+@_SKILL_FAIL
 @patch("mcp_server.debate_validator.settings")
 @patch("mcp_server.debate_validator._call_risk_assessment")
 @patch("mcp_server.debate_validator._call_judge")
 @patch("mcp_server.debate_validator._call_bear_analyst")
 @patch("mcp_server.debate_validator._call_bull_analyst")
-def test_risk_adjustment_clamped(mock_bull, mock_bear, mock_judge, mock_risk, mock_settings):
+def test_risk_adjustment_clamped(
+    mock_bull, mock_bear, mock_judge, mock_risk, mock_settings, _skill_fail,
+):
     """Risk adjustment is clamped to [-15, +10]."""
     mock_settings.DEBATE_ENABLED = True
     mock_settings.DEBATE_UNCERTAIN_LOW = 40
@@ -370,10 +407,11 @@ def test_risk_adjustment_clamped(mock_bull, mock_bear, mock_judge, mock_risk, mo
 # ── API call counting ────────────────────────────────────────────
 
 
+@_SKILL_FAIL
 @patch("mcp_server.debate_validator.settings")
 @patch("mcp_server.validator.validate_signal")
-def test_single_pass_api_call_count(mock_validate, mock_settings):
-    """Single-pass should report 1 API call."""
+def test_single_pass_api_call_count(mock_validate, mock_settings, _skill_fail):
+    """Single-pass should report 1 API call (LLM fallback path)."""
     mock_settings.DEBATE_ENABLED = True
     mock_settings.DEBATE_UNCERTAIN_LOW = 40
     mock_settings.DEBATE_UNCERTAIN_HIGH = 75

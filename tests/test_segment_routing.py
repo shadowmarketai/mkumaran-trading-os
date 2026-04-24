@@ -134,13 +134,20 @@ class TestSegmentRouting:
         from mcp_server.data_provider import SEGMENT_ROUTING
         assert SEGMENT_ROUTING["NSE"][0] == "angel"
 
-    def test_mcx_routing_gwc_first(self):
+    def test_mcx_routing_dhan_first(self):
+        # Dhan is now the MCX primary (free API, native MCX_COMM segment);
+        # gwc/angel/kite remain as fallbacks. yfinance intentionally excluded
+        # — its MCX symbols (e.g. CRUDEOIL→CL=F) are USD-denominated global
+        # proxies, not INR MCX FUTCOM contracts.
         from mcp_server.data_provider import SEGMENT_ROUTING
-        assert SEGMENT_ROUTING["MCX"][0] == "gwc"
+        assert SEGMENT_ROUTING["MCX"][0] == "dhan"
+        assert "yfinance" not in SEGMENT_ROUTING["MCX"]
 
-    def test_cds_routing_yfinance_first(self):
+    def test_cds_routing_dhan_first(self):
+        # Dhan is also primary for currency derivatives; yfinance is the
+        # final fallback rather than the primary as it once was.
         from mcp_server.data_provider import SEGMENT_ROUTING
-        assert SEGMENT_ROUTING["CDS"][0] == "yfinance"
+        assert SEGMENT_ROUTING["CDS"][0] == "dhan"
 
     def test_nfo_routing_angel_first(self):
         from mcp_server.data_provider import SEGMENT_ROUTING

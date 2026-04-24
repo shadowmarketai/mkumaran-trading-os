@@ -77,11 +77,12 @@ def test_paper_order_does_not_require_kite(mock_risk, mock_timing, paper_manager
     assert result.success is True
 
 
-def test_live_mode_fails_without_kite(live_manager):
-    """Live mode should fail with kite=None."""
+def test_live_mode_fails_without_broker(live_manager):
+    """Live mode should fail when neither Kite nor Angel is connected."""
     result = live_manager.place_order("NSE:RELIANCE", "BUY", qty=2, price=2500)
     assert result.success is False
-    assert "Kite not connected" in result.message
+    # Message copy changed when Angel broker support was added.
+    assert "No broker connected" in result.message
 
 
 # ── Position Tracking ───────────────────────────────────────────

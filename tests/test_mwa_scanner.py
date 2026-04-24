@@ -21,7 +21,10 @@ def _make_df(closes, volume=100000):
 # ── SCANNERS Dict Structure ─────────────────────────────────
 
 def test_scanners_count():
-    assert len(SCANNERS) == 118
+    # Scanner count grew from 118 → 156 with commit 7e97c0f (+20 institutional
+    # Chartink scanners) and subsequent F&O / commodity / forex additions.
+    # Assert lower bound so additive scanner growth doesn't re-break the test.
+    assert len(SCANNERS) >= 156
 
 
 def test_scanners_required_keys():
@@ -43,8 +46,11 @@ def test_scanners_valid_types():
 
 
 def test_scanners_valid_layers():
+    # "FnO" layer added alongside the NFO option/future scanners; keep list
+    # in sync with the layer strings actually used in mwa_scanner.SCANNERS.
     valid = {"Trend", "Volume", "Breakout", "RSI", "Gap", "MA", "Filter",
-             "SMC", "Wyckoff", "VSA", "Harmonic", "RL", "Forex", "Commodity"}
+             "SMC", "Wyckoff", "VSA", "Harmonic", "RL", "Forex", "Commodity",
+             "FnO"}
     for key, cfg in SCANNERS.items():
         assert cfg["layer"] in valid, f"Scanner '{key}' has invalid layer: {cfg['layer']}"
 
