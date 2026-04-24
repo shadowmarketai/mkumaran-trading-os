@@ -7,9 +7,15 @@ Pre-trade risk checks:
 - Total portfolio exposure tracking
 
 Designed to be called from OrderManager._validate_order() as pre-trade gate.
+
+Money math runs in Decimal; % display values are float at the dict boundary
+so dashboard consumers (TS `number`) don't drift on inexact float equality.
 """
 
 import logging
+from decimal import Decimal
+
+from mcp_server.money import Numeric, to_money
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +94,8 @@ def get_sector(ticker: str) -> str:
 def check_sector_concentration(
     open_positions: list[dict],
     new_ticker: str,
-    new_order_value: float,
-    capital: float,
+    new_order_value: Numeric,
+    capital: Numeric,
 ) -> str | None:
     """
     Check if adding a new position would breach sector concentration limits.
@@ -97,33 +103,36 @@ def check_sector_concentration(
     Args:
         open_positions: List of position dicts with ticker, entry_price, qty
         new_ticker: The ticker we want to add
-        new_order_value: Value of the new order
-        capital: Total trading capital
+        new_order_value: Value of the new order (any Numeric)
+        capital: Total trading capital (any Numeric)
 
     Returns None if OK, error message if breached.
     """
-    if capital <= 0:
+    capital_d = to_money(capital)
+    new_order_value_d = to_money(new_order_value)
+    if capital_d <= 0:
         return None  # Can't check without capital
 
     new_sector = get_sector(new_ticker)
 
-    # Calculate current sector exposure
-    sector_exposure: dict[str, float] = {}
+    # Calculate current sector exposure (Decimal-native to tolerate Decimal
+    # entry_price entries stored by OrderManager in Phase 2).
+    sector_exposure: dict[str, Decimal] = {}
     for pos in open_positions:
         sector = get_sector(pos.get("ticker", ""))
-        value = pos.get("entry_price", 0) * pos.get("qty", 0)
-        sector_exposure[sector] = sector_exposure.get(sector, 0) + value
+        value = to_money(pos.get("entry_price", 0)) * pos.get("qty", 0)
+        sector_exposure[sector] = sector_exposure.get(sector, Decimal("0")) + value
 
     # Add the proposed new position
-    current_sector_value = sector_exposure.get(new_sector, 0)
-    new_total = current_sector_value + new_order_value
-    sector_pct = new_total / capital
+    current_sector_value = sector_exposure.get(new_sector, Decimal("0"))
+    new_total = current_sector_value + new_order_value_d
+    sector_pct = new_total / capital_d
 
     if sector_pct > MAX_SECTOR_PCT:
         return (
             f"SECTOR LIMIT: Adding {new_ticker} would put {new_sector} sector at "
             f"{sector_pct:.0%} of capital (limit: {MAX_SECTOR_PCT:.0%}). "
-            f"Current: {current_sector_value:,.0f}, new: +{new_order_value:,.0f}"
+            f"Current: {current_sector_value:,.0f}, new: +{new_order_value_d:,.0f}"
         )
 
     return None
@@ -132,13 +141,15 @@ def check_sector_concentration(
 def check_asset_class_concentration(
     open_positions: list[dict],
     new_ticker: str,
-    new_order_value: float,
-    capital: float,
+    new_order_value: Numeric,
+    capital: Numeric,
 ) -> str | None:
     """
     Check asset class concentration (max 50% in equity, commodity, etc.).
     """
-    if capital <= 0:
+    capital_d = to_money(capital)
+    new_order_value_d = to_money(new_order_value)
+    if capital_d <= 0:
         return None
 
     # Determine asset class of new ticker
@@ -153,17 +164,17 @@ def check_asset_class_concentration(
     new_asset_class = asset_class_map.get(exchange, "EQUITY")
 
     # Calculate current asset class exposure
-    class_exposure: dict[str, float] = {}
+    class_exposure: dict[str, Decimal] = {}
     for pos in open_positions:
         pos_ticker = pos.get("ticker", "")
         pos_exchange = pos_ticker.split(":")[0] if ":" in pos_ticker else "NSE"
         pos_class = asset_class_map.get(pos_exchange, "EQUITY")
-        value = pos.get("entry_price", 0) * pos.get("qty", 0)
-        class_exposure[pos_class] = class_exposure.get(pos_class, 0) + value
+        value = to_money(pos.get("entry_price", 0)) * pos.get("qty", 0)
+        class_exposure[pos_class] = class_exposure.get(pos_class, Decimal("0")) + value
 
-    current_value = class_exposure.get(new_asset_class, 0)
-    new_total = current_value + new_order_value
-    class_pct = new_total / capital
+    current_value = class_exposure.get(new_asset_class, Decimal("0"))
+    new_total = current_value + new_order_value_d
+    class_pct = new_total / capital_d
 
     if class_pct > MAX_ASSET_CLASS_PCT:
         return (
@@ -177,8 +188,8 @@ def check_asset_class_concentration(
 def validate_portfolio_risk(
     open_positions: list[dict],
     new_ticker: str,
-    new_order_value: float,
-    capital: float,
+    new_order_value: Numeric,
+    capital: Numeric,
 ) -> str | None:
     """
     Run all portfolio risk checks. Returns None if OK, error string if any check fails.
@@ -204,39 +215,49 @@ def validate_portfolio_risk(
 
 def get_portfolio_exposure(
     open_positions: list[dict],
-    capital: float,
+    capital: Numeric,
 ) -> dict:
-    """Get current portfolio exposure breakdown for dashboard display."""
-    sector_exposure: dict[str, float] = {}
-    class_exposure: dict[str, float] = {}
+    """Get current portfolio exposure breakdown for dashboard display.
+
+    Exposure aggregates are Decimal (money zone). Percentage fields are
+    float — they're dimensionless display values and float keeps the
+    dashboard contract stable across inexact-float decimals like 20.4.
+    """
+    capital_d = to_money(capital)
+    sector_exposure: dict[str, Decimal] = {}
+    class_exposure: dict[str, Decimal] = {}
 
     asset_class_map = {
         "NSE": "EQUITY", "BSE": "EQUITY",
         "MCX": "COMMODITY", "CDS": "CURRENCY", "NFO": "FNO",
     }
 
-    total_deployed = 0.0
+    total_deployed = Decimal("0")
     for pos in open_positions:
         ticker = pos.get("ticker", "")
-        value = pos.get("entry_price", 0) * pos.get("qty", 0)
+        value = to_money(pos.get("entry_price", 0)) * pos.get("qty", 0)
         total_deployed += value
 
         sector = get_sector(ticker)
-        sector_exposure[sector] = sector_exposure.get(sector, 0) + value
+        sector_exposure[sector] = sector_exposure.get(sector, Decimal("0")) + value
 
         exchange = ticker.split(":")[0] if ":" in ticker else "NSE"
         asset_class = asset_class_map.get(exchange, "EQUITY")
-        class_exposure[asset_class] = class_exposure.get(asset_class, 0) + value
+        class_exposure[asset_class] = class_exposure.get(asset_class, Decimal("0")) + value
+
+    def _pct(value: Decimal) -> float:
+        # Dashboard-facing percentage — float for stable equality in UI tests.
+        return round(float(value) / float(capital_d) * 100, 1) if capital_d > 0 else 0
 
     return {
         "total_deployed": round(total_deployed, 2),
-        "deployed_pct": round(total_deployed / capital * 100, 1) if capital > 0 else 0,
+        "deployed_pct": _pct(total_deployed),
         "sector_breakdown": {
-            k: {"value": round(v, 2), "pct": round(v / capital * 100, 1) if capital > 0 else 0}
+            k: {"value": round(v, 2), "pct": _pct(v)}
             for k, v in sorted(sector_exposure.items(), key=lambda x: -x[1])
         },
         "asset_class_breakdown": {
-            k: {"value": round(v, 2), "pct": round(v / capital * 100, 1) if capital > 0 else 0}
+            k: {"value": round(v, 2), "pct": _pct(v)}
             for k, v in sorted(class_exposure.items(), key=lambda x: -x[1])
         },
         "limits": {

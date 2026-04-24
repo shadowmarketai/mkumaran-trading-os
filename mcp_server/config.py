@@ -1,8 +1,11 @@
 import json
 import os
 import logging
+from decimal import Decimal
 from pathlib import Path
 from dotenv import load_dotenv
+
+from mcp_server.money import to_money
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -103,9 +106,12 @@ class Settings:
     MCP_SERVER_HOST: str = os.getenv("MCP_SERVER_HOST", "0.0.0.0")
     MCP_SERVER_PORT: int = int(os.getenv("MCP_SERVER_PORT", "8001"))
 
-    # RRMS Defaults
-    RRMS_CAPITAL: float = float(os.getenv("RRMS_CAPITAL", "100000"))
-    RRMS_RISK_PCT: float = float(os.getenv("RRMS_RISK_PCT", "0.02"))
+    # RRMS Defaults — money-shaped settings live in the Decimal zone so
+    # downstream sizing math doesn't accumulate float rounding error.
+    # RRMS_MIN_RRR stays float: it's a dimensionless ratio, never multiplied
+    # against money directly (used as target-distance multiplier against ATR).
+    RRMS_CAPITAL: Decimal = to_money(os.getenv("RRMS_CAPITAL", "100000"))
+    RRMS_RISK_PCT: Decimal = to_money(os.getenv("RRMS_RISK_PCT", "0.02"))
     RRMS_MIN_RRR: float = float(os.getenv("RRMS_MIN_RRR", "3.0"))
 
     # Debate Validator

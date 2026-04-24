@@ -656,16 +656,23 @@ npm run type-check
 
 ### Database
 
-PostgreSQL 16 with schema auto-loaded from `schema.sql` on first boot. Tables:
+PostgreSQL 16. Schema is owned by Alembic — the backend runs `alembic upgrade head` on every boot (`run_alembic_upgrade()` in `mcp_server/db.py`). Seed data (default watchlist of 46 tickers across NSE / MCX / CDS / NFO) ships as a data migration. See `docs/SCHEMA_CONSOLIDATION_PLAN.md` for the consolidation history.
+
+Tables:
 
 | Table | Purpose |
 |-------|---------|
 | `watchlist` | Tracked tickers with exchange/asset_class |
-| `signal` | Scanner detections + confidence + AI validation |
-| `outcome` | Exit records with P&L and lessons |
-| `mwa_score` | Composite MWA scan results |
-| `active_trade` | Open positions with SL/target/trailing state |
+| `signals` | Scanner detections + confidence + AI validation |
+| `outcomes` | Exit records with P&L and lessons |
+| `mwa_scores` | Composite MWA scan results |
+| `active_trades` | Open positions with SL/target/trailing state |
+| `postmortems` | Root-cause analysis on closed trades |
+| `adaptive_rules` | Mined filter rules from outcomes |
+| `scanner_reviews` | Daily post-hoc scanner performance reviews |
+| `app_users` / `user_settings` | Auth + BYOK API keys |
 | `ohlcv_cache` | OHLCV bar cache with TTL staleness |
+| `usage_logs` | Tier-gated feature usage tracking |
 
 ---
 

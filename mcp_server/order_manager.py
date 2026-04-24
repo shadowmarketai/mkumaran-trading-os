@@ -17,20 +17,25 @@ Requires: Active Kite session with valid access token.
 import logging
 from datetime import date
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from mcp_server.market_calendar import now_ist
 
 from mcp_server.market_calendar import validate_order_timing
+from mcp_server.money import Numeric, to_money
 from mcp_server.portfolio_risk import validate_portfolio_risk
 
 logger = logging.getLogger(__name__)
 
 
 # ── Safety Limits ────────────────────────────────────────────
+# Dimensionless ratios stay float (compared against Decimal fractions); money
+# ceilings live as Decimal so they can be compared against Decimal order values
+# without mixed-type arithmetic.
 MAX_OPEN_POSITIONS = 5                # Max concurrent trades
-DAILY_LOSS_LIMIT_PCT = -0.03         # -3% of capital = kill switch
-MAX_POSITION_SIZE_PCT = 0.10          # Max 10% capital per trade
-MAX_ORDER_VALUE = 200000              # Max Rs.2L per order (safety cap)
+DAILY_LOSS_LIMIT_PCT = -0.03         # -3% of capital = kill switch (ratio)
+MAX_POSITION_SIZE_PCT = 0.10          # Max 10% capital per trade (ratio)
+MAX_ORDER_VALUE: Decimal = Decimal("200000")  # Max Rs.2L per order (safety cap)
 ALLOWED_EXCHANGES = {"NSE", "BSE", "MCX", "NFO", "CDS"}
 ALLOWED_ORDER_TYPES = {"MARKET", "LIMIT", "SL", "SL-M"}
 ALLOWED_PRODUCTS = {"CNC", "MIS", "NRML"}
@@ -56,27 +61,31 @@ class OrderResult:
 
 @dataclass
 class KillSwitchState:
-    """Tracks daily P&L for kill switch."""
+    """Tracks daily P&L for kill switch (Decimal zone)."""
     date: date = field(default_factory=date.today)
-    starting_capital: float = 0.0
-    realized_pnl: float = 0.0
+    starting_capital: Decimal = field(default_factory=lambda: Decimal("0"))
+    realized_pnl: Decimal = field(default_factory=lambda: Decimal("0"))
     is_triggered: bool = False
     trigger_reason: str = ""
 
-    def check(self, capital: float) -> bool:
+    def check(self, capital: Decimal) -> bool:
         """Check if kill switch should trigger. Returns True if trading should stop."""
         if self.date != date.today():
             # New day — reset
             self.date = date.today()
             self.starting_capital = capital
-            self.realized_pnl = 0.0
+            self.realized_pnl = Decimal("0")
             self.is_triggered = False
             self.trigger_reason = ""
 
         if self.starting_capital <= 0:
             self.starting_capital = capital
 
-        daily_pnl_pct = self.realized_pnl / self.starting_capital if self.starting_capital > 0 else 0
+        daily_pnl_pct = (
+            self.realized_pnl / self.starting_capital
+            if self.starting_capital > 0
+            else Decimal("0")
+        )
 
         if daily_pnl_pct <= DAILY_LOSS_LIMIT_PCT:
             self.is_triggered = True
@@ -101,18 +110,24 @@ class OrderManager:
         manager.close_all_positions()
     """
 
-    def __init__(self, kite=None, broker=None, capital: float = 100000, paper_mode: bool = False):
+    def __init__(
+        self,
+        kite=None,
+        broker=None,
+        capital: Numeric = 100000,
+        paper_mode: bool = False,
+    ):
         self.kite = kite
         self.broker = broker  # Angel or other broker with place_order/cancel_order
-        self.capital = capital
+        self.capital: Decimal = to_money(capital)
         self.paper_mode = paper_mode
-        self.kill_switch = KillSwitchState(starting_capital=capital)
+        self.kill_switch = KillSwitchState(starting_capital=self.capital)
         self.open_positions: list[dict] = []
         self.order_history: list[OrderResult] = []
         self._paper_order_counter: int = 0
 
         if self.paper_mode:
-            logger.info("OrderManager initialized in PAPER MODE (capital=%.0f)", capital)
+            logger.info("OrderManager initialized in PAPER MODE (capital=%.0f)", self.capital)
 
     def _validate_broker(self) -> str | None:
         """Check if any broker (Kite or Angel) is connected. Returns error message or None."""
@@ -129,11 +144,13 @@ class OrderManager:
         ticker: str,
         direction: str,
         qty: int,
-        price: float,
+        price: Decimal,
     ) -> str | None:
         """
         Validate order against safety limits.
         Returns error message or None if valid.
+
+        `price` must already be a Decimal (converted in place_order).
         """
         # Kill switch
         if self.kill_switch.is_triggered:
@@ -158,15 +175,17 @@ class OrderManager:
             return f"Invalid quantity: {qty}. Must be > 0."
 
         # Order value check
-        order_value = qty * price
+        order_value = Decimal(qty) * price
         if order_value > MAX_ORDER_VALUE:
             return (
                 f"Order value Rs.{order_value:,.0f} exceeds max "
                 f"Rs.{MAX_ORDER_VALUE:,.0f}"
             )
 
-        # Position size check
-        position_pct = order_value / self.capital if self.capital > 0 else 1.0
+        # Position size check — ratio is dimensionless, compare against float constant.
+        position_pct = (
+            order_value / self.capital if self.capital > 0 else Decimal("1")
+        )
         if position_pct > MAX_POSITION_SIZE_PCT:
             return (
                 f"Position size {position_pct:.1%} exceeds max "
@@ -184,7 +203,6 @@ class OrderManager:
             return timing_error
 
         # Portfolio risk check (sector + asset class concentration)
-        order_value = qty * price if price > 0 else 0
         if order_value > 0:
             risk_error = validate_portfolio_risk(
                 self.open_positions, ticker, order_value, self.capital,
@@ -199,11 +217,11 @@ class OrderManager:
         ticker: str,
         direction: str,
         qty: int,
-        price: float = 0,
+        price: Numeric = 0,
         order_type: str = "LIMIT",
         product: str = "CNC",
-        stop_loss: float = 0,
-        target: float = 0,
+        stop_loss: Numeric = 0,
+        target: Numeric = 0,
         tag: str = "",
     ) -> OrderResult:
         """
@@ -213,14 +231,21 @@ class OrderManager:
             ticker: EXCHANGE:SYMBOL format
             direction: BUY or SELL
             qty: Number of shares/lots
-            price: Limit price (0 for market orders)
+            price: Limit price (0 for market orders); any Numeric
             order_type: MARKET, LIMIT, SL, SL-M
             product: CNC (delivery), MIS (intraday), NRML (F&O)
-            stop_loss: Stop loss price for SL orders
-            target: Target price (for tracking, not sent to exchange)
+            stop_loss: Stop loss price for SL orders; any Numeric
+            target: Target price (for tracking, not sent to exchange); any Numeric
             tag: Optional tag for tracking (e.g., signal_id)
+
+        All money inputs are coerced to Decimal for validation and open-position
+        tracking. They are cast back to float only at the broker SDK boundary
+        (Kite/Angel JSON payloads require floats).
         """
         timestamp = now_ist().isoformat()
+        price_d: Decimal = to_money(price)
+        stop_loss_d: Decimal = to_money(stop_loss)
+        target_d: Decimal = to_money(target)
 
         # ── Validate broker connection ────────────────────────
         kite_error = self._validate_broker()
@@ -233,11 +258,11 @@ class OrderManager:
             return result
 
         # ── Validate order safety ─────────────────────────────
-        validation_error = self._validate_order(ticker, direction, qty, price)
+        validation_error = self._validate_order(ticker, direction, qty, price_d)
         if validation_error:
             result = OrderResult(
                 success=False, message=validation_error, ticker=ticker,
-                direction=direction, qty=qty, price=price, timestamp=timestamp,
+                direction=direction, qty=qty, price=float(price_d), timestamp=timestamp,
             )
             self.order_history.append(result)
             logger.warning("Order REJECTED for %s: %s", ticker, validation_error)
@@ -253,9 +278,9 @@ class OrderManager:
                 "ticker": ticker,
                 "direction": direction,
                 "qty": qty,
-                "entry_price": price,
-                "stop_loss": stop_loss,
-                "target": target,
+                "entry_price": price_d,
+                "stop_loss": stop_loss_d,
+                "target": target_d,
                 "timestamp": timestamp,
                 "tag": tag,
             })
@@ -263,18 +288,18 @@ class OrderManager:
             result = OrderResult(
                 success=True,
                 order_id=order_id,
-                message=f"[PAPER] Order placed: {direction} {qty}x {ticker} @ {price}",
+                message=f"[PAPER] Order placed: {direction} {qty}x {ticker} @ {price_d}",
                 ticker=ticker,
                 direction=direction,
                 qty=qty,
-                price=price,
+                price=float(price_d),
                 order_type=order_type,
                 timestamp=timestamp,
             )
 
             logger.info(
                 "PAPER ORDER: %s %d x %s @ %.2f (ID: %s)",
-                direction, qty, ticker, price, order_id,
+                direction, qty, ticker, price_d, order_id,
             )
 
             self.order_history.append(result)
@@ -286,16 +311,18 @@ class OrderManager:
 
         if self.broker is not None and self.kite is None:
             try:
-                trigger = stop_loss if order_type in ("SL", "SL-M") else 0
+                # Angel SDK JSON payload wants floats — cast at the SDK boundary.
+                trigger_f = float(stop_loss_d) if order_type in ("SL", "SL-M") else 0.0
+                price_f = float(price_d)
                 resp = self.broker.place_order(
                     exchange=exchange,
                     symbol=symbol,
                     action=direction,
                     qty=qty,
-                    price=price,
+                    price=price_f,
                     order_type=order_type,
                     product=product,
-                    trigger_price=trigger,
+                    trigger_price=trigger_f,
                 )
 
                 if resp.get("success"):
@@ -305,26 +332,26 @@ class OrderManager:
                         "ticker": ticker,
                         "direction": direction,
                         "qty": qty,
-                        "entry_price": price,
-                        "stop_loss": stop_loss,
-                        "target": target,
+                        "entry_price": price_d,
+                        "stop_loss": stop_loss_d,
+                        "target": target_d,
                         "timestamp": timestamp,
                         "tag": tag,
                     })
                     result = OrderResult(
                         success=True,
                         order_id=angel_order_id,
-                        message=f"Order placed via Angel: {direction} {qty}x {ticker} @ {price}",
+                        message=f"Order placed via Angel: {direction} {qty}x {ticker} @ {price_d}",
                         ticker=ticker,
                         direction=direction,
                         qty=qty,
-                        price=price,
+                        price=price_f,
                         order_type=order_type,
                         timestamp=timestamp,
                     )
                     logger.info(
                         "ANGEL ORDER PLACED: %s %d x %s @ %.2f (ID: %s)",
-                        direction, qty, ticker, price, angel_order_id,
+                        direction, qty, ticker, price_d, angel_order_id,
                     )
                     self.order_history.append(result)
                     return result
@@ -335,7 +362,7 @@ class OrderManager:
                         ticker=ticker,
                         direction=direction,
                         qty=qty,
-                        price=price,
+                        price=float(price_d),
                         timestamp=timestamp,
                     )
                     self.order_history.append(result)
@@ -348,7 +375,7 @@ class OrderManager:
                     ticker=ticker,
                     direction=direction,
                     qty=qty,
-                    price=price,
+                    price=float(price_d),
                     timestamp=timestamp,
                 )
                 logger.error("ANGEL ORDER FAILED for %s: %s", ticker, e)
@@ -358,6 +385,10 @@ class OrderManager:
         # ── Place order via Kite ──────────────────────────────
         try:
             kite_direction = "BUY" if direction == "BUY" else "SELL"
+
+            # Kite SDK JSON payload wants floats — cast at the SDK boundary.
+            price_f = float(price_d)
+            stop_loss_f = float(stop_loss_d)
 
             order_params = {
                 "variety": "regular",
@@ -369,28 +400,28 @@ class OrderManager:
                 "product": product,
             }
 
-            if order_type == "LIMIT" and price > 0:
-                order_params["price"] = price
+            if order_type == "LIMIT" and price_d > 0:
+                order_params["price"] = price_f
 
-            if order_type in ("SL", "SL-M") and stop_loss > 0:
-                order_params["trigger_price"] = stop_loss
-                if order_type == "SL" and price > 0:
-                    order_params["price"] = price
+            if order_type in ("SL", "SL-M") and stop_loss_d > 0:
+                order_params["trigger_price"] = stop_loss_f
+                if order_type == "SL" and price_d > 0:
+                    order_params["price"] = price_f
 
             if tag:
                 order_params["tag"] = tag[:20]  # Kite max tag length
 
             order_id = self.kite.place_order(**order_params)
 
-            # Track position
+            # Track position (Decimal values for internal consistency)
             self.open_positions.append({
                 "order_id": str(order_id),
                 "ticker": ticker,
                 "direction": direction,
                 "qty": qty,
-                "entry_price": price,
-                "stop_loss": stop_loss,
-                "target": target,
+                "entry_price": price_d,
+                "stop_loss": stop_loss_d,
+                "target": target_d,
                 "timestamp": timestamp,
                 "tag": tag,
             })
@@ -398,18 +429,18 @@ class OrderManager:
             result = OrderResult(
                 success=True,
                 order_id=str(order_id),
-                message=f"Order placed: {direction} {qty}x {ticker} @ {price}",
+                message=f"Order placed: {direction} {qty}x {ticker} @ {price_d}",
                 ticker=ticker,
                 direction=direction,
                 qty=qty,
-                price=price,
+                price=price_f,
                 order_type=order_type,
                 timestamp=timestamp,
             )
 
             logger.info(
                 "ORDER PLACED: %s %d x %s @ %.2f (ID: %s)",
-                direction, qty, ticker, price, order_id,
+                direction, qty, ticker, price_d, order_id,
             )
 
             self.order_history.append(result)
@@ -422,7 +453,7 @@ class OrderManager:
                 ticker=ticker,
                 direction=direction,
                 qty=qty,
-                price=price,
+                price=float(price_d),
                 timestamp=timestamp,
             )
             logger.error("ORDER FAILED for %s: %s", ticker, e)
@@ -557,9 +588,9 @@ class OrderManager:
 
         return results
 
-    def update_pnl(self, realized_pnl: float) -> None:
+    def update_pnl(self, realized_pnl: Numeric) -> None:
         """Update daily realized P&L for kill switch tracking."""
-        self.kill_switch.realized_pnl += realized_pnl
+        self.kill_switch.realized_pnl += to_money(realized_pnl)
         self.kill_switch.check(self.capital)
 
     # ── Trailing Stop Loss ──────────────────────────────────────
@@ -567,7 +598,7 @@ class OrderManager:
     def update_trailing_sl(
         self,
         ticker: str,
-        current_price: float,
+        current_price: Numeric,
         trail_pct: float = DEFAULT_TRAIL_PCT,
         activation_pct: float = DEFAULT_TRAIL_ACTIVATION_PCT,
     ) -> dict:
@@ -586,8 +617,9 @@ class OrderManager:
             return {"updated": False, "message": f"No open position for {ticker}"}
 
         pos = matching[-1]
-        entry = pos["entry_price"]
-        old_sl = pos.get("stop_loss", 0)
+        entry: Decimal = to_money(pos["entry_price"])
+        old_sl: Decimal = to_money(pos.get("stop_loss", 0))
+        current: Decimal = to_money(current_price)
         direction = pos["direction"]
         is_long = direction == "BUY"
 
@@ -596,11 +628,11 @@ class OrderManager:
             return {"updated": False, "message": "Invalid entry price"}
 
         if is_long:
-            profit_pct = (current_price - entry) / entry
+            profit_pct = (current - entry) / entry
         else:
-            profit_pct = (entry - current_price) / entry
+            profit_pct = (entry - current) / entry
 
-        # Check if trailing SL should activate
+        # Check if trailing SL should activate (Decimal vs float compares OK)
         if profit_pct < activation_pct:
             return {
                 "updated": False,
@@ -609,16 +641,17 @@ class OrderManager:
                 "old_sl": old_sl,
             }
 
-        # Calculate new trailing SL
+        # Calculate new trailing SL (Decimal × Decimal — convert trail_pct once)
+        trail_factor = to_money(trail_pct)
         if is_long:
-            new_sl = current_price * (1 - trail_pct)
+            new_sl = current * (Decimal("1") - trail_factor)
             # Only move SL up, never down
             if new_sl > old_sl:
                 pos["stop_loss"] = round(new_sl, 2)
                 pos["trail_active"] = True
                 logger.info(
                     "TRAILING SL updated for %s: %.2f → %.2f (price=%.2f, profit=%.1f%%)",
-                    ticker, old_sl, new_sl, current_price, profit_pct * 100,
+                    ticker, old_sl, new_sl, current, profit_pct * 100,
                 )
                 return {
                     "updated": True,
@@ -628,14 +661,14 @@ class OrderManager:
                     "triggered": False,
                 }
         else:
-            new_sl = current_price * (1 + trail_pct)
+            new_sl = current * (Decimal("1") + trail_factor)
             # Only move SL down for SHORT, never up
             if old_sl == 0 or new_sl < old_sl:
                 pos["stop_loss"] = round(new_sl, 2)
                 pos["trail_active"] = True
                 logger.info(
                     "TRAILING SL updated for %s (SHORT): %.2f → %.2f (price=%.2f, profit=%.1f%%)",
-                    ticker, old_sl, new_sl, current_price, profit_pct * 100,
+                    ticker, old_sl, new_sl, current, profit_pct * 100,
                 )
                 return {
                     "updated": True,
@@ -653,7 +686,7 @@ class OrderManager:
             "profit_pct": round(profit_pct * 100, 2),
         }
 
-    def check_sl_hit(self, ticker: str, current_price: float) -> dict:
+    def check_sl_hit(self, ticker: str, current_price: Numeric) -> dict:
         """
         Check if stop loss has been hit for a position.
 
@@ -664,32 +697,33 @@ class OrderManager:
             return {"hit": False, "message": f"No open position for {ticker}"}
 
         pos = matching[-1]
-        sl = pos.get("stop_loss", 0)
+        sl: Decimal = to_money(pos.get("stop_loss", 0))
         if sl <= 0:
             return {"hit": False, "message": "No stop loss set"}
 
+        current: Decimal = to_money(current_price)
         is_long = pos["direction"] == "BUY"
 
-        if is_long and current_price <= sl:
+        if is_long and current <= sl:
             return {
                 "hit": True,
                 "action": "CLOSE",
                 "ticker": ticker,
                 "sl": sl,
-                "current_price": current_price,
+                "current_price": current,
                 "trail_active": pos.get("trail_active", False),
             }
-        elif not is_long and current_price >= sl:
+        elif not is_long and current >= sl:
             return {
                 "hit": True,
                 "action": "CLOSE",
                 "ticker": ticker,
                 "sl": sl,
-                "current_price": current_price,
+                "current_price": current,
                 "trail_active": pos.get("trail_active", False),
             }
 
-        return {"hit": False, "action": "HOLD", "sl": sl, "current_price": current_price}
+        return {"hit": False, "action": "HOLD", "sl": sl, "current_price": current}
 
     # ── Partial Profit Booking ───────────────────────────────
 
@@ -764,7 +798,7 @@ class OrderManager:
     def evaluate_exit_strategy(
         self,
         ticker: str,
-        current_price: float,
+        current_price: Numeric,
     ) -> dict:
         """
         Evaluate whether to take partial profit, trail SL, or hold.
@@ -780,15 +814,16 @@ class OrderManager:
             return {"action": "NONE", "message": f"No position for {ticker}"}
 
         pos = matching[-1]
-        entry = pos["entry_price"]
+        entry: Decimal = to_money(pos["entry_price"])
         if entry <= 0:
             return {"action": "HOLD", "message": "Invalid entry price"}
 
+        current: Decimal = to_money(current_price)
         is_long = pos["direction"] == "BUY"
         if is_long:
-            profit_pct = (current_price - entry) / entry * 100
+            profit_pct = (current - entry) / entry * 100
         else:
-            profit_pct = (entry - current_price) / entry * 100
+            profit_pct = (entry - current) / entry * 100
 
         partials_done = pos.get("partial_exits", 0)
 

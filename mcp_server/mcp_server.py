@@ -25,7 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from mcp_server.config import settings
-from mcp_server.db import get_db, init_db, SessionLocal
+from mcp_server.db import get_db, init_db, run_alembic_upgrade, SessionLocal
 from mcp_server.models import (
     ActiveTrade,
     AdaptiveRule,
@@ -747,6 +747,15 @@ async def lifespan(app: FastAPI):
     # Capture the main event loop for background thread access
     global _main_event_loop
     _main_event_loop = asyncio.get_running_loop()
+
+    # Run Alembic migrations BEFORE init_db(). Non-fatal — if Alembic
+    # fails for any reason, init_db()'s Base.metadata.create_all() still
+    # creates any missing tables so the app can boot in a degraded state.
+    # See docs/SCHEMA_CONSOLIDATION_PLAN.md.
+    try:
+        await asyncio.to_thread(run_alembic_upgrade)
+    except Exception as alembic_err:
+        logger.error("Alembic upgrade crashed (continuing boot): %s", alembic_err)
 
     try:
         logger.info("Initializing database...")

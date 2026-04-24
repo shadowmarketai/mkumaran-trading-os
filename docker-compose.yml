@@ -7,7 +7,9 @@ services:
       POSTGRES_DB: trading_os
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    # schema.sql retired in schema consolidation Phase 4. Alembic owns
+    # structure + seed data; run_alembic_upgrade() in the backend lifespan
+    # applies them on boot. See docs/SCHEMA_CONSOLIDATION_PLAN.md.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U trading -d trading_os"]
       interval: 5s
