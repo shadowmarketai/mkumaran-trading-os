@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc, case, text
@@ -1084,10 +1084,12 @@ app = FastAPI(
 
 # ── Per-domain routers (progressive extraction) ─────────────
 # See docs/MCP_SERVER_ROUTER_SPLIT_PLAN.md for the full layout.
+from mcp_server.routers import brokers as _router_brokers  # noqa: E402
 from mcp_server.routers import health as _router_health  # noqa: E402
 from mcp_server.routers import wallstreet as _router_wallstreet  # noqa: E402
 from mcp_server.routers import watchlist as _router_watchlist  # noqa: E402
 from mcp_server.routers import webhooks as _router_webhooks  # noqa: E402
+app.include_router(_router_brokers.router)
 app.include_router(_router_health.router)
 app.include_router(_router_wallstreet.router)
 app.include_router(_router_watchlist.router)
@@ -4312,31 +4314,7 @@ async def tool_connect_kite():
         }
 
 
-@app.post("/tools/refresh_kite_token")
-async def tool_refresh_kite_token():
-    """Refresh Kite access token via TOTP login (standalone, no order manager needed)."""
-    try:
-        from mcp_server.kite_auth import refresh_kite_token
-        # TOTP login is blocking I/O — run in worker thread
-        access_token = await asyncio.to_thread(refresh_kite_token)
-
-        # Clear the sticky "_kite_failed_today" flag + force-reload the
-        # instrument cache. Without this, an earlier morning failure leaves
-        # MCX/NFO/CDS resolution broken for the rest of the day even after
-        # a successful token refresh.
-        cache_tokens = 0
-        try:
-            from mcp_server.data_provider import force_reload_instrument_cache
-            cache_tokens = await asyncio.to_thread(force_reload_instrument_cache)
-        except Exception as exc:
-            logger.warning("Instrument cache reload after TOTP refresh failed: %s", exc)
-
-        return {
-            "success": True,
-            "message": "Kite token refreshed",
-            "token_prefix": access_token[:8] + "..." if access_token else None,
-            "instrument_cache_tokens": cache_tokens,
-        }
+# refresh_kite_token moved to mcp_server.routers.brokers in Phase 1e.
     except Exception as e:
         logger.error("Kite token refresh failed: %s", e)
         return {
@@ -4345,31 +4323,7 @@ async def tool_refresh_kite_token():
         }
 
 
-@app.post("/tools/refresh_gwc_token")
-async def tool_refresh_gwc_token():
-    """Refresh Goodwill (GWC) access token via auto-login.
-
-    Uses /v1/quickauth with client-generated TOTP (no SMS OTP), then
-    /v1/login-response to exchange the request_token for an access_token.
-    Result is cached to data/gwc_token.json for the rest of the trading day.
-    """
-    try:
-        from mcp_server.gwc_auth import refresh_gwc_token
-        from mcp_server.data_provider import get_provider
-        # Auto-login is blocking I/O — run in worker thread
-        access_token = await asyncio.to_thread(refresh_gwc_token)
-        # Inject the fresh token into the live data provider
-        try:
-            provider = get_provider()
-            provider.gwc.set_access_token(access_token)
-            provider._sources["gwc"] = True
-        except Exception as exc:
-            logger.warning("GWC token set on provider failed: %s", exc)
-        return {
-            "success": True,
-            "message": "GWC token refreshed",
-            "token_prefix": access_token[:8] + "..." if access_token else None,
-        }
+# refresh_gwc_token moved to mcp_server.routers.brokers in Phase 1e.
     except Exception as e:
         logger.error("GWC token refresh failed: %s", e)
         return {
@@ -4477,17 +4431,7 @@ async def tool_connect_angel():
         }
 
 
-@app.post("/tools/refresh_angel_token")
-async def tool_refresh_angel_token():
-    """Refresh Angel access token via TOTP login (standalone)."""
-    try:
-        from mcp_server.angel_auth import refresh_angel_token
-        # TOTP login is blocking I/O — run in worker thread
-        await asyncio.to_thread(refresh_angel_token)
-        return {
-            "success": True,
-            "message": "Angel token refreshed",
-        }
+# refresh_angel_token moved to mcp_server.routers.brokers in Phase 1e.
     except Exception as e:
         logger.error("Angel token refresh failed: %s", e)
         return {
@@ -4540,77 +4484,10 @@ async def tool_angel_status():
 # ============================================================
 
 
-@app.get("/api/kite_callback")
-async def api_kite_callback(request_token: str = Query(...)):
-    """Browser redirect callback from Kite Connect login.
-
-    User logs in at Kite → Kite redirects here with ?request_token=XXX
-    → we generate a session, cache the token, and show a success page.
-    """
-    try:
-        from mcp_server.kite_auth import handle_kite_callback
-        # generate_session is blocking HTTP — run in worker thread
-        access_token = await asyncio.to_thread(handle_kite_callback, request_token)
-
-        # Connect order manager to the fresh Kite instance
-        try:
-            from kiteconnect import KiteConnect
-            kite = KiteConnect(api_key=settings.KITE_API_KEY)
-            kite.set_access_token(access_token)
-            manager = _get_order_manager()
-            manager.kite = kite
-            logger.info("Order manager connected to Kite via manual login")
-        except Exception as e:
-            logger.warning("Order manager Kite connect skipped: %s", e)
-
-        # Reset Kite-failed-today flag so data provider retries Kite
-        try:
-            from mcp_server import data_provider
-            data_provider._kite_failed_today = False
-        except Exception:
-            pass
-
-        # Kite login success is confirmed by the HTML page returned below
-        # ("✅ Kite Login Successful"). We deliberately do NOT send a
-        # Telegram message here any more. It was drowning actual trade
-        # signals in the owner's chat whenever /api/kite_callback fired
-        # repeatedly (browser bookmarks, retried OAuth flows, etc.). The
-        # log line is enough for operational visibility.
-        logger.info(
-            "Kite login cached via callback at %s IST",
-            _now_ist().strftime("%H:%M"),
-        )
-
-        return HTMLResponse(
-            "<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
-            "<h1>\u2705 Kite Login Successful</h1>"
-            "<p>Access token has been cached. You can close this window.</p>"
-            "<p style='color:#888;font-size:14px'>Token will be valid until end of day.</p>"
-            "</body></html>"
-        )
-    except Exception as e:
-        logger.error("Kite callback failed: %s", e)
-        return HTMLResponse(
-            "<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
-            f"<h1>\u274c Kite Login Failed</h1><p>{e}</p>"
-            "</body></html>",
-            status_code=500,
-        )
+# api_kite_callback moved to mcp_server.routers.brokers in Phase 1e.
 
 
-@app.get("/api/kite_login_url")
-async def api_kite_login_url():
-    """Return the Kite Connect login URL for manual browser login."""
-    try:
-        from mcp_server.kite_auth import get_kite_login_url
-        url = get_kite_login_url()
-        return {
-            "login_url": url,
-            "instructions": "Open this URL in your browser, complete Zerodha 2FA, "
-                            "and the system will automatically capture the token.",
-        }
-    except Exception as e:
-        return {"error": str(e)}
+# api_kite_login_url moved to mcp_server.routers.brokers in Phase 1e.
 
 
 # ============================================================
@@ -4618,63 +4495,10 @@ async def api_kite_login_url():
 # ============================================================
 
 
-@app.get("/api/gwc_callback")
-async def api_gwc_callback(request_token: str = Query(...)):
-    """Browser redirect callback from GWC OAuth login.
-
-    User logs in at GWC → GWC redirects here with ?request_token=XXX
-    → we exchange it for an access token and activate the GWC source.
-    """
-    try:
-        from mcp_server.gwc_auth import handle_gwc_callback
-        # Exchange request_token for access_token (blocking HTTP — run in thread)
-        access_token = await asyncio.to_thread(handle_gwc_callback, request_token)
-
-        # Inject token into data provider's GoodwillSource
-        from mcp_server.data_provider import get_provider
-        provider = get_provider()
-        provider.gwc.set_access_token(access_token)
-        provider._sources["gwc"] = True
-
-        # Send Telegram confirmation
-        try:
-            from mcp_server.telegram_bot import send_telegram_message
-            asyncio.ensure_future(send_telegram_message(
-                "\u2705 GWC Login Successful\n"
-                f"Token set at {_now_ist().strftime('%H:%M IST')}\n"
-                "Goodwill is now the primary LTP source.",
-                force=True,
-            ))
-        except Exception:
-            pass
-
-        return HTMLResponse(
-            "<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
-            "<h1>\u2705 GWC Login Successful</h1>"
-            "<p>Goodwill access token has been set. You can close this window.</p>"
-            "<p style='color:#888;font-size:14px'>GWC is now the primary live price source.</p>"
-            "</body></html>"
-        )
-    except Exception as e:
-        logger.error("GWC callback failed: %s", e)
-        return HTMLResponse(
-            "<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
-            f"<h1>\u274c GWC Login Failed</h1><p>{e}</p>"
-            "</body></html>",
-            status_code=500,
-        )
+# api_gwc_callback moved to mcp_server.routers.brokers in Phase 1e.
 
 
-@app.get("/api/gwc_login_url")
-async def api_gwc_login_url():
-    """Return the GWC OAuth login URL for manual browser login."""
-    if not settings.GWC_API_KEY:
-        return {"error": "GWC_API_KEY not configured"}
-    return {
-        "login_url": f"https://api.gwcindia.in/v1/login?api_key={settings.GWC_API_KEY}",
-        "instructions": "Open this URL in your browser, complete Goodwill 2FA, "
-                        "and the system will automatically capture the token.",
-    }
+# api_gwc_login_url moved to mcp_server.routers.brokers in Phase 1e.
 
 
 # ============================================================
