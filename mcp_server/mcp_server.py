@@ -38,7 +38,6 @@ from mcp_server.models import (
 )
 from mcp_server.asset_registry import (
     parse_ticker, get_asset_class, get_exchange,
-    get_supported_exchanges,
 )
 
 logger = logging.getLogger(__name__)
@@ -1084,6 +1083,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ── Per-domain routers (progressive extraction) ─────────────
+# See docs/MCP_SERVER_ROUTER_SPLIT_PLAN.md for the full layout.
+from mcp_server.routers import health as _router_health  # noqa: E402
+app.include_router(_router_health.router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -1238,44 +1242,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 
-@app.get("/api/info")
-async def api_info():
-    return {
-        "service": "MKUMARAN Trading OS",
-        "version": "1.9",
-        "status": "running",
-        "docs": "/docs",
-    }
-
-
-@app.get("/health")
-async def health():
-    checks = {"api": "ok"}
-
-    # Check database
-    try:
-        db = SessionLocal()
-        db.execute(text("SELECT 1"))
-        db.close()
-        checks["database"] = "ok"
-    except Exception as e:
-        checks["database"] = f"error: {e}"
-
-    # Check Kite connection
-    if _order_manager and _order_manager.kite:
-        checks["kite"] = "connected"
-    else:
-        checks["kite"] = "not_connected"
-
-    # Overall status
-    db_ok = checks["database"] == "ok"
-    status = "healthy" if db_ok else "degraded"
-
-    return {
-        "status": status,
-        "service": "mkumaran-trading-os",
-        "checks": checks,
-    }
+# `/api/info`, `/health`, `/api/exchanges` were moved to
+# `mcp_server.routers.health` in the Phase 1a router split — see
+# docs/MCP_SERVER_ROUTER_SPLIT_PLAN.md. Router is included further down
+# where `app` is constructed.
 
 
 # ============================================================
@@ -1559,10 +1529,7 @@ async def api_check_feature(feature: str, request: Request):
 # ============================================================
 
 
-@app.get("/api/exchanges")
-async def api_exchanges():
-    """List all supported exchanges and asset classes."""
-    return get_supported_exchanges()
+# `/api/exchanges` moved to mcp_server.routers.health in Phase 1a.
 
 
 @app.post("/tools/get_stock_data")
