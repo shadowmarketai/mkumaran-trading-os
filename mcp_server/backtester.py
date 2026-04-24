@@ -26,10 +26,22 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 # ── Realistic Cost Constants (Indian Markets) ────────────────
-DEFAULT_SLIPPAGE_PCT = 0.003    # 0.3% slippage per side
+# Slippage — tiered by liquidity. Callers that know the liquidity bucket
+# should pass explicitly; DEFAULT_SLIPPAGE_PCT is the conservative fallback.
+LARGE_CAP_SLIPPAGE = 0.0005    # 0.05% — Nifty 50 + BankNifty constituents
+MID_CAP_SLIPPAGE = 0.002       # 0.20% — Nifty Next 50 / Nifty Midcap 150
+SMALL_CAP_SLIPPAGE = 0.003     # 0.30% — Smallcap 250 and below
+DEFAULT_SLIPPAGE_PCT = SMALL_CAP_SLIPPAGE  # Conservative default
+
 BROKERAGE_PER_ORDER = 20.0     # Flat Rs.20 per order (Zerodha)
-STT_PCT = 0.001                # 0.1% Securities Transaction Tax (sell side, equity delivery)
-GST_PCT = 0.18                 # 18% GST on brokerage
+
+# STT rates differ between delivery (CNC) and intraday (MIS) on the sell side.
+# Prior constant `STT_PCT = 0.001` was a 4x over-charge vs 2025 delivery rates.
+STT_DELIVERY_SELL = 0.00025    # 0.025% — equity delivery sell side
+STT_INTRADAY_SELL = 0.000125   # 0.0125% — equity intraday sell side
+STT_PCT = STT_DELIVERY_SELL    # Back-compat alias; delivery is the default
+
+GST_PCT = 0.18                 # 18% GST on brokerage + exchange + SEBI
 STAMP_DUTY_PCT = 0.00015       # 0.015% stamp duty (buy side)
 
 
@@ -68,13 +80,18 @@ def _apply_slippage(price: float, direction: str, is_entry: bool, slippage_pct: 
             return price * (1 + slippage_pct)  # Buy at worse price
 
 
-def _calculate_transaction_cost(price: float, qty: int, is_sell: bool) -> float:
+def _calculate_transaction_cost(
+    price: float,
+    qty: int,
+    is_sell: bool,
+    is_intraday: bool = False,
+) -> float:
     """
     Calculate realistic transaction costs for Indian markets (Zerodha).
 
     Components:
     - Brokerage: 0.03% or Rs.20, whichever is LOWER (Zerodha equity delivery)
-    - STT: 0.1% on sell side (equity delivery)
+    - STT: 0.025% delivery sell / 0.0125% intraday sell
     - GST: 18% on brokerage + SEBI + exchange turnover charges
     - Stamp duty: 0.015% on buy side
     - Exchange turnover: 0.00345% (NSE)
@@ -85,7 +102,11 @@ def _calculate_transaction_cost(price: float, qty: int, is_sell: bool) -> float:
     exchange_turnover = turnover * 0.0000345  # NSE turnover charge
     sebi = turnover * 0.000001  # SEBI charges
     gst = (brokerage + exchange_turnover + sebi) * GST_PCT
-    stt = turnover * STT_PCT if is_sell else 0
+    if is_sell:
+        stt_rate = STT_INTRADAY_SELL if is_intraday else STT_DELIVERY_SELL
+        stt = turnover * stt_rate
+    else:
+        stt = 0.0
     stamp = turnover * STAMP_DUTY_PCT if not is_sell else 0
 
     return brokerage + gst + stt + stamp + exchange_turnover + sebi
@@ -348,8 +369,21 @@ def _simulate_trades(
         total_costs += entry_cost
 
         for j in range(i + 1, min(i + max_hold, len(data))):
+            future_open = float(data["open"].iloc[j])
             future_high = float(data["high"].iloc[j])
             future_low = float(data["low"].iloc[j])
+
+            # Gap-through-SL: if the bar opens past the stop, fill at open.
+            # Real broker fill lands at the first available price, not the SL level.
+            gapped_sl = (
+                (is_long and future_open <= sig["stop_loss"])
+                or (not is_long and future_open >= sig["stop_loss"])
+            )
+            # Gap-through-target — mirror case, fill at open rather than target.
+            gapped_tgt = (
+                (is_long and future_open >= sig["target"])
+                or (not is_long and future_open <= sig["target"])
+            )
 
             # Check target hit
             target_hit = (
@@ -359,6 +393,76 @@ def _simulate_trades(
             sl_hit = (
                 future_low <= sig["stop_loss"] if is_long else future_high >= sig["stop_loss"]
             )
+
+            # Gap-SL wins the tie-break — if the bar opens past the stop,
+            # we're out at open before the day can touch any target.
+            if gapped_sl:
+                # Exit at open, apply slippage. No _apply_slippage on target price.
+                actual_exit = _apply_slippage(future_open, sig["direction"], is_entry=False, slippage_pct=slippage_pct)
+                exit_cost = _calculate_transaction_cost(actual_exit, sig["qty"], is_sell=True)
+                total_costs += exit_cost
+
+                if is_long:
+                    pnl = sig["qty"] * (actual_exit - actual_entry) - entry_cost - exit_cost
+                else:
+                    pnl = sig["qty"] * (actual_entry - actual_exit) - entry_cost - exit_cost
+
+                current_capital += pnl
+                trades.append({
+                    "entry_date": str(data.index[i]),
+                    "exit_date": str(data.index[j]),
+                    "entry": round(actual_entry, 2),
+                    "exit": round(actual_exit, 2),
+                    "entry_ideal": sig["entry"],
+                    "exit_ideal": sig["stop_loss"],
+                    "slippage_entry": round(abs(actual_entry - sig["entry"]), 2),
+                    "slippage_exit": round(abs(actual_exit - future_open), 2),
+                    "costs": round(entry_cost + exit_cost, 2),
+                    "pnl": round(pnl, 2),
+                    "outcome": "LOSS",
+                    "exit_reason": "GAP_SL",
+                    "days_held": j - i,
+                    "source": sig.get("source", ""),
+                    "pattern": sig.get("pattern", ""),
+                    "confidence": sig.get("confidence", 0),
+                    "direction": sig["direction"],
+                })
+                last_exit_bar = j
+                break
+
+            if gapped_tgt:
+                # Favorable gap — fill at open (better than target).
+                actual_exit = _apply_slippage(future_open, sig["direction"], is_entry=False, slippage_pct=slippage_pct)
+                exit_cost = _calculate_transaction_cost(actual_exit, sig["qty"], is_sell=True)
+                total_costs += exit_cost
+
+                if is_long:
+                    pnl = sig["qty"] * (actual_exit - actual_entry) - entry_cost - exit_cost
+                else:
+                    pnl = sig["qty"] * (actual_entry - actual_exit) - entry_cost - exit_cost
+
+                current_capital += pnl
+                trades.append({
+                    "entry_date": str(data.index[i]),
+                    "exit_date": str(data.index[j]),
+                    "entry": round(actual_entry, 2),
+                    "exit": round(actual_exit, 2),
+                    "entry_ideal": sig["entry"],
+                    "exit_ideal": sig["target"],
+                    "slippage_entry": round(abs(actual_entry - sig["entry"]), 2),
+                    "slippage_exit": round(abs(actual_exit - future_open), 2),
+                    "costs": round(entry_cost + exit_cost, 2),
+                    "pnl": round(pnl, 2),
+                    "outcome": "WIN",
+                    "exit_reason": "GAP_TGT",
+                    "days_held": j - i,
+                    "source": sig.get("source", ""),
+                    "pattern": sig.get("pattern", ""),
+                    "confidence": sig.get("confidence", 0),
+                    "direction": sig["direction"],
+                })
+                last_exit_bar = j
+                break
 
             if target_hit:
                 # Apply slippage to exit
@@ -384,6 +488,7 @@ def _simulate_trades(
                     "costs": round(entry_cost + exit_cost, 2),
                     "pnl": round(pnl, 2),
                     "outcome": "WIN",
+                    "exit_reason": "TARGET",
                     "days_held": j - i,
                     "source": sig.get("source", ""),
                     "pattern": sig.get("pattern", ""),
@@ -416,6 +521,7 @@ def _simulate_trades(
                     "costs": round(entry_cost + exit_cost, 2),
                     "pnl": round(pnl, 2),
                     "outcome": "LOSS",
+                    "exit_reason": "STOP",
                     "days_held": j - i,
                     "source": sig.get("source", ""),
                     "pattern": sig.get("pattern", ""),
