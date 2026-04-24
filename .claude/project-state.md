@@ -3,10 +3,9 @@
 > Living document. Updated at the end of every meaningful Claude Code session.
 > Every agent reads this FIRST before doing work.
 
-**Last updated:** 2026-04-23 by Claude Opus 4.7 (Decimal Phases 2–3 + backtester boundary fix)
-**Dossier version:** 2
-**Last updated:** 2026-04-22 by `onboarder` (Claude Opus 4.7)
-**Dossier version:** 1
+**Last updated:** 2026-04-24 by Claude Opus 4.7 (Decimal series merged + test-debt swept)
+**Dossier version:** 3
+**Prior versions:** v1 2026-04-22 (`onboarder` initial dossier) → v2 2026-04-23 (Decimal Phase 2–3 + backtester boundary fix)
 
 ---
 
@@ -21,8 +20,7 @@
 | **Started** | ~2026-04-15 (first commit on current repo; code is older, history likely squashed) |
 | **Target ship date** | ongoing (daily live use; ~40 commits in April 2026 alone) |
 | **Primary contact** | shadowmarketai (mkumaran2931@gmail.com) |
-| **Current branch** | `feat/money-helpers` (Decimal enforcement Phases 1–3 + backtester fix; 5 commits ahead of `main`, not yet pushed) |
-| **Current branch** | `feat/claude-agent-layer` (Shadow Market overlay, 1 commit ahead of `main`) |
+| **Current branch** | `main` — everything shipped as of 2026-04-24. No in-flight feature branches. |
 
 ---
 
@@ -32,18 +30,18 @@
 |---|---|---|---|
 | Backend | Python + FastAPI | 3.11 / 0.104.1 | Single monolith: `mcp_server/mcp_server.py` (6623 lines, 148 routes) |
 | ORM / DB driver | SQLAlchemy + psycopg2 | 2.0.23 / 2.9.9 | Declarative models in `mcp_server/models.py` |
-| Migrations | Alembic | ≥1.13 | 3 migrations in `alembic/versions/` **+** runtime `_add_missing_columns()` in `mcp_server/db.py` **+** `schema.sql` seed — three sources of schema truth (see Gotchas) |
-| Database | PostgreSQL | 16-alpine | `schema.sql` auto-loaded by postgres image on first boot; `pool_size=10, max_overflow=20` |
+| Migrations | Alembic | ≥1.13 | **Sole source of schema truth** as of 2026-04-22: `schema.sql` retired, `_add_missing_columns()` runtime escape hatch removed. Alembic runs on backend boot via `db.run_alembic_upgrade()`. |
+| Database | PostgreSQL | 16-alpine | `pool_size=10, max_overflow=20`. Fresh installs and existing DBs both bootstrap via Alembic upgrade-to-head on app startup. |
 | Frontend | React + Vite + TypeScript + Tailwind | 18.3 / 5.0.8 / 5.3 / 3.4 | SPA in `dashboard/`, served by nginx. 17 pages + landing + login |
 | UI libs | framer-motion, lightweight-charts, recharts, lucide-react | — | No shadcn; local `components/ui/` |
 | HTTP client | axios | 1.6 | `dashboard/src/services/api.ts`, JWT in `localStorage` (key `mkumaran_auth_token`) |
 | Brokers | Kite Connect, Angel SmartAPI, Dhan, Goodwill (GWC) | various | Auth modules in `mcp_server/{kite,angel,dhan,gwc}_auth.py`; each supports TOTP auto-login |
-| AI providers | Grok (primary) → Kimi (secondary) → Anthropic/OpenAI (legacy) + NeuroLinked brain | `grok-3-mini`, `moonshot-v1-8k`, `claude-haiku-4-5-20251001` | Router in `mcp_server/ai_provider.py`. `AI_REPORT_MODEL` default is Haiku 4.5 (outdated — current is 4.6/4.7) |
+| AI providers | Grok (primary) → Kimi (secondary) → Anthropic/OpenAI (legacy) + NeuroLinked brain | `grok-3-mini`, `moonshot-v1-8k`, `claude-haiku-4-5-20251001` | Router in `mcp_server/ai_provider.py` via `CLAUDE_MODEL` env var. Dead `AI_REPORT_MODEL` setting removed 2026-04-23 (PR #12). |
 | Alerting / I/O | Telegram bot (PTB 20.6), Google Sheets (gspread), Slack-less | — | Bot in `mcp_server/telegram_bot.py`; Sheets sync in `sheets_sync.py` |
 | Automation | n8n | self-hosted | 6 workflows in `n8n_workflows/` (morning / signal receiver / market monitor / EOD / extended monitor / MCX EOD) |
 | TradingView | Pine Script + TradingView screener (tradingview-screener), Chartink | — | `tradingview_scanner.py`, `pine_script/rrms_strategy.pine` |
 | ML | scikit-learn, rank-bm25 | ≥1.4 / ≥0.2.2 | `signal_predictor.py`, `trade_memory.py`, `rl_engine.py` |
-| Auth | JWT (PyJWT) + bcrypt + Google OAuth + email/mobile OTP (MSG91) | — | **Opt-in**: `AUTH_ENABLED=false` default; JWT default secret is placeholder `"change-this-in-production"` |
+| Auth | JWT (PyJWT) + bcrypt + Google OAuth + email/mobile OTP (MSG91) | — | **Opt-in**: `AUTH_ENABLED=false` default. JWT placeholder secret is safe at import: `config._fail_closed_secrets_check()` raises `RuntimeError` if `AUTH_ENABLED=true` is set with the unmodified placeholder. |
 | Rate limiting | slowapi | ≥0.1.9 | Middleware wired in `mcp_server.py` |
 | Logging | structlog + logzero + stdlib logging | ≥24.1 | `LOG_FORMAT=json`, `LOG_LEVEL=INFO` (Dockerfile defaults) |
 | Hosting | Docker Compose (postgres + backend + dashboard) | — | Prod URL: `https://money.shadowmarket.ai`, n8n: `https://n8n.shadowmarket.ai`, NeuroLinked brain: `https://brain.shadowmarket.ai` |
@@ -79,7 +77,15 @@ Two independent scan loops run in parallel: a **daily-swing MWA loop** (default 
 
 ## Current phase
 
-**Active trading + Claude Code collaboration layer just overlaid.** The product is in daily live use; the last week's commits are tight-loop bug fixes (signal dedup, EOD workflow, sheets reset, options segment routing) and wiring to an external NeuroLinked "brain" for cross-product learning. On 2026-04-22 (today) a full Shadow Market agent/skill/rules overlay was committed on `feat/claude-agent-layer` — **no app code was touched** by that commit, only `.claude/`, `agents/`, `skills/`, `rules/`, `hooks/`, `PRPs/`, `CLAUDE.md`. This branch is the current working branch and has not been merged to `main` yet.
+**Post-consolidation — foundations hardened, back to feature/ops work.** Over 2026-04-22 → 2026-04-24 a three-wave consolidation landed on `main`:
+
+1. **Schema consolidation** (PRs merged into #11): `schema.sql` + runtime `_add_missing_columns()` retired; Alembic is the sole schema source, runs automatically on backend boot.
+2. **Decimal enforcement** (PR #11 `feat/money-helpers`): CLAUDE.md invariant #2 now real. `money.py` helpers plus zone discipline across `rrms_engine`, `order_manager`, `signal_monitor`, `portfolio_risk`, `signal_cards`, `backtester`. Per-exchange rounding (NSE/BSE/NFO/MCX = 2dp, CDS = 4dp).
+3. **Test debt swept** (PR #13): 35+ pre-existing test failures on `main` cleared across 12 test files + 1 workflow file. Main CI is green as of 2026-04-24.
+
+Also shipped: dead `AI_REPORT_MODEL` setting removed (PR #12), Vitest + Testing Library harness for dashboard (merged via #11 bundle), JWT fail-closed boot check, NeuroLinked brain integration.
+
+The product is in daily live use on paper-mode. Next focus is paper-mode smoke of the full Decimal-enabled pipeline, then the `mcp_server.py` router split.
 
 ---
 
@@ -109,9 +115,12 @@ Ordered by priority. Top item is what `/resume` suggests next.
 
 ## Recently completed
 
-Last 10 closed, newest first.
+Last ~15 closed, newest first.
 
-- [x] 2026-04-23 — Backtester boundary fix: `_generate_rrms_signals` casts RRMSResult Decimal fields to float at the analysis-zone boundary. Added 2 backtester tests (float-typed signal dict + explicit target-hit simulation). Caught by pre-commit advisor review; production path would have crashed on first `/tools/backtest strategy=rrms` call — `7ab9e03`
+- [x] 2026-04-24 — **Test-debt swept (PR #13 `fix/stale-test-assertions`)**. Cleared 35+ pre-existing test failures on `main` across 12 test files + 1 workflow. Categories: scanner-count lower-bounds × 6; httpx telegram_gate rewrite × 4; MWA scoring threshold × 1; debate_validator skill-agents-first + `_call_claude` indirection × 12; segment routing Dhan-primary × 2; yfinance futures start/end + OHLCV market-aware freshness × 4; broker-message "No broker connected" × 4; EOD workflow tag + endpoint consolidation × 2. Main CI green after merge — `6cfcaea` (initial) through `467fa98` + merge into main.
+- [x] 2026-04-24 — **Dead `AI_REPORT_MODEL` setting removed (PR #12)**. Was declared in config.py + documented in DEPLOYMENT.md but never consumed in code. Actual Claude model selection is `CLAUDE_MODEL` in `ai_provider.py:44`. Two parallel settings were a trap — removed the dead one, documented the canonical — `d9fa97a`.
+- [x] 2026-04-24 — **Decimal enforcement merged to main (PR #11, merge commit `e08dd03`)**. CLAUDE.md invariant #2 now real. Bundled Phase 1–3 + backtester fix + schema consolidation + Vitest harness as a single merge commit preserving per-phase bisectability.
+- [x] 2026-04-23 — Backtester boundary fix: `_generate_rrms_signals` casts RRMSResult Decimal fields to float at the analysis-zone boundary. Added 2 backtester tests. Caught by pre-commit advisor review; production path would have crashed on first `/tools/backtest strategy=rrms` call — `7ab9e03`.
 - [x] 2026-04-23 — Phase 3 Decimal migration: `signal_monitor` (_calc_pnl returns Decimal, entry_price/exit_price stay Decimal through Outcome persistence, option premium P&L aggregation in Decimal, gspread/brain_bridge boundary casts), `portfolio_risk` (exposure Decimal, percentages float at dict boundary), `signal_cards` (all format functions accept Numeric) — `b36ee17`
 - [x] 2026-04-23 — Phase 2 Decimal migration: `config.RRMS_CAPITAL`/`RRMS_RISK_PCT` → Decimal, `rrms_engine` fully Decimal with per-exchange tick rounding, `order_manager` capital+kill-switch+validation Decimal, Kite/Angel SDK boundary casts to float. `mwa_signal_generator` analysis-zone boundary cast at `risk_amt = float(...)`. `pretrade_check.check_rrr` drops stale float() coercion — `f63b858`
 - [x] 2026-04-22 — Phase 1 Decimal migration: added `mcp_server/money.py` (to_money/round_tick/round_paise/pnl/pct_return) with per-exchange rounding (NSE/BSE/NFO/MCX=2dp, CDS=4dp) and 43 tests — `f4cd4a9`
@@ -137,6 +146,8 @@ Last 10 closed, newest first.
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-04-24 | PR #11 merged as a **merge commit**, PRs #12 + #13 **squashed** | Merge commit on PR #11 preserves the phased commits (money helpers → RRMS → monitor → backtester fix) so `git bisect` stays useful if a paper-mode regression surfaces. Single-commit / thematic PRs (#12, #13) squash to one tidy main-history entry each. |
+| 2026-04-24 | Relax brittle test assertions to lower-bounds / invariants rather than sync to current exact values | Scanner and signal-chain catalogs grow additively over time. Exact-count tests broke every time the catalog grew; `>= baseline` converts that into a one-way ratchet that only triggers on regressions. Same philosophy applied to mwa_scoring direction labels (assert bull dominates bear rather than a specific label that depends on the denominator). |
 | 2026-04-23 | Two-zone discipline for Decimal enforcement: Money zone (Decimal) = rrms/config/order_manager/signal_monitor/portfolio_risk/signal_cards. Analysis zone (float/numpy/pandas) = TA engines, OHLCV cache, ML features, backtester simulator. Explicit `float(decimal)` cast at crossings | Preserves exact paise math on the decision + persistence paths while keeping TA/ML performant. Backtester cast added after advisor review caught the Decimal × float multiplication risk in `_apply_slippage`. |
 | 2026-04-23 | `RRMS_MIN_RRR` stays float (not Decimal) even though other RRMS_* settings are Decimal | Dimensionless ratio — multiplied against ATR (float) in analysis-zone code (`mwa_signal_generator`, `mcp_server.py` option sizing). Converting it would force Decimal propagation into the analysis zone with no precision benefit. |
 | 2026-04-23 | Percentages (deployed_pct, sector_pct, etc.) in `portfolio_risk.get_portfolio_exposure` stay float at the output dict boundary even though money aggregates are Decimal internally | Dashboard TS consumers expect `number` and inexact floats like 20.4 don't equal `Decimal("20.4")` — keeping pct as float preserves existing test equality and UI behavior. |
@@ -155,7 +166,7 @@ Last 10 closed, newest first.
 
 Things parked intentionally. Do NOT "fix" without checking here first.
 
-- **Three schema sources.** `schema.sql` (seed), `alembic/versions/` (3 migrations), `_add_missing_columns()` (runtime). They can drift. Fixing requires a coordinated dump-and-regenerate pass.
+- ~~**Three schema sources.** `schema.sql` (seed), `alembic/versions/` (3 migrations), `_add_missing_columns()` (runtime).~~ **RESOLVED 2026-04-22:** Alembic is now the sole source of schema truth. `schema.sql` retired, `_add_missing_columns()` removed.
 - **Monolithic `mcp_server.py`** (6623 lines, 148 routes). Splitting into routers is deferred until the feature churn slows.
 - **Default JWT secret is a placeholder.** Safe only because `AUTH_ENABLED=false` is the default; production deploys must set `JWT_SECRET_KEY` env.
 - **`docs/CLAUDE_OVERLAY_CHANGELOG.md` is the template's own changelog**, not the Trading OS's — it describes what changed in `shadowmarketai/SHADOW-MARKET-TEMPLATE`, not in this repo. Don't mistake it for a project log.
@@ -172,7 +183,7 @@ Things parked intentionally. Do NOT "fix" without checking here first.
 - The word "MCP" in `mcp_server/` is legacy naming — this is a FastAPI server, not an Anthropic MCP protocol server. (Comment in `requirements.txt` confirms: MCP SDK requires 3.12+, FastAPI used directly as "MCP-compatible".)
 - `/api/*` = dashboard CRUD, `/tools/*` = heavier agent actions. Both served by the same FastAPI app; both proxied by Vite dev server (`vite.config.ts:8–17`) to port 8001.
 - Signal dedup key = `symbol + timeframe + strategy + timestamp-minute`. See `signal_similarity.py`.
-- Money math: DB is `Numeric`, Python is mostly `float`. CLAUDE.md invariant #2 (Decimal money) is aspirational — not fully enforced in code yet.
+- Money math: DB is `Numeric`, Python code is `Decimal` in the money zone (rrms / order_manager / signal_monitor / portfolio_risk / signal_cards) and `float` in the analysis zone (TA / numpy / backtester). Cross zones via explicit `float(dec)` or `to_money(x)`. `mcp_server/money.py` is the canonical helper module. CLAUDE.md invariant #2 is enforced as of 2026-04-24.
 - `AUTH_ENABLED=false` and `PAPER_MODE=true` are CI defaults — tests will fail otherwise.
 - Timezone: all datetimes should route through `mcp_server.market_calendar.now_ist()` — server timezone is unreliable in Docker.
 - Telegram gate: `TELEGRAM_SIGNALS_ONLY=true` by default — only actual signal cards hit the chat, scan summaries are suppressed.
@@ -259,6 +270,16 @@ Sensitive env highlights:
 - Also cleared 2 pre-existing stale-assertion failures (`test_no_kite_blocks_order`, `test_live_mode_fails_without_kite`) that would have blocked CI-green (`894d350`).
 - Blocked on: **GitHub Actions not firing on any branch since 2026-04-22 — repo-level setting or billing issue, needs owner action.** PR #11 has no CI checks attached. Already tried empty-commit force-push + close/reopen PR — no dice.
 - Next up: (a) repo owner investigates Actions settings so CI can verify PR #11, or (b) merge without CI verification (risky — main's last CI run was red with many pre-existing assertion failures unrelated to this PR), or (c) move on to paper-mode smoke / next MED TODO while Actions is debugged.
+
+### 2026-04-24 — CI unblock + test debt sweep + merge
+- Worked on:
+  - Diagnosed GitHub Actions silent-fail: third-party check apps (Render, Vercel, Railway, GitGuardian) registered fine, but GitHub Actions itself created no check suite. Rapid visibility flips (private ↔ public × multiple) corrupted the Actions binding; `workflow_dispatch` trigger added + permission toggle off/on did NOT re-register, but a later repo settings change by the operator did. Manual dispatch + subsequent pushes both fired cleanly thereafter.
+  - PR #13 (`fix/stale-test-assertions`): broke down 35+ pre-existing test failures into 8 fix commits (scanner counts → telegram httpx → mwa_scoring → debate_validator → segment routing → yfinance + ohlcv → broker-message → integrations). Final CI: **lint + test both green on PR #13.**
+  - Sub-PR cleanup: closed #4, #5, #6, #8, #9, #10 (all superseded by #11's bundle merge). Deleted 8 merged feature branches.
+  - Repo flipped back to private after merges shipped.
+- Completed: PRs #11, #12, #13 all merged. Main CI green for the latest 3 push-events (one per merge).
+- Blocked on: nothing.
+- Next up: (a) rotate the leaked Telegram bot token (operator deferred on 2026-04-24; revisit), (b) paper-mode smoke run, or (c) `mcp_server.py` router split.
 
 ---
 
