@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, desc, case, text
+from sqlalchemy import desc, text
 
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -31,7 +31,6 @@ from mcp_server.models import (
     Outcome,
     ScannerReview,
     Signal,
-    Watchlist,
 )
 from mcp_server.asset_registry import (
     parse_ticker, get_asset_class,
@@ -1086,6 +1085,7 @@ from mcp_server.routers import backtest as _router_backtest  # noqa: E402
 from mcp_server.routers import brokers as _router_brokers  # noqa: E402
 from mcp_server.routers import fno as _router_fno  # noqa: E402
 from mcp_server.routers import health as _router_health  # noqa: E402
+from mcp_server.routers import market_data as _router_market_data  # noqa: E402
 from mcp_server.routers import options as _router_options  # noqa: E402
 from mcp_server.routers import selfdev as _router_selfdev  # noqa: E402
 from mcp_server.routers import signals as _router_signals  # noqa: E402
@@ -1097,6 +1097,7 @@ app.include_router(_router_backtest.router)
 app.include_router(_router_brokers.router)
 app.include_router(_router_fno.router)
 app.include_router(_router_health.router)
+app.include_router(_router_market_data.router)
 app.include_router(_router_options.router)
 app.include_router(_router_selfdev.router)
 app.include_router(_router_signals.router)
@@ -3011,82 +3012,7 @@ def _get_kite_for_fo():
 # ============================================================
 
 
-@app.get("/api/overview")
-async def api_overview(
-    exchange: str = "",
-    asset_class: str = "",
-    db: Session = Depends(get_db),
-):
-    """Dashboard overview data. Optional filter by exchange/asset_class."""
-    wl_query = db.query(Watchlist).filter(Watchlist.active.is_(True))
-    at_query = db.query(ActiveTrade)
-    sig_query = db.query(Signal)
-    today_query = db.query(Signal).filter(Signal.signal_date == date.today())
-
-    if exchange:
-        wl_query = wl_query.filter(Watchlist.exchange == exchange.upper())
-        at_query = at_query.filter(ActiveTrade.exchange == exchange.upper())
-        sig_query = sig_query.filter(Signal.exchange == exchange.upper())
-        today_query = today_query.filter(Signal.exchange == exchange.upper())
-    if asset_class:
-        wl_query = wl_query.filter(Watchlist.asset_class == asset_class.upper())
-        at_query = at_query.filter(ActiveTrade.asset_class == asset_class.upper())
-        sig_query = sig_query.filter(Signal.asset_class == asset_class.upper())
-        today_query = today_query.filter(Signal.asset_class == asset_class.upper())
-
-    watchlist_count = wl_query.count()
-    active_trades = at_query.count()
-    total_signals = sig_query.count()
-    today_signals = today_query.count()
-
-    # Latest MWA
-    latest_mwa = db.query(MWAScore).order_by(desc(MWAScore.score_date)).first()
-
-    # Win rate (filtered by exchange/asset_class via Signal join)
-    outcome_query = db.query(Outcome)
-    if exchange or asset_class:
-        outcome_query = outcome_query.join(Signal, Outcome.signal_id == Signal.id)
-        if exchange:
-            outcome_query = outcome_query.filter(Signal.exchange == exchange.upper())
-        if asset_class:
-            outcome_query = outcome_query.filter(Signal.asset_class == asset_class.upper())
-    total_outcomes = outcome_query.count()
-    wins = outcome_query.filter(Outcome.outcome == "WIN").count()
-    win_rate = round((wins / total_outcomes * 100), 1) if total_outcomes > 0 else 0
-
-    # Market status
-    from mcp_server.market_calendar import get_market_status
-    ms = get_market_status("NSE")
-    reason = ms.get("reason", "CLOSED")
-    status_map = {"OPEN": "LIVE", "PRE_MARKET": "PRE", "POST_MARKET": "POST"}
-    market_status = status_map.get(reason, "CLOSED")
-
-    # Index prices — use global cache only, never block this endpoint
-    nifty_price = _index_cache.get("nifty_price", 0) if _index_cache else 0
-    nifty_change = _index_cache.get("nifty_change", 0) if _index_cache else 0
-    nifty_change_pct = _index_cache.get("nifty_change_pct", 0) if _index_cache else 0
-    banknifty_price = _index_cache.get("banknifty_price", 0) if _index_cache else 0
-    banknifty_change = _index_cache.get("banknifty_change", 0) if _index_cache else 0
-    banknifty_change_pct = _index_cache.get("banknifty_change_pct", 0) if _index_cache else 0
-
-    return {
-        "watchlist_count": watchlist_count,
-        "active_trades": active_trades,
-        "total_signals": total_signals,
-        "today_signals": today_signals,
-        "mwa_direction": latest_mwa.direction if latest_mwa else "N/A",
-        "mwa_bull_pct": float(latest_mwa.bull_pct) if latest_mwa and latest_mwa.bull_pct else 0,
-        "mwa_bear_pct": float(latest_mwa.bear_pct) if latest_mwa and latest_mwa.bear_pct else 0,
-        "win_rate": win_rate,
-        "total_outcomes": total_outcomes,
-        "market_status": market_status,
-        "nifty_price": nifty_price,
-        "nifty_change": nifty_change,
-        "nifty_change_pct": nifty_change_pct,
-        "banknifty_price": banknifty_price,
-        "banknifty_change": banknifty_change,
-        "banknifty_change_pct": banknifty_change_pct,
-    }
+# api_overview moved to mcp_server.routers.market_data in Phase 3c.
 
 
 # api_signals moved to mcp_server.routers.signals in Phase 2d.
@@ -3164,133 +3090,7 @@ async def api_mwa_latest(db: Session = Depends(get_db)):
 # DELETE + PATCH /api/watchlist/{item_id}* moved to mcp_server.routers.watchlist in Phase 1d.
 
 
-@app.get("/api/accuracy")
-async def api_accuracy(
-    exchange: str = "",
-    asset_class: str = "",
-    db: Session = Depends(get_db),
-):
-    """Accuracy metrics for dashboard with breakdowns. Optional filter by exchange/asset_class."""
-    # Build filtered base queries
-    outcome_base = db.query(Outcome)
-    signal_base = db.query(Signal)
-    if exchange or asset_class:
-        outcome_base = outcome_base.join(Signal, Outcome.signal_id == Signal.id)
-        if exchange:
-            outcome_base = outcome_base.filter(Signal.exchange == exchange.upper())
-            signal_base = signal_base.filter(Signal.exchange == exchange.upper())
-        if asset_class:
-            outcome_base = outcome_base.filter(Signal.asset_class == asset_class.upper())
-            signal_base = signal_base.filter(Signal.asset_class == asset_class.upper())
-
-    total = outcome_base.count()
-    wins = outcome_base.filter(Outcome.outcome == "WIN").count()
-    losses = outcome_base.filter(Outcome.outcome == "LOSS").count()
-    open_count = signal_base.filter(Signal.status == "OPEN").count()
-
-    # Need fresh queries for aggregates to avoid double-join
-    pnl_query = db.query(func.sum(Outcome.pnl_amount))
-    rrr_query = db.query(func.avg(Signal.rrr))
-    if exchange or asset_class:
-        pnl_query = pnl_query.join(Signal, Outcome.signal_id == Signal.id)
-        if exchange:
-            pnl_query = pnl_query.filter(Signal.exchange == exchange.upper())
-            rrr_query = rrr_query.filter(Signal.exchange == exchange.upper())
-        if asset_class:
-            pnl_query = pnl_query.filter(Signal.asset_class == asset_class.upper())
-            rrr_query = rrr_query.filter(Signal.asset_class == asset_class.upper())
-    total_pnl = pnl_query.scalar() or 0
-    avg_rrr_val = rrr_query.scalar() or 0
-
-    # By pattern breakdown
-    pattern_query = (
-        db.query(
-            Signal.pattern,
-            func.count(Outcome.id).label("total"),
-            func.sum(case((Outcome.outcome == "WIN", 1), else_=0)).label("wins"),
-        )
-        .join(Signal, Outcome.signal_id == Signal.id)
-    )
-    if exchange:
-        pattern_query = pattern_query.filter(Signal.exchange == exchange.upper())
-    if asset_class:
-        pattern_query = pattern_query.filter(Signal.asset_class == asset_class.upper())
-    pattern_rows = pattern_query.group_by(Signal.pattern).all()
-    by_pattern = [
-        {
-            "pattern": row.pattern or "Unknown",
-            "total": row.total,
-            "wins": int(row.wins),
-            "win_rate": round(int(row.wins) / row.total * 100, 1) if row.total > 0 else 0,
-        }
-        for row in pattern_rows
-    ]
-
-    # By direction breakdown
-    dir_query = (
-        db.query(
-            Signal.direction,
-            func.count(Outcome.id).label("total"),
-            func.sum(case((Outcome.outcome == "WIN", 1), else_=0)).label("wins"),
-        )
-        .join(Signal, Outcome.signal_id == Signal.id)
-    )
-    if exchange:
-        dir_query = dir_query.filter(Signal.exchange == exchange.upper())
-    if asset_class:
-        dir_query = dir_query.filter(Signal.asset_class == asset_class.upper())
-    direction_rows = dir_query.group_by(Signal.direction).all()
-    by_direction = [
-        {
-            "direction": row.direction,
-            "total": row.total,
-            "wins": int(row.wins),
-            "win_rate": round(int(row.wins) / row.total * 100, 1) if row.total > 0 else 0,
-        }
-        for row in direction_rows
-    ]
-
-    # Monthly PnL (compute in Python for cross-DB compatibility)
-    monthly_query = db.query(Outcome).filter(Outcome.exit_date.isnot(None))
-    if exchange or asset_class:
-        monthly_query = monthly_query.join(Signal, Outcome.signal_id == Signal.id)
-        if exchange:
-            monthly_query = monthly_query.filter(Signal.exchange == exchange.upper())
-        if asset_class:
-            monthly_query = monthly_query.filter(Signal.asset_class == asset_class.upper())
-    all_outcomes = monthly_query.order_by(Outcome.exit_date).all()
-    monthly: dict = {}
-    for o in all_outcomes:
-        month_key = o.exit_date.strftime("%b %Y") if o.exit_date else "Unknown"
-        if month_key not in monthly:
-            monthly[month_key] = {"pnl": 0, "trades": 0, "wins": 0}
-        monthly[month_key]["pnl"] += float(o.pnl_amount or 0)
-        monthly[month_key]["trades"] += 1
-        if o.outcome == "WIN":
-            monthly[month_key]["wins"] += 1
-    monthly_pnl = [
-        {
-            "month": k,
-            "pnl": round(v["pnl"], 2),
-            "trades": v["trades"],
-            "win_rate": round(v["wins"] / v["trades"] * 100, 1) if v["trades"] > 0 else 0,
-        }
-        for k, v in monthly.items()
-    ]
-
-    return {
-        "total_signals": total + open_count,
-        "wins": wins,
-        "losses": losses,
-        "open": open_count,
-        "win_rate": round((wins / total * 100), 1) if total > 0 else 0,
-        "target_rate": round((wins / (total + open_count) * 100), 1) if (total + open_count) > 0 else 0,
-        "total_pnl": round(float(total_pnl), 2),
-        "avg_rrr": round(float(avg_rrr_val), 2),
-        "by_pattern": by_pattern,
-        "by_direction": by_direction,
-        "monthly_pnl": monthly_pnl,
-    }
+# api_accuracy moved to mcp_server.routers.market_data in Phase 3c.
 
 
 # backtest_request_models moved to mcp_server.routers.backtest in Phase 3b.
@@ -3975,160 +3775,32 @@ async def tool_stitch_validate(req: StitchPushRequest):
 # ============================================================
 
 
-@app.get("/api/news")
-async def api_news(
-    hours: int = Query(default=24, ge=1, le=168),
-    min_impact: str = Query(default="LOW"),
-):
-    """Get latest news items classified by impact. For dashboard consumption."""
-    from mcp_server.news_monitor import get_latest_news
-    from dataclasses import asdict as _asdict
-
-    items = get_latest_news(hours=hours, min_impact=min_impact.upper())
-    return [_asdict(item) for item in items[:100]]
+# api_news moved to mcp_server.routers.market_data in Phase 3c.
 
 
-@app.get("/tools/market_news")
-async def tool_market_news(
-    hours: int = Query(default=12, ge=1, le=168),
-    min_impact: str = Query(default="MEDIUM"),
-):
-    """MCP tool: Get market news for Claude analysis."""
-    from mcp_server.news_monitor import get_latest_news
-    from dataclasses import asdict as _asdict
-
-    items = get_latest_news(hours=hours, min_impact=min_impact.upper())
-    return {
-        "status": "ok",
-        "tool": "market_news",
-        "count": len(items),
-        "items": [_asdict(item) for item in items[:50]],
-    }
+# tool_market_news moved to mcp_server.routers.market_data in Phase 3c.
 
 
-@app.post("/tools/check_news_alerts")
-async def tool_check_news_alerts():
-    """Trigger news check and send HIGH-impact alerts to Telegram."""
-    from mcp_server.news_monitor import check_and_alert
-
-    result = await check_and_alert()
-    return {"status": "ok", "tool": "check_news_alerts", **result}
+# check_news_alerts moved to mcp_server.routers.market_data in Phase 3c.
 
 
-@app.post("/tools/ai_report")
-async def tool_ai_report(request: Request):
-    """Generate an AI narrative report (morning brief or EOD).
-
-    Body: {"report_type": "morning"|"eod", "data": {...}}
-    """
-    body = await request.json()
-    report_type = body.get("report_type", "eod")
-    data = body.get("data", {})
-    from mcp_server.wallstreet_tools import generate_ai_report
-
-    report = await generate_ai_report(report_type, data)
-    return {"status": "ok", "tool": "ai_report", "report_type": report_type, "report": report}
+# ai_report moved to mcp_server.routers.market_data in Phase 3c.
 
 
-@app.post("/tools/news_sentiment")
-async def tool_news_sentiment(request: Request):
-    """Get AI-scored news sentiment for a symbol.
-
-    Body: {"symbol": "RELIANCE"}
-    """
-    body = await request.json()
-    symbol = body.get("symbol", "")
-    if not symbol:
-        return {"status": "error", "message": "symbol is required"}
-    from mcp_server.news_monitor import calculate_news_sentiment
-
-    result = calculate_news_sentiment(symbol)
-    return {"status": "ok", "tool": "news_sentiment", "symbol": symbol, **result}
+# news_sentiment moved to mcp_server.routers.market_data in Phase 3c.
 
 
 # ============================================================
 # Momentum Ranking Module
 # ============================================================
 
-@app.get("/api/momentum")
-async def api_momentum():
-    """Get cached momentum rankings + portfolio + rebalance signals for dashboard."""
-    from mcp_server.momentum_ranker import get_momentum_portfolio
-
-    portfolio = get_momentum_portfolio()
-    if not portfolio:
-        return {
-            "ranked_at": None,
-            "top_n": 0,
-            "holdings": [],
-            "rankings": [],
-            "signals": [],
-            "message": "No momentum scan yet. Trigger a rebalance to generate rankings.",
-        }
-    return portfolio
+# api_momentum moved to mcp_server.routers.market_data in Phase 3c.
 
 
-@app.get("/tools/momentum_rankings")
-async def tool_momentum_rankings(top_n: int = Query(default=10, ge=1, le=50)):
-    """MCP tool: Get current momentum rankings for Claude analysis."""
-    from mcp_server.momentum_ranker import get_momentum_portfolio
-
-    portfolio = get_momentum_portfolio()
-    if not portfolio:
-        return {
-            "status": "ok",
-            "tool": "momentum_rankings",
-            "count": 0,
-            "rankings": [],
-            "message": "No rankings available. Run momentum_rebalance first.",
-        }
-    rankings = portfolio.get("rankings", [])[:top_n]
-    return {
-        "status": "ok",
-        "tool": "momentum_rankings",
-        "ranked_at": portfolio.get("ranked_at"),
-        "count": len(rankings),
-        "rankings": rankings,
-    }
+# momentum_rankings moved to mcp_server.routers.market_data in Phase 3c.
 
 
-@app.post("/tools/momentum_rebalance")
-@limiter.limit("30/minute")
-async def tool_momentum_rebalance(request: Request, top_n: int = Query(default=10, ge=1, le=50)):
-    """
-    Trigger full universe momentum scan and generate rebalance signals.
-    Takes ~40-75s due to rate-limited yfinance calls.
-    """
-    from mcp_server.momentum_ranker import (
-        rank_universe,
-        generate_rebalance_signals,
-        get_momentum_portfolio,
-        save_momentum_portfolio,
-    )
-    from dataclasses import asdict as _asdict
-
-    # Get current holdings (if any)
-    prev = get_momentum_portfolio()
-    current_holdings = prev.get("holdings", []) if prev else []
-
-    # Run full scan
-    rankings = rank_universe(top_n=top_n)
-    signals = generate_rebalance_signals(current_holdings, rankings, top_n=top_n)
-
-    # Persist
-    payload = save_momentum_portfolio(rankings, signals, top_n=top_n)
-
-    return {
-        "status": "ok",
-        "tool": "momentum_rebalance",
-        "top_n": top_n,
-        "stocks_scored": len(rankings),
-        "buy_signals": len([s for s in signals if s.action == "BUY"]),
-        "sell_signals": len([s for s in signals if s.action == "SELL"]),
-        "rankings": [_asdict(s) for s in rankings],
-        "signals": [_asdict(s) for s in signals],
-        "ranked_at": payload.get("ranked_at"),
-    }
+# momentum_rebalance moved to mcp_server.routers.market_data in Phase 3c.
 
 
 # ============================================================
@@ -4251,46 +3923,7 @@ def _fetch_market_movers() -> dict:
     return results
 
 
-@app.get("/api/market-movers")
-async def api_market_movers(
-    category: str = Query(default="gainers", regex="^(gainers|losers|week52_high|week52_low|most_active)$"),
-    exchange: str = Query(default="ALL"),
-):
-    """
-    Market movers: top gainers, losers, 52W high/low, most active.
-    Cached for 5 minutes during market hours.
-    """
-    global _market_movers_cache, _market_movers_ts
-
-    now = _now_ist()
-    stale = (
-        _market_movers_ts is None
-        or (now - _market_movers_ts).total_seconds() > 300
-    )
-
-    if stale or not _market_movers_cache:
-        try:
-            _market_movers_cache = _fetch_market_movers()
-            _market_movers_ts = now
-        except Exception as e:
-            logger.error("Market movers fetch failed: %s", e)
-            if not _market_movers_cache:
-                return {"category": category, "stocks": [], "error": str(e)}
-
-    stocks = _market_movers_cache.get(category, [])
-
-    # Exchange filter
-    if exchange != "ALL":
-        stocks = [s for s in stocks if s["exchange"] == exchange.upper()]
-
-    return {
-        "category": category,
-        "exchange": exchange,
-        "stocks": stocks,
-        "total": len(stocks),
-        "fetched_at": _market_movers_cache.get("fetched_at"),
-        "total_universe": _market_movers_cache.get("total_stocks", 0),
-    }
+# api_market_movers moved to mcp_server.routers.market_data in Phase 3c.
 
 
 # ============================================================
@@ -4298,99 +3931,23 @@ async def api_market_movers(
 # ============================================================
 
 
-@app.get("/api/cache/stats")
-async def api_cache_stats():
-    """Cache size, hit rate, unique tickers, interval breakdown."""
-    from mcp_server.ohlcv_cache import get_cache_stats
-
-    db_session = SessionLocal()
-    try:
-        stats = get_cache_stats(db_session)
-        return {"status": "ok", **stats}
-    finally:
-        db_session.close()
+# api_cache_stats moved to mcp_server.routers.market_data in Phase 3c.
 
 
-class CacheRefreshRequest(BaseModel):
-    ticker: str
-    interval: str = "1d"
-    period: str = "1y"
+# CacheRefreshRequest moved to mcp_server.routers.market_data in Phase 3c.
+# cache_refresh moved to mcp_server.routers.market_data in Phase 3c.
 
 
-@app.post("/tools/cache_refresh")
-async def tool_cache_refresh(req: CacheRefreshRequest):
-    """Force-refresh cached data for a ticker (invalidate + re-fetch)."""
-    from mcp_server.ohlcv_cache import invalidate_ticker
-    from mcp_server.data_provider import get_stock_data
-
-    # Invalidate existing cache
-    db_session = SessionLocal()
-    try:
-        deleted = invalidate_ticker(db_session, req.ticker, req.interval)
-    finally:
-        db_session.close()
-
-    # Force re-fetch (will populate cache)
-    df = get_stock_data(req.ticker, period=req.period, interval=req.interval, force_refresh=True)
-
-    return {
-        "status": "ok",
-        "tool": "cache_refresh",
-        "ticker": req.ticker,
-        "interval": req.interval,
-        "deleted_rows": deleted,
-        "new_bars": len(df) if df is not None and not df.empty else 0,
-    }
-
-
-class CachePurgeRequest(BaseModel):
-    days_to_keep: int = 1825
-
-
-@app.post("/tools/cache_purge")
-async def tool_cache_purge(req: CachePurgeRequest):
-    """Delete cached data older than N days (default 5 years)."""
-    from mcp_server.ohlcv_cache import purge_old_data
-
-    db_session = SessionLocal()
-    try:
-        deleted = purge_old_data(db_session, days_to_keep=req.days_to_keep)
-    finally:
-        db_session.close()
-
-    return {
-        "status": "ok",
-        "tool": "cache_purge",
-        "days_to_keep": req.days_to_keep,
-        "deleted_rows": deleted,
-    }
+# CachePurgeRequest moved to mcp_server.routers.market_data in Phase 3c.
+# cache_purge moved to mcp_server.routers.market_data in Phase 3c.
 
 
 # ── RealtimeEngine API endpoints ──────────────────────────────────────────────
 
-@app.get("/api/live-prices")
-async def api_live_prices(symbols: str = Query(..., description="Comma-separated symbols")):
-    """Batch LTP from WebSocket tick cache."""
-    syms = [s.strip() for s in symbols.split(",") if s.strip()]
-    if _realtime_engine:
-        return _realtime_engine.cache.get_multiple_ltps(syms)
-    return {s: None for s in syms}
+# api_live_prices moved to mcp_server.routers.market_data in Phase 3c.
 
 
-@app.get("/api/realtime/status")
-async def api_realtime_status():
-    """RealtimeEngine health / status."""
-    if not _realtime_engine:
-        return {"active": False, "reason": "engine_not_started"}
-    return {
-        "active": _realtime_engine._active,
-        "websocket_connected": (
-            _realtime_engine.gwc_ws.connected if _realtime_engine.gwc_ws else False
-        ),
-        "subscribed_symbols": len(_realtime_engine._subscribed_symbols),
-        "monitored_positions": len(_realtime_engine.monitor.positions),
-        "redis_available": _realtime_engine.cache._available,
-    }
+# api_realtime_status moved to mcp_server.routers.market_data in Phase 3c.
 
 
 # ============================================================
