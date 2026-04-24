@@ -90,10 +90,11 @@ mcp_server/
 │   │                             /tools/update_trailing_sl,
 │   │                             /tools/update_all_trailing_sl,
 │   │                             /tools/refresh_trade_prices (~600 ln, ~12 routes)
-│   ├── options_fno.py         — /api/fno/*, /api/options/*,
-│   │                             /tools/run_fno_analytics,
+│   ├── options.py             — /api/options/* (universe, chain, greeks,
+│   │                             recommendation) (~300 ln, 5 routes)
+│   ├── fno.py                 — /api/fno/*, /tools/run_fno_analytics,
 │   │                             /tools/scan_oi_buildup,
-│   │                             /tools/get_fo_signal (~800 ln, ~18 routes)
+│   │                             /tools/get_fo_signal (~500 ln, ~13 routes)
 │   ├── scanners.py            — /tools/run_mwa_scan,
 │   │                             /tools/mwa_scan_status/*,
 │   │                             /tools/get_mwa_score,
@@ -256,12 +257,12 @@ Before merging each phase's PR:
 | 4 | mcp_server.py cleanup | — | 1 hr |
 | **Total** | 14 routers | **148** | **~20 hrs** over ~10 PRs |
 
-## 9. Open questions for the operator
+## 9. Operator decisions (2026-04-24)
 
-1. **PR cadence.** 10 PRs over two weeks with `main` staying hot, or one mega-PR? Plan assumes small PRs.
-2. **Router tags.** OK to add FastAPI `tags=[...]` to each router (changes OpenAPI grouping on `/docs`, makes API explorer cleaner)?
-3. **Scanner + options split.** Should options stay folded into `options_fno.py` or be its own `options.py`? Current proposal keeps them together because they share the `_get_kite_for_fo()` plumbing.
-4. **Back-compat.** Do we need to preserve the exact line numbers for any external tooling (IDEs, log parsers, bug trackers) that reference `mcp_server.py:NNN`? Plan assumes no.
-5. **Go / no-go.** Approve Phase 0 only, Phase 0+1, or the full plan?
+1. **PR cadence: 10 small PRs.** One router per PR, merge same-day to keep `main` hot.
+2. **Router tags: approved.** Each router sets `APIRouter(tags=["<domain>"])` so `/docs` groups cleanly.
+3. **Options / F&O: split them.** `options.py` owns `/api/options/*` (universe, chain, greeks, recommendation); `fno.py` owns `/api/fno/*` + `/tools/run_fno_analytics` + `/tools/scan_oi_buildup` + `/tools/get_fo_signal`. Shared `_get_kite_for_fo()` stays in mcp_server.py (moved later or left as a module-level helper consumed by both).
+4. **Line-number back-compat: not required.** Nothing external references `mcp_server.py:NNN`. One-time break accepted.
+5. **Scope: full plan green-lit.** Proceed through Phase 0 → 4 in order.
 
-Answer inline on the PR that adopts this plan, or reply with numbered responses.
+Router count updated: **14 → 15** (options split from fno). Ballpark unchanged (~20 hrs over 10 PRs because options.py is small, adds <30 min).
