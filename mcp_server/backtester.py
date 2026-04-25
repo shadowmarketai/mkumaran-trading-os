@@ -120,6 +120,7 @@ def _calculate_transaction_cost(
 def _calculate_metrics(
     trades: list[dict], equity: list[float], capital: float,
     total_costs: float = 0,
+    backtest_days: int = 365,
 ) -> dict:
     """Calculate standard backtest metrics from trade list."""
     wins = [t for t in trades if t["outcome"] == "WIN"]
@@ -153,21 +154,27 @@ def _calculate_metrics(
         else:
             current_streak = 0
 
-    # Proper annualized Sharpe ratio from DAILY equity returns
-    # (not per-trade returns which mix timeframes)
+    # Sharpe ratio — per-trade equity returns, annualized by trade frequency.
+    # equity is one point per trade (not per day), so we cannot multiply by
+    # sqrt(252) directly. Instead: annualize by sqrt(252 * trades / backtest_days),
+    # i.e. scale by how many trades-worth of periods fit into a trading year.
+    # With 16 trades over 365 days this gives ~sqrt(11) instead of sqrt(252),
+    # preventing the absurd ±19 Sharpe values the old formula produced.
     if len(equity) >= 3:
-        daily_returns = []
+        trade_returns = []
         for i in range(1, len(equity)):
             if equity[i - 1] > 0:
-                daily_returns.append((equity[i] - equity[i - 1]) / equity[i - 1])
+                trade_returns.append((equity[i] - equity[i - 1]) / equity[i - 1])
 
-        if daily_returns:
-            avg_daily = sum(daily_returns) / len(daily_returns)
-            std_daily = math.sqrt(
-                sum((r - avg_daily) ** 2 for r in daily_returns) / max(len(daily_returns) - 1, 1)
+        if trade_returns:
+            n_trades = len(trade_returns)
+            avg_ret = sum(trade_returns) / n_trades
+            std_ret = math.sqrt(
+                sum((r - avg_ret) ** 2 for r in trade_returns) / max(n_trades - 1, 1)
             )
-            # Annualize: multiply mean by 252, std by sqrt(252)
-            sharpe = (avg_daily / std_daily * math.sqrt(252)) if std_daily > 0 else 0
+            # trades_per_year: how many of these intervals fit in 252 trading days
+            trades_per_year = n_trades * (252 / max(backtest_days, 1))
+            sharpe = (avg_ret / std_ret * math.sqrt(trades_per_year)) if std_ret > 0 else 0
         else:
             sharpe = 0
     else:
@@ -177,9 +184,7 @@ def _calculate_metrics(
     total_return_pct = (current_capital - capital) / capital * 100
 
     # Calmar ratio = annualized return / max drawdown
-    # Approximate annualized return from total
-    trading_days = max(len(equity) - 1, 1)
-    annualized_return = total_return_pct * (252 / trading_days) if trading_days > 0 else 0
+    annualized_return = total_return_pct * (252 / max(backtest_days, 1))
     calmar = annualized_return / max_dd if max_dd > 0 else 0
 
     # Average winner / average loser
@@ -195,7 +200,8 @@ def _calculate_metrics(
         "total_pnl": round(total_pnl, 2),
         "profit_factor": round(profit_factor, 2),
         "max_drawdown": round(max_dd, 2),
-        "sharpe_ratio": round(sharpe, 2),
+        "sharpe_ratio": round(sharpe, 2) if total_trades >= 20 else None,
+        "sharpe_note": None if total_trades >= 20 else f"Sharpe unreliable with <20 trades (got {total_trades})",
         "calmar_ratio": round(calmar, 2),
         "total_return": round(total_return_pct, 2),
         "max_consecutive_losses": max_consec_loss,
@@ -664,7 +670,7 @@ def run_backtest(
     )
 
     # Calculate metrics
-    metrics = _calculate_metrics(trades, equity, capital, total_costs)
+    metrics = _calculate_metrics(trades, equity, capital, total_costs, backtest_days=days)
 
     # Per-pattern breakdown
     pattern_stats: dict[str, dict] = {}
