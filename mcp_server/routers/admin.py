@@ -367,3 +367,54 @@ async def tool_stitch_validate(req: StitchPushRequest):
         return {"status": "ok", "tool": "stitch_validate", "stitch": result}
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+# ── Broker reconciliation ─────────────────────────────────────
+
+
+_last_reconcile_result: dict = {}
+
+
+@router.post("/api/reconcile/run")
+async def api_reconcile_run(alert: bool = True):
+    """Trigger an immediate broker-vs-DB reconciliation.
+
+    Compares the live position book from all connected brokers against
+    active_trades in Postgres. Returns a summary with any GHOST /
+    PHANTOM / QTY_DRIFT entries found.
+
+    Optional query param: alert=false to suppress Telegram notification
+    even when drift is found (useful for manual inspection).
+    """
+    global _last_reconcile_result
+    from mcp_server.broker_reconciler import run_reconciliation
+    result = run_reconciliation(alert_on_drift=alert)
+    _last_reconcile_result = {
+        "checked_at": result.checked_at.isoformat(),
+        "clean": result.clean,
+        "broker_count": len(result.broker_positions),
+        "db_count": len(result.db_positions),
+        "ghosts": [
+            {"id": g.id, "ticker": g.ticker, "qty": g.qty, "direction": g.direction}
+            for g in result.ghosts
+        ],
+        "phantoms": [
+            {"ticker": p.ticker, "qty": p.qty, "direction": p.direction, "source": p.source}
+            for p in result.phantoms
+        ],
+        "qty_drifts": result.qty_drifts,
+        "summary": result.summary(),
+    }
+    return _last_reconcile_result
+
+
+@router.get("/api/reconcile/status")
+async def api_reconcile_status():
+    """Return the result of the most recent reconciliation run (cached in-memory).
+
+    Returns an empty object if no reconciliation has been run since
+    the last server restart.
+    """
+    if not _last_reconcile_result:
+        return {"status": "no_run", "message": "POST /api/reconcile/run to trigger"}
+    return _last_reconcile_result
