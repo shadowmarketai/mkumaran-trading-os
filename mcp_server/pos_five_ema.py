@@ -296,7 +296,10 @@ class FiveEMAGenerator:
 
 
 def generate_signals_for_backtest(
-    data: pd.DataFrame, ticker: str, capital: Numeric,
+    data: pd.DataFrame,
+    ticker: str,
+    capital: Numeric,
+    regime_filter: bool = True,
 ) -> list[dict[str, Any]]:
     """Adapter consumed by mcp_server.backtester.run_backtest("pos_5ema").
 
@@ -304,10 +307,18 @@ def generate_signals_for_backtest(
     spec. The backtester then applies its own per-trade slippage and
     cost layers to the (entry, stop, target, qty) tuple — the same
     contract _generate_rrms_signals fulfils.
+
+    regime_filter=True (default): signals generated on bars where the
+    regime at that point in the walkthrough is RANGING or VOLATILE are
+    suppressed. This lets the backtest reflect the same gate that the
+    live system applies. Set to False to see unfiltered signal count.
     """
+    from mcp_server.regime_detector import classify_from_df, STRATEGY_GATES
+
     gen = FiveEMAGenerator()
     cap = float(to_money(capital))
     risk_rupees = cap * 0.01
+    allowed = STRATEGY_GATES["pos_5ema"]
 
     raw_signals = gen.detect_all(data, ticker)
     out: list[dict[str, Any]] = []
@@ -315,6 +326,16 @@ def generate_signals_for_backtest(
         risk_per_share = float(sig.risk_per_share)
         if risk_per_share <= 0:
             continue
+
+        if regime_filter:
+            # Classify regime using data up to (not including) the signal bar
+            # to avoid lookahead — only use history available at signal time.
+            historical_slice = data.iloc[: sig.bar_idx]
+            if len(historical_slice) >= 16:  # need ≥ ADX period + 2 bars
+                regime = classify_from_df(historical_slice)
+                if regime.label not in allowed:
+                    continue  # suppress in non-trending regime
+
         qty = max(int(risk_rupees / risk_per_share), 1)
         out.append(sig.to_signal_dict(qty=qty))
     return out
