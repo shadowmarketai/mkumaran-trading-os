@@ -389,3 +389,117 @@ async def api_options_strategy_build(req: StrategyBuildRequest):
         "max_loss": result.max_loss,
         "net_premium": result.net_premium,
     }
+
+
+# ── Options seller module ──────────────────────────────────────────
+
+
+@router.get("/api/options-seller/iv-regime/{instrument}")
+async def api_iv_regime(instrument: str, spot: float = 0.0):
+    """Classify the current IV regime for an instrument.
+
+    Returns regime label (CRUSHED/LOW/NORMAL/ELEVATED/EXTREME),
+    VIX percentiles, sell_premium_ok gate, and suggested DTE + delta.
+
+    No live options chain is fetched here — uses India VIX only.
+    Pass spot > 0 to enable ATM-IV extraction from chain in a future call.
+    """
+    import asyncio
+    from mcp_server.options_seller.iv_engine import get_iv_regime
+    regime = await asyncio.to_thread(get_iv_regime, instrument, spot)
+    return {"status": "ok", **regime.as_dict()}
+
+
+@router.post("/api/options-seller/build-strangle")
+async def api_build_strangle(
+    instrument: str,
+    spot: float,
+    dte: int = 5,
+    target_delta: float = 0.15,
+    structure: str = "IRON_CONDOR",
+    wing_width_strikes: int = 1,
+):
+    """Construct an iron condor or naked strangle from a live options chain.
+
+    Fetches the options chain for `instrument`, picks strikes at
+    `target_delta`, and returns the full position structure with net credit,
+    max loss, and breakevens.
+
+    Gate: returns 400 if the IV regime says sell_premium_ok=False.
+    """
+    import asyncio
+    from mcp_server.options_seller.iv_engine import get_iv_regime
+    from mcp_server.options_selector import get_options_chain
+
+    # IV gate — don't build if regime is CRUSHED or EXTREME
+    regime = await asyncio.to_thread(get_iv_regime, instrument, spot)
+    if not regime.sell_premium_ok:
+        return {
+            "status": "blocked",
+            "reason": f"IV regime {regime.label} — {regime.reason}",
+            "regime": regime.as_dict(),
+        }
+
+    # Fetch chain
+    try:
+        chain = await asyncio.to_thread(get_options_chain, instrument)
+    except Exception as e:
+        return {"status": "error", "reason": f"Chain fetch failed: {e}"}
+
+    from mcp_server.options_seller.strike_selector import build_strangle
+    pos = build_strangle(
+        instrument=instrument,
+        spot=spot,
+        chain=chain or {},
+        dte=dte,
+        target_delta=target_delta,
+        structure=structure,
+        wing_width_strikes=wing_width_strikes,
+    )
+    if pos is None:
+        return {"status": "error", "reason": "Could not build position — chain too sparse or premium too low"}
+
+    return {"status": "ok", "position": pos.as_dict(), "regime": regime.as_dict()}
+
+
+@router.post("/api/options-seller/evaluate-adjustment")
+async def api_evaluate_adjustment(
+    instrument: str,
+    spot: float,
+    short_call_strike: float,
+    short_put_strike: float,
+    short_call_delta: float,
+    short_put_delta: float,
+    short_call_entry_premium: float,
+    short_put_entry_premium: float,
+    short_call_current_premium: float,
+    short_put_current_premium: float,
+    credit_received: float,
+    current_pnl: float,
+    dte_remaining: float,
+):
+    """Evaluate an open position against the 5 adjustment rules.
+
+    Returns action (hold / close / roll), which rule fired, and the
+    human-readable reason. Front-end can display this live to the operator.
+    """
+    from mcp_server.options_seller.adjustment_engine import (
+        LivePositionSnapshot, evaluate,
+    )
+    snap = LivePositionSnapshot(
+        instrument=instrument,
+        spot=spot,
+        short_call_strike=short_call_strike,
+        short_put_strike=short_put_strike,
+        short_call_delta=short_call_delta,
+        short_put_delta=short_put_delta,
+        short_call_entry_premium=short_call_entry_premium,
+        short_put_entry_premium=short_put_entry_premium,
+        short_call_current_premium=short_call_current_premium,
+        short_put_current_premium=short_put_current_premium,
+        credit_received=credit_received,
+        current_pnl=current_pnl,
+        dte_remaining=dte_remaining,
+    )
+    decision = evaluate(snap)
+    return {"status": "ok", "decision": decision.as_dict()}
