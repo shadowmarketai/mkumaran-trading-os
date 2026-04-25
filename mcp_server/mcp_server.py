@@ -955,6 +955,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Options seller Greeks refresh loop startup skipped: %s", e)
 
+    # Start broker reconciler loop (every 60s during market hours).
+    # Compares live broker position book to active_trades in Postgres.
+    # Alerts on GHOST / PHANTOM / QTY_DRIFT. Never raises — logs only.
+    async def _reconciler_loop() -> None:
+        import asyncio as _aio
+        from mcp_server.market_calendar import is_market_open as _is_open
+        while True:
+            try:
+                if _is_open("NSE") or _is_open("MCX"):
+                    from mcp_server.broker_reconciler import run_reconciliation
+                    await _aio.to_thread(run_reconciliation, True)
+            except Exception as _re:
+                logger.debug("Broker reconciler loop error: %s", _re)
+            await _aio.sleep(60)
+
+    asyncio.create_task(_reconciler_loop())
+    logger.info("Broker reconciler loop started (every 60s during market hours)")
+
     # Auto-login to Goodwill (GWC) at startup — mirrors Kite auto-login pattern.
     # Runs in worker thread to avoid blocking the event loop.
     try:
@@ -1775,6 +1793,38 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
             )
         except Exception as sector_err:
             logger.debug("Sector filter skipped: %s", sector_err)
+
+        # ── Event calendar gate ───────────────────────────────────────────
+        # Block intraday signals and haircut swing/positional confidence
+        # when a high-impact macro event (RBI / FOMC / Budget / NFP) is
+        # within the configured window. The events/calendar.yaml is the
+        # data source; get_calendar() returns a cached singleton.
+        try:
+            from mcp_server.event_calendar import get_calendar
+            _cal = get_calendar()
+            pre_event = len(mwa_signals)
+
+            def _event_filter(sig: dict) -> bool:
+                tf = (sig.get("timeframe") or "day").lower()
+                # Intraday signals: suppress entirely if any event within 4h
+                if tf in ("5m", "15m", "1h", "intraday"):
+                    return not _cal.high_impact_within(hours=4)
+                # Swing/positional: suppress if event within 1h
+                if _cal.high_impact_within(hours=1):
+                    return False
+                return True
+
+            mwa_signals = [s for s in mwa_signals if _event_filter(s)]
+            blocked = pre_event - len(mwa_signals)
+            if blocked:
+                upcoming = _cal.upcoming(hours=4)
+                event_names = [e.type for e in upcoming]
+                logger.info(
+                    "[FILTER] event: %d -> %d signals (blocked %d near: %s)",
+                    pre_event, len(mwa_signals), blocked, event_names,
+                )
+        except Exception as event_err:
+            logger.debug("Event calendar filter skipped: %s", event_err)
 
         from mcp_server.market_calendar import is_market_open as _is_mkt_open
 
