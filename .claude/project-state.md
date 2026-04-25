@@ -3,9 +3,9 @@
 > Living document. Updated at the end of every meaningful Claude Code session.
 > Every agent reads this FIRST before doing work.
 
-**Last updated:** 2026-04-24 by Claude Opus 4.7 (Decimal series merged + test-debt swept)
-**Dossier version:** 3
-**Prior versions:** v1 2026-04-22 (`onboarder` initial dossier) → v2 2026-04-23 (Decimal Phase 2–3 + backtester boundary fix)
+**Last updated:** 2026-04-25 by Claude Opus 4.7 (closure tasks + shadow observer + Dhan backfill)
+**Dossier version:** 5
+**Prior versions:** v1 2026-04-22 → v2 2026-04-23 → v3 2026-04-24 AM (Decimal + test-debt) → v4 2026-04-24 PM (router split complete)
 
 ---
 
@@ -77,39 +77,31 @@ Two independent scan loops run in parallel: a **daily-swing MWA loop** (default 
 
 ## Current phase
 
-**Post-consolidation — foundations hardened, back to feature/ops work.** Over 2026-04-22 → 2026-04-24 a three-wave consolidation landed on `main`:
+**Closure sprint (2026-04-25).** All infrastructure PRs landed. Focus is closing the gap between "shipped" and "deployed + validated." Six closure tasks were identified in a self-audit; three are done, three are operator-side.
 
-1. **Schema consolidation** (PRs merged into #11): `schema.sql` + runtime `_add_missing_columns()` retired; Alembic is the sole schema source, runs automatically on backend boot.
-2. **Decimal enforcement** (PR #11 `feat/money-helpers`): CLAUDE.md invariant #2 now real. `money.py` helpers plus zone discipline across `rrms_engine`, `order_manager`, `signal_monitor`, `portfolio_risk`, `signal_cards`, `backtester`. Per-exchange rounding (NSE/BSE/NFO/MCX = 2dp, CDS = 4dp).
-3. **Test debt swept** (PR #13): 35+ pre-existing test failures on `main` cleared across 12 test files + 1 workflow file. Main CI is green as of 2026-04-24.
+**Shipped to prod today (2026-04-25):**
+- `TV_WEBHOOK_SECRET` set in Coolify — HMAC enforcement active ✅
+- PRs #41→#45 merged + `alembic upgrade heads` ran — `options_seller_positions` + `shadow_signal_observations` tables exist in prod ✅
+- POS 5 EMA column-case crash fixed (PR #46, merged) ✅
+- Backfill script `scripts/backfill_dhan_intraday.py` deployed ✅
 
-Also shipped: dead `AI_REPORT_MODEL` setting removed (PR #12), Vitest + Testing Library harness for dashboard (merged via #11 bundle), JWT fail-closed boot check, NeuroLinked brain integration.
-
-The product is in daily live use on paper-mode. Next focus is paper-mode smoke of the full Decimal-enabled pipeline, then the `mcp_server.py` router split.
+**Prod DB credentials:** `postgres://trading:trading_pass_prod@n0ckwgw8os4o80408s40okww:5432/trading_os`
+**Note:** rotate these credentials — exposed in session on 2026-04-25.
 
 ---
 
 ## Open TODOs
 
-Ordered by priority. Top item is what `/resume` suggests next.
+Ordered by priority.
 
-- [ ] **HIGH** — Push + open PR for `feat/money-helpers`. Branch has 5 commits ahead of origin: Phase 1 (`f4cd4a9`, money helpers), Phase 2 (`f63b858`, RRMS+config+order_manager), Phase 3 (`b36ee17`, monitor+portfolio+cards), backtester boundary fix (`7ab9e03`), plus the docs draft (`e9eabf5`) that preceded Phase 1. All local; never pushed.
-- [ ] **MED** — Verify Decimal migration in live paper-mode smoke run before declaring victory on CLAUDE.md invariant #2. Unit tests cover the math; paper-mode exercises the full pipeline including broker-SDK float boundaries.
-- [ ] **MED** — Break up `mcp_server/mcp_server.py` (6623 lines, 148 route decorators) into FastAPI routers by domain (auth / signals / trades / options / admin / tools).
-- [ ] **MED** — Update `AI_REPORT_MODEL` default. Currently `claude-haiku-4-5-20251001` in `config.py:214`. Claude Haiku 4.5 is supported, but Opus 4.7 / Sonnet 4.6 are the current latest — verify cost/quality trade and decide.
-- [ ] **MED** — Rotate JWT secret + strengthen auth default. `JWT_SECRET_KEY` default in `config.py` is the literal string `"change-this-in-production"`; safe today only because `AUTH_ENABLED=false` by default.
-- [x] **MED** — Fixed 2 pre-existing `test_order_manager`/`test_paper_trading` failures asserting "Kite not connected" — renamed to `test_no_broker_blocks_order` / `test_live_mode_fails_without_broker` and matched the current "No broker connected" copy from `_validate_broker()` (`894d350`).
-- [ ] **HIGH** — **GitHub Actions is not firing** on any push/PR since 2026-04-22. CI last ran ~24h ago. Not a workflow-config issue (unchanged for weeks); likely repo-setting (Settings → Actions → General → Allow actions) or GitHub billing/quota. PR #11 can't be CI-verified until this is unblocked.
-- [ ] **MED** — Fix `sector_picker.fetch_rrms_setup` stale call to non-existent `engine.calculate_from_levels` — wrapped in `try/except`, so silently returns fallback. Pre-existing dead code path.
-- [ ] **HIGH** — Merge `feat/claude-agent-layer` → `main` (or decide whether to squash). The overlay is purely additive (no app-code diff) and is already committed; just needs PR + merge. Watch for CI (`ruff check .`) — overlay added many markdown files, no `.py` changes, so should pass cleanly.
-- [ ] **HIGH** — Consolidate schema sources. Three places currently hold truth: `schema.sql`, `alembic/versions/`, and `mcp_server/db.py:_add_missing_columns()` (a runtime `ALTER TABLE` escape hatch with ~50 column definitions). A schema drift between Alembic and `_add_missing_columns` is a silent bug waiting to happen.
-- [ ] **HIGH** — Enforce `Decimal` at the Python boundary for P&L math. CLAUDE.md declares it as an invariant, but current code uses `float` broadly (`RRMS_CAPITAL: float`, `RRMS_RISK_PCT: float` in `config.py:107–109`). DB uses `Numeric(10,2)` correctly.
-- [ ] **MED** — Break up `mcp_server/mcp_server.py` (6623 lines, 148 route decorators) into FastAPI routers by domain (auth / signals / trades / options / admin / tools).
-- [ ] **MED** — Update `AI_REPORT_MODEL` default. Currently `claude-haiku-4-5-20251001` in `config.py:214`. Claude Haiku 4.5 is supported, but Opus 4.7 / Sonnet 4.6 are the current latest — verify cost/quality trade and decide.
-- [ ] **MED** — Rotate JWT secret + strengthen auth default. `JWT_SECRET_KEY` default in `config.py:153` is the literal string `"change-this-in-production"`; safe today only because `AUTH_ENABLED=false` by default.
-- [ ] **MED** — Add frontend tests. `dashboard/package.json` has no test script, no Vitest, no Testing Library. 54 backend tests exist; frontend has zero.
-- [ ] **LOW** — Validate `dashboard_dist/` checked-in state. Directory exists at repo root (likely a stale pre-container build artifact). Dockerfile rebuilds dashboard in stage 1; the top-level folder may be dead weight.
-- [ ] **LOW** — Decide fate of `skills/shadow-3d-scroll/` and the landing/marketing surfaces in the dashboard. CLAUDE.md explicitly bans the scroll skill on `dashboard/` routes; usage should be limited to `LandingPage.tsx`.
+- [ ] **CRITICAL** — Rotate prod DB password (exposed in chat 2026-04-25). Update Coolify env + restart.
+- [ ] **THIS WEEKEND** — Run Dhan intraday backfill: `python scripts/backfill_dhan_intraday.py` in Coolify console. ~1-2 hours. Fills ohlcv_cache with 5Y × 15-min × Nifty 100.
+- [ ] **SUNDAY** — Re-run `POST /tools/backtest_validate?ticker=HDFCBANK&strategy=pos_5ema&days=1095&n_simulations=1000&n_bootstrap=500&n_windows=5` after backfill. Expect hundreds of trades (not 0-1). Paste JSON for decision gate.
+- [ ] **DECISION** — Promote pos_5ema weight 0→0.10 if walk-forward Sharpe > 1.2. Kill if < 0.8. Hold at 0 if between.
+- [ ] **MED** — Rotate prod DB password (see CRITICAL above).
+- [ ] **MED** — Add `pos_5ema` to dashboard Backtesting strategy dropdown (frontend wiring, 30 min).
+- [ ] **LOW** — Tax export module needs real Outcome rows to validate — test after a few signals close.
+- [ ] **LOW** — Options seller: paper trade 30 days once `options_seller_positions` table is used.
 
 ---
 
