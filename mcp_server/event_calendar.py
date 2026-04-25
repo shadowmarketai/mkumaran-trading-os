@@ -62,6 +62,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import yaml  # pyyaml — listed in requirements.txt
+
 logger = logging.getLogger(__name__)
 
 # ── IST timezone (UTC+5:30) ─────────────────────────────────
@@ -324,7 +326,6 @@ def get_calendar(reload: bool = False) -> EventCalendar:
 
 def _load_calendar() -> EventCalendar:
     try:
-        import yaml  # pyyaml is already in requirements
         with _CALENDAR_YAML.open(encoding="utf-8") as f:
             data = yaml.safe_load(f)
         raw = data.get("events", []) if isinstance(data, dict) else []
