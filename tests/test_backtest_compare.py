@@ -128,9 +128,10 @@ def test_compare_handles_insufficient_data(mock_get):
 
 @patch("mcp_server.nse_scanner.get_stock_data")
 def test_compare_comparison_length(mock_get):
-    """Comparison array should have exactly 6 entries."""
+    """Comparison array should have one entry per strategy in the dispatch list."""
     mock_get.return_value = _make_mock_data(300)
     from mcp_server.backtester import run_backtest_all_strategies
 
     result = run_backtest_all_strategies("NSE:RELIANCE", days=180)
-    assert len(result["comparison"]) == 6
+    # rrms + smc + wyckoff + vsa + harmonic + pos_5ema + confluence
+    assert len(result["comparison"]) == 7
