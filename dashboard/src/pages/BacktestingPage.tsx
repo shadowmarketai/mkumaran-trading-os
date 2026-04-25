@@ -69,6 +69,7 @@ const STRATEGY_META: Record<string, { label: string; color: string; description:
   wyckoff: { label: 'Wyckoff', color: 'text-amber-400', description: 'Wyckoff Method' },
   vsa: { label: 'VSA', color: 'text-cyan-400', description: 'Volume Spread Analysis' },
   harmonic: { label: 'Harmonic', color: 'text-pink-400', description: 'Harmonic Patterns' },
+  pos_5ema: { label: 'POS 5 EMA', color: 'text-green-400', description: 'Subasish Pani 5 EMA Setup (shadow mode — use 15m data)' },
   confluence: { label: 'Confluence', color: 'text-trading-ai-light', description: '2+ engines agree' },
 };
 
@@ -80,6 +81,7 @@ const STRATEGY_COLORS: Record<string, string> = {
   wyckoff: '#F59E0B',    // amber
   vsa: '#06B6D4',        // cyan
   harmonic: '#EC4899',   // pink
+  pos_5ema: '#22C55E',   // green
   confluence: '#8B5CF6', // violet
 };
 
@@ -274,6 +276,7 @@ export default function BacktestingPage() {
     { value: 'wyckoff', label: 'Wyckoff Method' },
     { value: 'vsa', label: 'Volume Spread Analysis' },
     { value: 'harmonic', label: 'Harmonic Patterns' },
+    { value: 'pos_5ema', label: 'POS 5 EMA (shadow)' },
     { value: 'confluence', label: 'Confluence (2+ engines)' },
   ];
 
