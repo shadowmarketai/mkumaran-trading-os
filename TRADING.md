@@ -34,7 +34,7 @@ A step-by-step guide to trading using the MKUMARAN Trading OS. Covers all segmen
 The Trading OS is a **signal generation + risk management + AI validation** platform:
 
 ```
-MWA Scan (98 scanners, 14 layers)
+MWA Scan (156 scanners, 15 layers)
   → Promoted stocks identified
   → ATR-based Entry/SL/TGT calculated
   → AI Debate validation
@@ -62,7 +62,7 @@ Every trading day, follow this sequence **before market opens (9:00 AM)**:
   - **MILD_BEAR / BEAR / STRONG_BEAR**: Market favoring shorts or stay cash
 
 ### Step 2: Check MWA Score
-- The MWA Score (0-100) aggregates 98 scanners across 14 layers
+- The MWA Score (0-100) aggregates 156 scanners across 15 layers
 - **Score > 65**: Bullish — favor LONG trades
 - **Score 45-65**: Neutral — be selective, smaller positions
 - **Score < 45**: Bearish — favor SHORT trades or stay cash
