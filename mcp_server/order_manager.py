@@ -24,6 +24,7 @@ from mcp_server.market_calendar import now_ist
 from mcp_server.market_calendar import validate_order_timing
 from mcp_server.money import Numeric, to_money
 from mcp_server.portfolio_risk import validate_portfolio_risk
+from mcp_server.risk_guard import RiskGuard
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,7 @@ class OrderManager:
         self.capital: Decimal = to_money(capital)
         self.paper_mode = paper_mode
         self.kill_switch = KillSwitchState(starting_capital=self.capital)
+        self.risk_guard = RiskGuard()
         self.open_positions: list[dict] = []
         self.order_history: list[OrderResult] = []
         self._paper_order_counter: int = 0
@@ -130,12 +132,18 @@ class OrderManager:
             logger.info("OrderManager initialized in PAPER MODE (capital=%.0f)", self.capital)
 
     def _validate_broker(self) -> str | None:
-        """Check if any broker (Kite or Angel) is connected. Returns error message or None."""
+        """Check if any broker (Kite or Angel) is connected. Returns error message or None.
+
+        Also records a risk-guard heartbeat — a connected broker reference is
+        the strongest signal we have without making an extra round-trip. The
+        per-method calls (place_order, cancel_order, get_quote) bump this
+        again on actual success so a stuck handle doesn't keep us "alive".
+        """
         if self.paper_mode:
+            self.risk_guard.record_broker_heartbeat()
             return None
-        if self.kite is not None:
-            return None
-        if self.broker is not None:
+        if self.kite is not None or self.broker is not None:
+            self.risk_guard.record_broker_heartbeat()
             return None
         return "No broker connected — live trading requires active Kite or Angel session"
 
@@ -152,7 +160,7 @@ class OrderManager:
 
         `price` must already be a Decimal (converted in place_order).
         """
-        # Kill switch
+        # Kill switch (intra-day loss limit)
         if self.kill_switch.is_triggered:
             return f"KILL SWITCH ACTIVE: {self.kill_switch.trigger_reason}"
 
@@ -209,6 +217,18 @@ class OrderManager:
             )
             if risk_error:
                 return risk_error
+
+        # Risk guard — weekly loss + margin utilisation + broker heartbeat.
+        # Runs last because it's the most expensive composite check; cheap
+        # per-order rejects above already filtered out malformed/oversized
+        # orders.
+        deployed = Decimal("0")
+        for p in self.open_positions:
+            deployed += to_money(p.get("entry_price", 0)) * Decimal(p.get("qty", 0))
+        deployed += order_value
+        halt, reason = self.risk_guard.check(self.capital, deployed)
+        if halt:
+            return f"RISK GUARD HALT: {reason}"
 
         return None
 
@@ -589,9 +609,10 @@ class OrderManager:
         return results
 
     def update_pnl(self, realized_pnl: Numeric) -> None:
-        """Update daily realized P&L for kill switch tracking."""
+        """Update realized P&L for kill switch (daily) + risk guard (weekly)."""
         self.kill_switch.realized_pnl += to_money(realized_pnl)
         self.kill_switch.check(self.capital)
+        self.risk_guard.record_pnl(realized_pnl, self.capital)
 
     # ── Trailing Stop Loss ──────────────────────────────────────
 
