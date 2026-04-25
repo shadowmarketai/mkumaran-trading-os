@@ -418,3 +418,106 @@ async def api_reconcile_status():
     if not _last_reconcile_result:
         return {"status": "no_run", "message": "POST /api/reconcile/run to trigger"}
     return _last_reconcile_result
+
+
+# ── Shadow signal stats ───────────────────────────────────────
+
+
+@router.get("/api/shadow/stats")
+async def api_shadow_stats(days: int = 30, engine: str | None = None):
+    """30-day win rate + agreement rate for all shadow signal engines.
+
+    This is the evaluation query that tells you whether a shadow strategy
+    is ready to be promoted from weight=0 to weight>0.
+
+    Optional: ?engine=pos_5ema to filter to one engine.
+    """
+    from mcp_server.db import SessionLocal
+    from sqlalchemy import text
+
+    db = SessionLocal()
+    try:
+        engine_filter = "AND engine = :engine" if engine else ""
+        sql = text(f"""
+            SELECT
+              engine,
+              COUNT(*) AS total_observations,
+              COUNT(CASE WHEN outcome IS NOT NULL THEN 1 END) AS resolved,
+              ROUND(AVG(CASE WHEN outcome = 'WIN' THEN 1.0 ELSE 0.0 END) * 100, 1)
+                AS win_rate_pct,
+              ROUND(AVG(CASE WHEN agreed THEN 1.0 ELSE 0.0 END) * 100, 1)
+                AS agreement_rate_pct,
+              ROUND(AVG(pnl_pct), 2) AS avg_pnl_pct,
+              COUNT(CASE WHEN outcome = 'WIN' THEN 1 END) AS wins,
+              COUNT(CASE WHEN outcome = 'LOSS' THEN 1 END) AS losses,
+              COUNT(CASE WHEN outcome = 'EXPIRED' THEN 1 END) AS expired,
+              MIN(observed_at)::date AS first_observation,
+              MAX(observed_at)::date AS last_observation
+            FROM shadow_signal_observations
+            WHERE observed_at >= NOW() - INTERVAL '{days} days'
+              {engine_filter}
+            GROUP BY engine
+            ORDER BY win_rate_pct DESC NULLS LAST
+        """)
+        params = {"engine": engine} if engine else {}
+        rows = db.execute(sql, params).fetchall()
+        return {
+            "status": "ok",
+            "days": days,
+            "engines": [dict(r._mapping) for r in rows],
+            "decision_gate": {
+                "promote_weight":      "walk_forward_sharpe > 1.2 AND win_rate_pct > 50",
+                "keep_observing":      "0.8 <= sharpe <= 1.2",
+                "kill":                "sharpe < 0.8 OR win_rate_pct < 40",
+            },
+        }
+    finally:
+        db.close()
+
+
+@router.get("/api/shadow/observations")
+async def api_shadow_observations(
+    engine: str | None = None,
+    resolved: bool | None = None,
+    days: int = 30,
+    limit: int = 100,
+):
+    """List raw shadow signal observations for manual inspection."""
+    from mcp_server.db import SessionLocal
+    from mcp_server.models import ShadowSignalObservation
+    from datetime import datetime, timedelta, timezone
+
+    db = SessionLocal()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        q = db.query(ShadowSignalObservation).filter(
+            ShadowSignalObservation.observed_at >= cutoff
+        )
+        if engine:
+            q = q.filter(ShadowSignalObservation.engine == engine)
+        if resolved is True:
+            q = q.filter(ShadowSignalObservation.resolved_at != None)  # noqa: E711
+        elif resolved is False:
+            q = q.filter(ShadowSignalObservation.resolved_at == None)  # noqa: E711
+        rows = q.order_by(ShadowSignalObservation.observed_at.desc()).limit(limit).all()
+        return {
+            "status": "ok",
+            "count": len(rows),
+            "observations": [
+                {
+                    "id": r.id, "engine": r.engine, "ticker": r.ticker,
+                    "direction": r.direction, "agreed": r.agreed,
+                    "shadow_entry": float(r.shadow_entry or 0),
+                    "shadow_sl": float(r.shadow_sl or 0),
+                    "shadow_target": float(r.shadow_target or 0),
+                    "confidence": float(r.shadow_confidence or 0),
+                    "observed_at": r.observed_at.isoformat() if r.observed_at else None,
+                    "outcome": r.outcome,
+                    "pnl_pct": float(r.pnl_pct or 0) if r.pnl_pct else None,
+                    "resolution_reason": r.resolution_reason,
+                }
+                for r in rows
+            ],
+        }
+    finally:
+        db.close()

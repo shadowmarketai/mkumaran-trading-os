@@ -304,6 +304,51 @@ class AdaptiveRule(Base):
         )
 
 
+class ShadowSignalObservation(Base):
+    """Records every shadow-mode signal (weight=0) for 30-day validation.
+
+    The outcome resolver in signal_monitor.py fills resolved_at / outcome
+    / exit_price / pnl_pct when SL or target is hit.
+    """
+    __tablename__ = "shadow_signal_observations"
+
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    engine            = Column(String(30), nullable=False, index=True)
+    ticker            = Column(String(30), nullable=False, index=True)
+    exchange          = Column(String(10), default="NSE")
+    direction         = Column(String(10), nullable=False)
+    timeframe         = Column(String(10), default="1D")
+
+    shadow_entry      = Column(Numeric(12, 2))
+    shadow_sl         = Column(Numeric(12, 2))
+    shadow_target     = Column(Numeric(12, 2))
+    shadow_confidence = Column(Numeric(5, 3))
+
+    primary_direction = Column(String(10))
+    primary_entry     = Column(Numeric(12, 2))
+    agreed            = Column(Boolean)
+
+    primary_signal_id = Column(Integer, ForeignKey("signals.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    observed_at       = Column(DateTime, nullable=False, server_default=func.now())
+    resolved_at       = Column(DateTime)
+    outcome           = Column(String(10))        # WIN / LOSS / EXPIRED
+    exit_price        = Column(Numeric(12, 2))
+    pnl_pct           = Column(Numeric(7, 3))
+    resolution_reason = Column(String(20))        # TARGET / STOPLOSS / TIMEOUT
+
+    __table_args__ = (
+        Index("ix_shadow_engine_ticker", "engine", "ticker"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ShadowSignalObservation(engine='{self.engine}', "
+            f"ticker='{self.ticker}', direction='{self.direction}', "
+            f"outcome='{self.outcome}')>"
+        )
+
+
 class ScannerReview(Base):
     __tablename__ = "scanner_reviews"
 

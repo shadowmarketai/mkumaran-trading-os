@@ -216,9 +216,10 @@ def generate_mwa_signals(
 
         # ── POS 5 EMA shadow observation (weight = 0) ────────────────────
         # Runs alongside the existing scanner confluence but does NOT
-        # influence direction, entry, or confidence. Tagged as "shadow"
-        # so the dashboard can show it separately for 30-day validation
-        # before weight is promoted above zero.
+        # influence direction, entry, or confidence.
+        # Fires are written to shadow_signal_observations for queryable
+        # 30-day evaluation. The outcome resolver in signal_monitor.py
+        # marks WIN/LOSS after SL/target is hit.
         pos_5ema_fired: bool = False
         pos_5ema_direction: str | None = None
         try:
@@ -228,10 +229,24 @@ def generate_mwa_signals(
             if _sig is not None:
                 pos_5ema_fired = True
                 pos_5ema_direction = _sig.direction
-                logger.info(
-                    "POS_5EMA shadow: %s fired %s (confidence=%.2f) — weight=0, observe only",
-                    ticker, _sig.direction, _sig.confidence,
-                )
+                # Write to DB — outcome resolver will fill in WIN/LOSS
+                try:
+                    from mcp_server.shadow_observer import record_shadow_signal
+                    record_shadow_signal(
+                        engine="pos_5ema",
+                        ticker=ticker,
+                        direction=_sig.direction,
+                        entry=float(_sig.entry),
+                        sl=float(_sig.stop_loss),
+                        target=float(_sig.target),
+                        confidence=float(_sig.confidence),
+                        primary_direction=direction,
+                        primary_entry=entry,
+                        timeframe="1D",
+                        exchange=exchange,
+                    )
+                except Exception as _rec_err:
+                    logger.debug("Shadow record failed for %s: %s", ticker, _rec_err)
         except Exception as _e5:
             logger.debug("POS 5 EMA shadow error for %s: %s", ticker, _e5)
 

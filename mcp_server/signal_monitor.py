@@ -362,6 +362,16 @@ def monitor_open_signals() -> list[dict]:
     finally:
         session.close()
 
+    # Resolve shadow-mode observations (runs after primary resolution so
+    # the same price-fetch infrastructure is fresh; fail-safe on any error).
+    try:
+        from mcp_server.shadow_observer import resolve_shadow_signals
+        resolved = resolve_shadow_signals()
+        if resolved:
+            logger.info("Shadow observer: resolved %d observations this cycle", resolved)
+    except Exception as shadow_err:
+        logger.debug("Shadow observer resolution skipped: %s", shadow_err)
+
     return results
 
 
