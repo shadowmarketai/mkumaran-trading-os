@@ -1,0 +1,284 @@
+# MKUMARAN Trading OS — High-Impact Event Calendar
+#
+# PURPOSE
+#   Options seller and directional strategies consult this file before
+#   opening positions. The EventCalendar module loads this at startup
+#   and caches it in memory.
+#
+# MAINTENANCE
+#   Update quarterly (Jan / Apr / Jul / Oct) before new expiry cycles
+#   begin. Dates closer than 30 days should be verified against official
+#   sources:
+#     RBI:   https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx
+#     NSE:   https://www.nseindia.com/
+#     SEBI:  https://www.sebi.gov.in/
+#     US Fed: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
+#
+# ADDING AN EVENT
+#   - datetime: ISO 8601 (YYYY-MM-DDTHH:MM:SS+05:30) for IST events,
+#               or YYYY-MM-DD (midnight IST assumed for full-day events)
+#   - type:     See KNOWN_TYPES in event_calendar.py
+#   - buffer_hours: How many hours before/after to blackout trading.
+#                   Default if omitted: see DEFAULT_BUFFERS in event_calendar.py
+#   - notes:    Human-readable context (optional, not used by code)
+
+events:
+
+  # ── RBI Monetary Policy Committee (2026) ──────────────────────────
+  # Source: RBI Press Release FMRD/FMSD/24-25/45 (Dec 2025 schedule)
+  - datetime: "2026-02-05T10:00:00+05:30"
+    type: rbi_policy
+    notes: "RBI MPC Feb 2026 — Rate decision announcement ~10:00 AM IST"
+
+  - datetime: "2026-04-09T10:00:00+05:30"
+    type: rbi_policy
+    notes: "RBI MPC Apr 2026"
+
+  - datetime: "2026-06-05T10:00:00+05:30"
+    type: rbi_policy
+    notes: "RBI MPC Jun 2026"
+
+  - datetime: "2026-08-06T10:00:00+05:30"
+    type: rbi_policy
+    notes: "RBI MPC Aug 2026"
+
+  - datetime: "2026-10-08T10:00:00+05:30"
+    type: rbi_policy
+    notes: "RBI MPC Oct 2026"
+
+  - datetime: "2026-12-03T10:00:00+05:30"
+    type: rbi_policy
+    notes: "RBI MPC Dec 2026"
+
+  # ── US Federal Reserve FOMC (2026) ────────────────────────────────
+  # US events use 00:00 IST (evening US ET = early-morning next-day IST)
+  # buffer covers the 24h before announcement at ~02:30 IST
+  - datetime: "2026-01-29T02:30:00+05:30"
+    type: fed_fomc
+    notes: "FOMC Jan 2026"
+
+  - datetime: "2026-03-19T02:30:00+05:30"
+    type: fed_fomc
+    notes: "FOMC Mar 2026 — also Summary of Economic Projections"
+
+  - datetime: "2026-05-07T02:30:00+05:30"
+    type: fed_fomc
+    notes: "FOMC May 2026"
+
+  - datetime: "2026-06-18T02:30:00+05:30"
+    type: fed_fomc
+    notes: "FOMC Jun 2026 — SEP + press conference"
+
+  - datetime: "2026-07-29T02:30:00+05:30"
+    type: fed_fomc
+    notes: "FOMC Jul 2026"
+
+  - datetime: "2026-09-17T02:30:00+05:30"
+    type: fed_fomc
+    notes: "FOMC Sep 2026 — SEP"
+
+  - datetime: "2026-11-05T02:30:00+05:30"
+    type: fed_fomc
+    notes: "FOMC Nov 2026"
+
+  - datetime: "2026-12-16T02:30:00+05:30"
+    type: fed_fomc
+    notes: "FOMC Dec 2026 — SEP + press conference"
+
+  # ── Union Budget ──────────────────────────────────────────────────
+  - datetime: "2026-02-01T11:00:00+05:30"
+    type: budget
+    notes: "Union Budget 2026–27 — Finance Minister speech, Lok Sabha"
+
+  # ── India CPI (Monthly) ───────────────────────────────────────────
+  # Typically released around the 12th–14th of the following month ~17:30 IST
+  - datetime: "2026-01-13T17:30:00+05:30"
+    type: cpi_india
+    notes: "India CPI Dec 2025 release"
+
+  - datetime: "2026-02-12T17:30:00+05:30"
+    type: cpi_india
+    notes: "India CPI Jan 2026"
+
+  - datetime: "2026-03-13T17:30:00+05:30"
+    type: cpi_india
+    notes: "India CPI Feb 2026"
+
+  - datetime: "2026-04-14T17:30:00+05:30"
+    type: cpi_india
+    notes: "India CPI Mar 2026"
+
+  - datetime: "2026-05-13T17:30:00+05:30"
+    type: cpi_india
+    notes: "India CPI Apr 2026"
+
+  - datetime: "2026-06-12T17:30:00+05:30"
+    type: cpi_india
+    notes: "India CPI May 2026"
+
+  - datetime: "2026-07-13T17:30:00+05:30"
+    type: cpi_india
+    notes: "India CPI Jun 2026"
+
+  - datetime: "2026-08-13T17:30:00+05:30"
+    type: cpi_india
+    notes: "India CPI Jul 2026"
+
+  - datetime: "2026-09-14T17:30:00+05:30"
+    type: cpi_india
+    notes: "India CPI Aug 2026"
+
+  - datetime: "2026-10-13T17:30:00+05:30"
+    type: cpi_india
+    notes: "India CPI Sep 2026"
+
+  - datetime: "2026-11-12T17:30:00+05:30"
+    type: cpi_india
+    notes: "India CPI Oct 2026"
+
+  - datetime: "2026-12-14T17:30:00+05:30"
+    type: cpi_india
+    notes: "India CPI Nov 2026"
+
+  # ── US NFP (First Friday of each month ~18:30 IST) ────────────────
+  - datetime: "2026-01-09T18:30:00+05:30"
+    type: us_nfp
+    notes: "US Non-Farm Payrolls Dec 2025"
+
+  - datetime: "2026-02-06T18:30:00+05:30"
+    type: us_nfp
+    notes: "US NFP Jan 2026"
+
+  - datetime: "2026-03-06T18:30:00+05:30"
+    type: us_nfp
+    notes: "US NFP Feb 2026"
+
+  - datetime: "2026-04-03T18:30:00+05:30"
+    type: us_nfp
+    notes: "US NFP Mar 2026"
+
+  - datetime: "2026-05-01T18:30:00+05:30"
+    type: us_nfp
+    notes: "US NFP Apr 2026"
+
+  - datetime: "2026-06-05T18:30:00+05:30"
+    type: us_nfp
+    notes: "US NFP May 2026"
+
+  - datetime: "2026-07-02T18:30:00+05:30"
+    type: us_nfp
+    notes: "US NFP Jun 2026"
+
+  - datetime: "2026-08-07T18:30:00+05:30"
+    type: us_nfp
+    notes: "US NFP Jul 2026"
+
+  - datetime: "2026-09-04T18:30:00+05:30"
+    type: us_nfp
+    notes: "US NFP Aug 2026"
+
+  - datetime: "2026-10-02T18:30:00+05:30"
+    type: us_nfp
+    notes: "US NFP Sep 2026"
+
+  - datetime: "2026-11-06T18:30:00+05:30"
+    type: us_nfp
+    notes: "US NFP Oct 2026"
+
+  - datetime: "2026-12-04T18:30:00+05:30"
+    type: us_nfp
+    notes: "US NFP Nov 2026"
+
+  # ── India GDP / Quarterly Results season ─────────────────────────
+  # Q3 FY26 results (Oct–Dec 2025) — earnings season mid Jan to mid Feb
+  - datetime: "2026-01-15"
+    type: earnings_season_start
+    notes: "Q3 FY26 earnings season opens (Nifty heavyweights)"
+
+  - datetime: "2026-02-14"
+    type: earnings_season_end
+    notes: "Q3 FY26 earnings season closes"
+
+  # Q4 FY26 / Full Year results — mid Apr to mid May
+  - datetime: "2026-04-15"
+    type: earnings_season_start
+    notes: "Q4 FY26 / FY26 annual results season opens"
+
+  - datetime: "2026-05-30"
+    type: earnings_season_end
+    notes: "Q4 FY26 results season closes"
+
+  # Q1 FY27 — mid Jul to mid Aug
+  - datetime: "2026-07-15"
+    type: earnings_season_start
+    notes: "Q1 FY27 earnings season opens"
+
+  - datetime: "2026-08-14"
+    type: earnings_season_end
+    notes: "Q1 FY27 earnings season closes"
+
+  # Q2 FY27 — mid Oct to mid Nov
+  - datetime: "2026-10-15"
+    type: earnings_season_start
+    notes: "Q2 FY27 earnings season opens"
+
+  - datetime: "2026-11-14"
+    type: earnings_season_end
+    notes: "Q2 FY27 earnings season closes"
+
+  # ── NSE/BSE Weekly Options Expiry Schedule (2026) ─────────────────
+  # Expiry day itself is a blackout for fresh option-selling entries.
+  # The per-day schedule (Mon BANKEX / Tue MIDCPNIFTY+FINNIFTY /
+  # Wed BANKNIFTY / Thu NIFTY / Fri SENSEX) is embedded in the
+  # EventCalendar.weekly_expiry() helper — no need to enumerate each
+  # date here. A few key monthly expiry dates are listed below for
+  # the options instruments that also have monthly contracts.
+
+  # NIFTY monthly expiry (last Thursday of each month)
+  - datetime: "2026-01-29"
+    type: monthly_expiry
+    notes: "NIFTY Jan 2026 monthly expiry"
+
+  - datetime: "2026-02-26"
+    type: monthly_expiry
+    notes: "NIFTY Feb 2026 monthly expiry"
+
+  - datetime: "2026-03-26"
+    type: monthly_expiry
+    notes: "NIFTY Mar 2026 monthly expiry (also FY-end)"
+
+  - datetime: "2026-04-30"
+    type: monthly_expiry
+    notes: "NIFTY Apr 2026 monthly expiry"
+
+  - datetime: "2026-05-28"
+    type: monthly_expiry
+    notes: "NIFTY May 2026 monthly expiry"
+
+  - datetime: "2026-06-25"
+    type: monthly_expiry
+    notes: "NIFTY Jun 2026 monthly expiry (Q1 end)"
+
+  - datetime: "2026-07-30"
+    type: monthly_expiry
+    notes: "NIFTY Jul 2026 monthly expiry"
+
+  - datetime: "2026-08-27"
+    type: monthly_expiry
+    notes: "NIFTY Aug 2026 monthly expiry"
+
+  - datetime: "2026-09-24"
+    type: monthly_expiry
+    notes: "NIFTY Sep 2026 monthly expiry (Q2 end)"
+
+  - datetime: "2026-10-29"
+    type: monthly_expiry
+    notes: "NIFTY Oct 2026 monthly expiry"
+
+  - datetime: "2026-11-26"
+    type: monthly_expiry
+    notes: "NIFTY Nov 2026 monthly expiry"
+
+  - datetime: "2026-12-31"
+    type: monthly_expiry
+    notes: "NIFTY Dec 2026 monthly expiry (calendar year-end)"

@@ -549,6 +549,33 @@ async def api_realtime_status():
 # ── Regime detector ────────────────────────────────────────────────
 
 
+@router.get("/api/events/status")
+async def api_events_status():
+    """Return the event calendar status — blackout state, upcoming 24h events,
+    today's options expiry instruments, and total events loaded.
+    """
+    from mcp_server.event_calendar import get_calendar
+    return get_calendar().status()
+
+
+@router.get("/api/events/upcoming")
+async def api_events_upcoming(hours: float = 48):
+    """Return all events within the next `hours` hours."""
+    from mcp_server.event_calendar import get_calendar
+    cal = get_calendar()
+    events = cal.upcoming(hours=hours)
+    return {
+        "hours": hours,
+        "count": len(events),
+        "events": [
+            {"type": e.type, "dt": e.dt.isoformat(),
+             "hours_until": round(e.hours_until(), 1),
+             "buffer_hours": e.buffer_hours, "notes": e.notes}
+            for e in events
+        ],
+    }
+
+
 @router.get("/api/regime/{ticker}")
 async def api_regime(
     ticker: str,
