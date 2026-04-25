@@ -6,7 +6,7 @@ singleton (mcp_server.routers.deps).
 """
 from datetime import date
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import desc
 
@@ -15,6 +15,7 @@ from mcp_server.config import settings
 from mcp_server.db import SessionLocal
 from mcp_server.models import MWAScore
 from mcp_server.routers.deps import limiter
+from mcp_server.webhook_auth import verify_tv_webhook_signature
 
 import logging
 
@@ -70,8 +71,22 @@ async def api_tv_webhook(request: Request, payload: TVWebhookPayload):
     TradingView webhook receiver.
 
     Pine Script sends alerts here when RRMS conditions trigger.
-    Flow: TV Alert -> Validate -> Record -> Telegram notification
+    Flow: TV Alert -> Verify HMAC -> Validate -> Record -> Telegram notification
+
+    HMAC verification: when settings.TV_WEBHOOK_SECRET is set, every POST
+    must carry an X-Webhook-Signature header containing the hex-encoded
+    HMAC-SHA256 of the raw body keyed by the secret. When the secret is
+    empty, the verifier logs a warning and accepts the request — soft
+    migration path so existing Pine alerts don't break on rollout.
     """
+    raw_body = await request.body()
+    sig_err = verify_tv_webhook_signature(
+        raw_body, request.headers.get("X-Webhook-Signature"),
+    )
+    if sig_err:
+        logger.warning("TV webhook rejected: %s", sig_err)
+        raise HTTPException(status_code=401, detail=sig_err)
+
     # Normalize ticker format
     ticker = payload.ticker
     if ":" not in ticker:

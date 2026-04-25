@@ -162,6 +162,15 @@ class Settings:
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-this-in-production")
     JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))
 
+    # TradingView webhook HMAC verification (defence-in-depth — endpoint is
+    # otherwise public so PineScript alerts can reach it). When the secret
+    # is set, every POST /api/tv_webhook must carry a matching X-Webhook-Signature
+    # header (HMAC-SHA256 of the raw body, hex-encoded). When unset, the
+    # webhook endpoint logs a warning per request and accepts unauthenticated
+    # traffic — that's the migration path; flip the secret on once Pine
+    # alerts include the matching header.
+    TV_WEBHOOK_SECRET: str = os.getenv("TV_WEBHOOK_SECRET", "")
+
 
     # Scanner Review Engine
     SCANNER_REVIEW_ENABLED: bool = os.getenv("SCANNER_REVIEW_ENABLED", "true").lower() == "true"
