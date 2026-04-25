@@ -1,0 +1,281 @@
+{
+  "name": "06 — Options Seller Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 9,9,10,11,12,13,14,15 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "options-trigger",
+      "name": "Schedule Trigger (Every 30min 09:15–15:15 IST, Mon–Fri)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://money.shadowmarket.ai/api/events/status",
+        "options": { "timeout": 10000 }
+      },
+      "id": "event-check",
+      "name": "Check Event Calendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.in_blackout }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "event-gate",
+      "name": "In Blackout?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://money.shadowmarket.ai/api/regime/NIFTY",
+        "options": { "timeout": 15000 }
+      },
+      "id": "regime-check",
+      "name": "Check Market Regime",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.regime }}",
+              "operation": "notEqual",
+              "value2": "VOLATILE"
+            }
+          ]
+        }
+      },
+      "id": "regime-gate",
+      "name": "Market Tradeable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1120, 420]
+    },
+    {
+      "parameters": {
+        "url": "https://money.shadowmarket.ai/api/options-seller/iv-regime/BANKNIFTY",
+        "options": { "timeout": 15000 }
+      },
+      "id": "iv-banknifty",
+      "name": "IV Regime — BANKNIFTY",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://money.shadowmarket.ai/api/options-seller/iv-regime/NIFTY",
+        "options": { "timeout": 15000 }
+      },
+      "id": "iv-nifty",
+      "name": "IV Regime — NIFTY",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 440]
+    },
+    {
+      "parameters": {
+        "url": "https://money.shadowmarket.ai/api/options-seller/iv-regime/MIDCPNIFTY",
+        "options": { "timeout": 15000 }
+      },
+      "id": "iv-midcap",
+      "name": "IV Regime — MIDCPNIFTY",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 580]
+    },
+    {
+      "parameters": {
+        "url": "https://money.shadowmarket.ai/api/options-seller/iv-regime/FINNIFTY",
+        "options": { "timeout": 15000 }
+      },
+      "id": "iv-finnifty",
+      "name": "IV Regime — FINNIFTY",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 720]
+    },
+    {
+      "parameters": {
+        "url": "https://money.shadowmarket.ai/api/options-seller/iv-regime/SENSEX",
+        "options": { "timeout": 15000 }
+      },
+      "id": "iv-sensex",
+      "name": "IV Regime — SENSEX",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 860]
+    },
+    {
+      "parameters": {
+        "url": "https://money.shadowmarket.ai/api/options-seller/iv-regime/BANKEX",
+        "options": { "timeout": 15000 }
+      },
+      "id": "iv-bankex",
+      "name": "IV Regime — BANKEX",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 1000]
+    },
+    {
+      "parameters": {
+        "url": "https://money.shadowmarket.ai/api/reconcile/run?alert=true",
+        "sendBody": false,
+        "options": { "timeout": 30000 }
+      },
+      "id": "reconcile",
+      "name": "Broker Reconcile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1600, 540],
+      "notes": "POST /api/reconcile/run — detects ghost/phantom/qty-drift every cycle"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Summarise IV regimes for all 6 instruments.\n// Collect items from iv-banknifty through iv-bankex.\nconst items = $input.all();\nconst regimes = items.map(item => ({\n  instrument: item.json.instrument,\n  regime:     item.json.regime,\n  sell_ok:    item.json.sell_premium_ok,\n  dte:        item.json.suggested_dte,\n  delta:      item.json.delta_target,\n  vix:        item.json.vix_current,\n  pct_1y:     item.json.vix_percentile_1y,\n}));\nconst sellable = regimes.filter(r => r.sell_ok);\nreturn [{\n  json: {\n    timestamp: new Date().toISOString(),\n    all_regimes: regimes,\n    sellable_instruments: sellable,\n    sellable_count: sellable.length,\n    summary: regimes.map(r => `${r.instrument}: ${r.regime} (${r.sell_ok ? 'SELL OK' : 'BLOCKED'})`).join(' | '),\n  }\n}];"
+      },
+      "id": "iv-summarise",
+      "name": "Summarise IV Regimes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1820, 540]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.sellable_count }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "any-sellable",
+      "name": "Any Sellable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2040, 540]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "📊 OPTIONS SELLER SCAN\n{{ $json.timestamp }}\n\n{{ $json.summary }}\n\n🟢 Sellable: {{ $json.sellable_count }}/6 instruments",
+        "additionalFields": {}
+      },
+      "id": "tg-iv-report",
+      "name": "Telegram — IV Report",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [2260, 420],
+      "credentials": {
+        "telegramApi": { "id": "telegram-cred", "name": "Telegram" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "⚠️ OPTIONS SELLER BLACKOUT\nAll 6 instruments blocked — high-impact event nearby or market volatile.\nNo new positions will be opened.",
+        "additionalFields": {}
+      },
+      "id": "tg-blackout",
+      "name": "Telegram — Blackout Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [900, 200],
+      "credentials": {
+        "telegramApi": { "id": "telegram-cred", "name": "Telegram" }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Every 30min 09:15–15:15 IST, Mon–Fri)": {
+      "main": [[{ "node": "Check Event Calendar", "type": "main", "index": 0 }]]
+    },
+    "Check Event Calendar": {
+      "main": [[{ "node": "In Blackout?", "type": "main", "index": 0 }]]
+    },
+    "In Blackout?": {
+      "main": [
+        [{ "node": "Telegram — Blackout Alert", "type": "main", "index": 0 }],
+        [{ "node": "Check Market Regime", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Market Regime": {
+      "main": [[{ "node": "Market Tradeable?", "type": "main", "index": 0 }]]
+    },
+    "Market Tradeable?": {
+      "main": [
+        [],
+        [
+          { "node": "IV Regime — BANKNIFTY", "type": "main", "index": 0 },
+          { "node": "IV Regime — NIFTY",     "type": "main", "index": 0 },
+          { "node": "IV Regime — MIDCPNIFTY","type": "main", "index": 0 },
+          { "node": "IV Regime — FINNIFTY",  "type": "main", "index": 0 },
+          { "node": "IV Regime — SENSEX",    "type": "main", "index": 0 },
+          { "node": "IV Regime — BANKEX",    "type": "main", "index": 0 },
+          { "node": "Broker Reconcile",      "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "IV Regime — BANKNIFTY": {
+      "main": [[{ "node": "Summarise IV Regimes", "type": "main", "index": 0 }]]
+    },
+    "IV Regime — NIFTY": {
+      "main": [[{ "node": "Summarise IV Regimes", "type": "main", "index": 0 }]]
+    },
+    "IV Regime — MIDCPNIFTY": {
+      "main": [[{ "node": "Summarise IV Regimes", "type": "main", "index": 0 }]]
+    },
+    "IV Regime — FINNIFTY": {
+      "main": [[{ "node": "Summarise IV Regimes", "type": "main", "index": 0 }]]
+    },
+    "IV Regime — SENSEX": {
+      "main": [[{ "node": "Summarise IV Regimes", "type": "main", "index": 0 }]]
+    },
+    "IV Regime — BANKEX": {
+      "main": [[{ "node": "Summarise IV Regimes", "type": "main", "index": 0 }]]
+    },
+    "Summarise IV Regimes": {
+      "main": [[{ "node": "Any Sellable?", "type": "main", "index": 0 }]]
+    },
+    "Any Sellable?": {
+      "main": [
+        [],
+        [{ "node": "Telegram — IV Report", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "description": "Options seller monitoring: every 30 min during market hours checks event blackout, market regime, and IV regime for all 6 instruments (BANKNIFTY/NIFTY/MIDCPNIFTY/FINNIFTY/SENSEX/BANKEX). Also triggers broker reconciliation each cycle. Sends Telegram report with which instruments are sellable. Import into n8n and set TELEGRAM_CHAT_ID env var."
+  }
+}

@@ -503,3 +503,38 @@ async def api_evaluate_adjustment(
     )
     decision = evaluate(snap)
     return {"status": "ok", "decision": decision.as_dict()}
+
+
+@router.post("/api/options-seller/close/{position_id}")
+async def api_close_position(position_id: int, reason: str = "manual"):
+    """Close an open options seller position and log the exit."""
+    import asyncio
+    from mcp_server.options_seller.position_manager import close_position
+    ok = await asyncio.to_thread(close_position, position_id, reason)
+    if not ok:
+        return {"status": "error", "reason": f"Position {position_id} not found or already closed"}
+    return {"status": "ok", "position_id": position_id, "reason": reason}
+
+
+@router.get("/api/options-seller/positions")
+async def api_open_positions():
+    """List all currently OPEN options seller positions."""
+    from mcp_server.db import SessionLocal
+    from sqlalchemy import text
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text(
+                "SELECT id, instrument, structure, status, net_credit, current_pnl, "
+                "dte_remaining, iv_regime, opened_at, paper_mode "
+                "FROM options_seller_positions WHERE status = 'OPEN' "
+                "ORDER BY opened_at DESC"
+            )
+        ).fetchall()
+        return {
+            "status": "ok",
+            "count": len(rows),
+            "positions": [dict(r._mapping) for r in rows],
+        }
+    finally:
+        db.close()
