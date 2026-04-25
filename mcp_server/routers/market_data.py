@@ -544,3 +544,37 @@ async def api_realtime_status():
         "monitored_positions": len(engine.monitor.positions),
         "redis_available": engine.cache._available,
     }
+
+
+# ── Regime detector ────────────────────────────────────────────────
+
+
+@router.get("/api/regime/{ticker}")
+async def api_regime(
+    ticker: str,
+    days: int = 90,
+    adx_trending: float = 25.0,
+    atr_volatile_pct: float = 3.0,
+):
+    """Classify the current market regime for a ticker.
+
+    Returns the ADX-based regime label (TRENDING_UP / TRENDING_DOWN /
+    RANGING / VOLATILE) plus the raw ADX, ±DI, and ATR% values.
+
+    Query params let callers override the classification thresholds
+    without a code change — useful for tuning during backtesting.
+    """
+    import asyncio
+    from mcp_server.nse_scanner import get_stock_data
+    from mcp_server.regime_detector import classify_from_df
+
+    df = await asyncio.to_thread(get_stock_data, ticker, f"{days}d", "1d")
+    if df is None or df.empty:
+        return {"error": f"No data for {ticker}", "ticker": ticker}
+
+    regime = classify_from_df(
+        df,
+        adx_trending=adx_trending,
+        atr_volatile_pct=atr_volatile_pct,
+    )
+    return {"ticker": ticker, "days": days, **regime.as_dict()}
