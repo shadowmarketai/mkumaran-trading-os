@@ -418,3 +418,72 @@ async def api_reconcile_status():
     if not _last_reconcile_result:
         return {"status": "no_run", "message": "POST /api/reconcile/run to trigger"}
     return _last_reconcile_result
+
+
+# ── Tax export ────────────────────────────────────────────────
+
+
+@router.get("/api/tax/statement")
+async def api_tax_statement(
+    fy: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+):
+    """Export a tax statement for all closed trades in the given period.
+
+    Params (mutually exclusive):
+      fy        Financial year e.g. "2025-26" (default: current FY)
+      from_date ISO date string e.g. "2025-04-01"
+      to_date   ISO date string e.g. "2026-03-31"
+
+    Returns a full trade-by-trade P&L with Indian tax category
+    (INTRADAY_EQUITY / STCG_EQUITY / LTCG_EQUITY / FNO), exact
+    transaction costs (STT / brokerage / GST / exchange / SEBI /
+    stamp duty), and an indicative (approximate) tax figure per trade.
+
+    Disclaimer: indicative_tax values are APPROXIMATE. Consult your CA.
+    """
+    import asyncio
+    from mcp_server.tax_exporter import export_tax_statement
+
+    if fy is None and from_date is None:
+        from datetime import date as _date
+        today = _date.today()
+        fy = f"{today.year if today.month >= 4 else today.year - 1}-{str(today.year + (1 if today.month >= 4 else 0))[2:]}"
+
+    summary = await asyncio.to_thread(
+        export_tax_statement, fy, from_date, to_date,
+    )
+    return summary.as_dict()
+
+
+@router.get("/api/tax/statement.csv")
+async def api_tax_statement_csv(
+    fy: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+):
+    """Download the tax statement as a CSV file.
+
+    Same parameters as GET /api/tax/statement.
+    Returns Content-Disposition: attachment so browsers save the file.
+    """
+    import asyncio
+    from fastapi.responses import Response
+    from mcp_server.tax_exporter import export_tax_statement
+
+    if fy is None and from_date is None:
+        from datetime import date as _date
+        today = _date.today()
+        fy = f"{today.year if today.month >= 4 else today.year - 1}-{str(today.year + (1 if today.month >= 4 else 0))[2:]}"
+
+    summary = await asyncio.to_thread(
+        export_tax_statement, fy, from_date, to_date,
+    )
+    csv_bytes = summary.as_csv()
+    filename  = f"tax_statement_{summary.fy.replace('-', '_')}.csv"
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
