@@ -651,7 +651,10 @@ def run_backtest(
         signals = _generate_confluence_signals(data, ticker, capital)
     elif strategy == "pos_5ema":
         from mcp_server.pos_five_ema import generate_signals_for_backtest
-        signals = generate_signals_for_backtest(data, ticker, capital)
+        # Normalise column names: yfinance may return Title-case on some builds
+        data_5ema = data.copy()
+        data_5ema.columns = [c.lower() for c in data_5ema.columns]
+        signals = generate_signals_for_backtest(data_5ema, ticker, capital)
     else:
         signals = _generate_rrms_signals(data, ticker, capital)
 
