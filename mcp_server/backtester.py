@@ -649,6 +649,9 @@ def run_backtest(
         signals = _generate_engine_signals(data, strategy)
     elif strategy == "confluence":
         signals = _generate_confluence_signals(data, ticker, capital)
+    elif strategy == "pos_5ema":
+        from mcp_server.pos_five_ema import generate_signals_for_backtest
+        signals = generate_signals_for_backtest(data, ticker, capital)
     else:
         signals = _generate_rrms_signals(data, ticker, capital)
 
@@ -748,7 +751,7 @@ def run_backtest_all_strategies(
 
     Returns a comparison dict with each strategy's metrics side-by-side.
     """
-    strategies = ["rrms", "smc", "wyckoff", "vsa", "harmonic", "confluence"]
+    strategies = ["rrms", "smc", "wyckoff", "vsa", "harmonic", "pos_5ema", "confluence"]
     results: dict[str, dict] = {}
 
     for strat in strategies:
