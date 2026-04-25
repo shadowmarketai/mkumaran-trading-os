@@ -197,7 +197,7 @@ There are **3 ways** signals flow into the Trading OS. You don't need all of the
 
 | Source | How It Works | Setup | TradingView Pro Required? |
 |--------|-------------|-------|--------------------------|
-| **n8n Workflows (Recommended)** | Fully automatic. Morning scan at 8:45 AM runs 82 scanners on your watchlist. Market monitor polls every 30 min. EOD report at 3:30 PM. | Import 4 JSON files into n8n, set webhook URL | No |
+| **n8n Workflows (Recommended)** | Fully automatic. Morning scan at 8:45 AM runs 156 scanners on your watchlist. Market monitor polls every 30 min. EOD report at 3:30 PM. | Import 4 JSON files into n8n, set webhook URL | No |
 | **TradingView Webhooks** | One-time alert setup per strategy/ticker, then fires automatically forever. Optional extra signal source on top of n8n. | Create alert in TradingView with webhook URL | **Yes — Pro+ or higher ($12.95/mo)** |
 | **Paper Trading Page** | Manually place orders from the dashboard. Good for testing and learning the system. | Nothing — just open `/paper` in the dashboard | No |
 
@@ -207,7 +207,7 @@ With just n8n running, the system does this every trading day **without any manu
 
 ```
 8:45 AM  →  n8n Morning Startup
-             ├─ MWA scan (82 scanners × your watchlist)
+             ├─ MWA scan (156 scanners × your watchlist)
              ├─ Momentum ranking (NSE universe)
              └─ Telegram summary sent to you
 
@@ -418,7 +418,7 @@ Here's what happens when a trading signal is generated:
 2. POST /api/tv_webhook receives Pine Script alert
          │
          ▼
-3. MWA Scanner runs 82 scanners across 12 layers
+3. MWA Scanner runs 156 scanners across 15 layers
    - Pattern flags, SMC order blocks, Wyckoff phases
    - Volume analysis, harmonic patterns, RL regime
    - Composite score calculated
@@ -615,7 +615,7 @@ pytest -x -q  # stop on first failure, quiet
 | Test File | Tests | What It Covers |
 |-----------|-------|---------------|
 | `test_mcp_server.py` | 80+ | All API endpoints |
-| `test_nse_scanner.py` | 100+ | 82 scanners + MWA scoring |
+| `test_nse_scanner.py` | 100+ | 156 scanners + MWA scoring |
 | `test_asset_registry.py` | 42 | Multi-exchange symbol resolution |
 | `test_paper_trading.py` | 18 | Paper mode orders + safety |
 | `test_options_greeks.py` | 22 | Black-Scholes + IV solver |
@@ -707,7 +707,7 @@ Tables:
 | Metric | Value |
 |--------|-------|
 | API Endpoints | 71 |
-| Scanners | 82 across 12 layers |
+| Scanners | 156 across 15 layers |
 | Signal Chains | 23 |
 | Analysis Engines | 6 |
 | Supported Exchanges | 5 |

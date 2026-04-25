@@ -1,11 +1,14 @@
 """
-MKUMARAN Trading OS — 98-Scanner MWA System
+MKUMARAN Trading OS — 156-Scanner MWA System
 
-FINAL COUNT:
-  98 total = 60 BULL + 30 BEAR + 4 FILTER + 4 BEAR(CDS/MCX)
-  34 Chartink + 64 Python
-  14 layers: Trend / Volume / Breakout / RSI / Gap / MA / Filter / SMC / Wyckoff / VSA / Harmonic / RL / Forex / Commodity
-  28 signal chains (10 original + 3 SMC + 8 cross-engine + 3 RL + 5 Forex/Commodity)
+CURRENT COUNT (source of truth — README/TRADING/CLAUDE reconciled to this):
+  156 scanners across 15 layers:
+    Trend(16) / Volume(8) / Breakout(13) / RSI(8) / Gap(6) / MA(6) /
+    Filter(5) / SMC(32) / Wyckoff(8) / VSA(8) / Harmonic(6) / RL(8) /
+    Forex(8) / Commodity(8) / FnO(16)
+  Mix: ~34 Chartink slugs + ~122 Python implementations
+  28+ signal chains (Original / SMC / Cross-engine / RL / Forex /
+  Commodity / FnO)
 """
 
 import logging
@@ -20,7 +23,12 @@ from mcp_server.market_calendar import now_ist
 logger = logging.getLogger(__name__)
 
 # ══════════════════════════════════════════════════════════════
-# 40 SCANNERS — 7 LAYERS
+# 156 SCANNERS — 15 LAYERS
+# Trend(16) Volume(8) Breakout(13) RSI(8) Gap(6) MA(6) Filter(5)
+# SMC(32) Wyckoff(8) VSA(8) Harmonic(6) RL(8) Forex(8) Commodity(8) FnO(16)
+# Source of truth — README/TRADING/CLAUDE docs are reconciled to these
+# numbers. If you add or retire scanners, update this header AND the
+# 156/15 references in the three docs.
 # ══════════════════════════════════════════════════════════════
 
 SCANNERS = {

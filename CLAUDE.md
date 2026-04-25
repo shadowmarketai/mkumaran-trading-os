@@ -17,7 +17,7 @@
 - **Database:** Postgres (Alembic-owned schema + data migrations in `alembic/versions/`)
 - **Database:** Postgres (schema in `schema.sql`, migrations in `alembic/`)
 - **Integrations:** Dhan API, Angel One SmartAPI, Telegram bot, n8n workflows, Pine Script for TradingView
-- **AI:** Debate validator with 8 specialist agents (SMC, ICT, VSA, Wyckoff, Classical, Harmonic, etc.) + self-learning pipeline
+- **AI:** Debate validator — 6 specialist agents (SMC, ICT, VSA, Wyckoff, Classical, Harmonic) + Judge + Risk aggregators = 8 agents total + self-learning pipeline
 
 ---
 
