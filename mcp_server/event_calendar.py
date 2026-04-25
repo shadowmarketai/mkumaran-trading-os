@@ -107,7 +107,9 @@ WEEKLY_EXPIRY_DAY: dict[str, int] = {
 }
 
 # ── Path to the YAML data file ────────────────────────────────
-_CALENDAR_YAML = Path(__file__).parent.parent / "events" / "calendar.yaml"
+# Use .resolve() so the path is absolute regardless of how Python was
+# invoked (matters when __file__ is relative on some CI setups).
+_CALENDAR_YAML = Path(__file__).resolve().parent.parent / "events" / "calendar.yaml"
 
 
 @dataclass

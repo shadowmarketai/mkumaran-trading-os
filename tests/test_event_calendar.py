@@ -278,15 +278,20 @@ def test_get_calendar_returns_event_calendar():
 
 
 def test_get_calendar_loads_events_from_yaml():
-    cal = get_calendar()
+    # Force reload so a stale singleton from earlier in the test session
+    # doesn't mask a real load failure.
+    cal = get_calendar(reload=True)
     # The YAML has many events; at least 10 should load
-    assert len(cal._events) >= 10
+    assert len(cal._events) >= 10, (
+        f"Expected ≥ 10 events from calendar.yaml, got {len(cal._events)}. "
+        "Check that events/calendar.yaml is present and readable."
+    )
 
 
 def test_get_calendar_reload_refreshes():
-    cal1 = get_calendar()
+    cal1 = get_calendar(reload=True)
     cal2 = get_calendar(reload=True)
-    # Should be a new instance but with same event count
+    # Both fresh loads should produce the same event count
     assert len(cal1._events) == len(cal2._events)
 
 
