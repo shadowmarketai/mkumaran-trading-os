@@ -38,3 +38,4 @@ slowapi>=0.1.9
 structlog>=24.1.0
 alembic>=1.13.0
 scikit-learn>=1.4.0
+PyYAML>=6.0
