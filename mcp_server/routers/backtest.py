@@ -31,6 +31,7 @@ class BacktestRequest(BaseModel):
     ticker: str
     strategy: str = "rrms"
     days: int = 180
+    interval: str = "1d"  # "1d" or "15m" (15m reads from ohlcv_cache)
 
 
 class BacktestCompareRequest(BaseModel):
@@ -85,11 +86,16 @@ async def tool_backtest_strategy(
     ticker: str,
     strategy: str = "rrms",
     days: int = 365,
+    interval: str = "1d",
 ):
-    """Backtest a strategy on historical data."""
+    """Backtest a strategy on historical data.
+
+    interval: "1d" (default) or "15m" — use "15m" for intraday strategies
+    like pos_5ema after running scripts/backfill_dhan_intraday.py.
+    """
     from mcp_server.backtester import run_backtest
 
-    result = run_backtest(ticker, strategy=strategy, days=days)
+    result = run_backtest(ticker, strategy=strategy, days=days, interval=interval)
     return {"status": "ok", "tool": "backtest_strategy", **result}
 
 
@@ -101,11 +107,15 @@ async def tool_backtest_validate(
     n_simulations: int = 1000,
     n_bootstrap: int = 1000,
     n_windows: int = 5,
+    interval: str = "1d",
 ):
     """Run a backtest and then put its results through three statistical
     validation tests — Monte Carlo permutation, Bootstrap Sharpe CI, and
     Walk-Forward consistency — to check whether the observed edge is real
-    or a lucky path. Adapted from Vibe-Trading's validation suite.
+    or a lucky path.
+
+    interval: "1d" (default) or "15m" — use "15m" for pos_5ema after
+    running scripts/backfill_dhan_intraday.py.
 
     Interpretation guide:
       - monte_carlo.p_value_sharpe < 0.05  → strategy beats random ordering
@@ -116,7 +126,7 @@ async def tool_backtest_validate(
     from mcp_server.backtester import run_backtest
 
     def _compute() -> dict:
-        bt = run_backtest(ticker, strategy=strategy, days=days)
+        bt = run_backtest(ticker, strategy=strategy, days=days, interval=interval)
         validation = run_full_validation(
             bt,
             monte_carlo_kwargs={"n_simulations": n_simulations},
@@ -128,6 +138,7 @@ async def tool_backtest_validate(
             "tool": "backtest_validate",
             "ticker": ticker,
             "strategy": strategy,
+            "interval": interval,
             "summary": summarise(validation),
             "backtest_metrics": {
                 k: bt.get(k) for k in (
@@ -147,10 +158,13 @@ async def tool_backtest_validate(
 
 @router.post("/api/backtest")
 async def api_backtest(req: BacktestRequest):
-    """Run backtest from dashboard."""
+    """Run backtest from dashboard.
+
+    Set interval="15m" to read from the Dhan intraday cache (after backfill).
+    """
     from mcp_server.backtester import run_backtest
 
-    result = run_backtest(req.ticker, strategy=req.strategy, days=req.days)
+    result = run_backtest(req.ticker, strategy=req.strategy, days=req.days, interval=req.interval)
     return result
 
 
