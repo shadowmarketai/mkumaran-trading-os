@@ -601,12 +601,59 @@ def _generate_confluence_signals(
 # ══════════════════════════════════════════════════════════════
 
 
+def _load_from_cache(ticker: str, interval: str, days: int) -> pd.DataFrame:
+    """Read OHLCV bars directly from ohlcv_cache, bypassing staleness checks.
+
+    Used by run_backtest when interval != "1d" (i.e. 15m intraday data
+    populated by the Dhan backfill script). Staleness is irrelevant for
+    historical backtest data.
+    """
+    try:
+        from mcp_server.db import SessionLocal
+        from mcp_server.models import OHLCVCache
+        from datetime import datetime, timedelta
+
+        db = SessionLocal()
+        try:
+            cutoff = datetime.now() - timedelta(days=days)
+            rows = (
+                db.query(OHLCVCache)
+                .filter(
+                    OHLCVCache.ticker == ticker,
+                    OHLCVCache.interval == interval,
+                    OHLCVCache.bar_date >= cutoff,
+                )
+                .order_by(OHLCVCache.bar_date)
+                .all()
+            )
+            if not rows:
+                logger.info("Cache miss for %s %s %dd", ticker, interval, days)
+                return pd.DataFrame()
+            data = {
+                "open":   [float(r.open)   for r in rows],
+                "high":   [float(r.high)   for r in rows],
+                "low":    [float(r.low)    for r in rows],
+                "close":  [float(r.close)  for r in rows],
+                "volume": [float(r.volume) for r in rows],
+            }
+            index = [r.bar_date for r in rows]
+            df = pd.DataFrame(data, index=pd.DatetimeIndex(index))
+            logger.info("Cache HIT: %s %s — %d bars", ticker, interval, len(df))
+            return df
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning("Cache read failed for %s %s: %s", ticker, interval, e)
+        return pd.DataFrame()
+
+
 def run_backtest(
     ticker: str,
     strategy: str = "rrms",
     days: int = 1095,  # Default 3 years (was 365)
     capital: float = 100000,
     slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+    interval: str = "1d",
 ) -> dict:
     """
     Run a backtest using historical data with realistic costs.
@@ -614,10 +661,13 @@ def run_backtest(
     Args:
         ticker: Stock symbol (supports EXCHANGE:SYMBOL format)
         strategy: Strategy name ("rrms", "smc", "wyckoff", "vsa",
-                  "harmonic", "confluence")
+                  "harmonic", "pos_5ema", "confluence")
         days: Number of days to backtest (default 1095 = 3 years)
         capital: Starting capital
         slippage_pct: Slippage percentage per side (default 0.3%)
+        interval: Data interval — "1d" (default) uses yfinance/live data;
+                  "15m" reads from ohlcv_cache (populated by Dhan backfill).
+                  Use "15m" for intraday strategies like pos_5ema.
 
     Returns:
         Dict with backtest results including per-pattern accuracy
@@ -625,21 +675,35 @@ def run_backtest(
     from mcp_server.nse_scanner import get_stock_data
 
     logger.info(
-        "Starting backtest: %s with %s strategy over %d days (slippage=%.1f%%)",
-        ticker, strategy, days, slippage_pct * 100,
+        "Starting backtest: %s with %s strategy over %d days interval=%s (slippage=%.1f%%)",
+        ticker, strategy, days, interval, slippage_pct * 100,
     )
 
-    # Fetch data — use exchange-aware get_stock_data
-    if days <= 365:
-        period = "1y"
-    elif days <= 730:
-        period = "2y"
-    elif days <= 1095:
-        period = "3y"
+    # ── Data fetch ────────────────────────────────────────────
+    if interval != "1d":
+        # Intraday: read from ohlcv_cache (populated by Dhan backfill)
+        data = _load_from_cache(ticker, interval, days)
+        if data.empty or len(data) < 50:
+            return {
+                "error": (
+                    f"No {interval} data in cache for {ticker}. "
+                    "Run scripts/backfill_dhan_intraday.py first."
+                ),
+                "ticker": ticker,
+                "strategy": strategy,
+                "interval": interval,
+            }
     else:
-        period = "5y"
-
-    data = get_stock_data(ticker, period=period)
+        # Daily: fetch from yfinance / live provider
+        if days <= 365:
+            period = "1y"
+        elif days <= 730:
+            period = "2y"
+        elif days <= 1095:
+            period = "3y"
+        else:
+            period = "5y"
+        data = get_stock_data(ticker, period=period)
 
     if data.empty or len(data) < 50:
         return {
