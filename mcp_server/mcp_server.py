@@ -945,6 +945,16 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("F&O analytics monitor startup skipped: %s", e)
 
+    # Start options seller Greeks refresh loop (every 5 min during market hours)
+    # Monitors open strangle/condor positions and fires adjustment alerts.
+    # Disable with OPTIONS_GREEKS_LOOP_ENABLED=false.
+    try:
+        from mcp_server.options_seller.greeks_refresh_loop import start_loop as _opts_loop
+        asyncio.create_task(_opts_loop())
+        logger.info("Options seller Greeks refresh loop started (every 5 min, market hours only)")
+    except Exception as e:
+        logger.warning("Options seller Greeks refresh loop startup skipped: %s", e)
+
     # Auto-login to Goodwill (GWC) at startup — mirrors Kite auto-login pattern.
     # Runs in worker thread to avoid blocking the event loop.
     try:

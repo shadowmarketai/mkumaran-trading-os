@@ -171,6 +171,9 @@ class Settings:
     # alerts include the matching header.
     TV_WEBHOOK_SECRET: str = os.getenv("TV_WEBHOOK_SECRET", "")
 
+    # Options Seller Greeks Refresh Loop
+    OPTIONS_GREEKS_LOOP_ENABLED: str = os.getenv("OPTIONS_GREEKS_LOOP_ENABLED", "true")
+    OPTIONS_GREEKS_INTERVAL_S: int = int(os.getenv("OPTIONS_GREEKS_INTERVAL_S", "300"))  # 5 min
 
     # Scanner Review Engine
     SCANNER_REVIEW_ENABLED: bool = os.getenv("SCANNER_REVIEW_ENABLED", "true").lower() == "true"

@@ -16,29 +16,41 @@
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [250, 350]
+      "position": [
+        250,
+        350
+      ]
     },
     {
       "parameters": {
-        "functionCode": "// Check if today is a market holiday (NSE holidays 2026)\nconst now = new Date();\nconst istOffset = 5.5 * 60 * 60 * 1000;\nconst ist = new Date(now.getTime() + istOffset);\nconst dateStr = ist.toISOString().slice(0, 10); // YYYY-MM-DD\n\nconst holidays = [\n  '2026-01-15', '2026-01-26', '2026-03-03', '2026-03-26',\n  '2026-03-31', '2026-04-03', '2026-04-14', '2026-05-01',\n  '2026-05-28', '2026-06-26', '2026-09-14', '2026-10-02',\n  '2026-10-20', '2026-11-10', '2026-11-24', '2026-12-25'\n];\n\nif (holidays.includes(dateStr)) {\n  return [];  // Skip — market holiday\n}\nreturn [{ json: { trading_day: true, date: dateStr } }];"
+        "functionCode": "// Check if today is a market holiday (NSE holidays 2026)\nconst now = new Date();\nconst istOffset = 5.5 * 60 * 60 * 1000;\nconst ist = new Date(now.getTime() + istOffset);\nconst dateStr = ist.toISOString().slice(0, 10); // YYYY-MM-DD\n\nconst holidays = [\n  '2026-01-15', '2026-01-26', '2026-03-03', '2026-03-26',\n  '2026-03-31', '2026-04-03', '2026-04-14', '2026-05-01',\n  '2026-05-28', '2026-06-26', '2026-09-14', '2026-10-02',\n  '2026-10-20', '2026-11-10', '2026-11-24', '2026-12-25'\n];\n\nif (holidays.includes(dateStr)) {\n  return [];  // Skip \u2014 market holiday\n}\nreturn [{ json: { trading_day: true, date: dateStr } }];"
       },
       "id": "c1000000-0002-4000-8000-000000000016",
       "name": "Holiday Check",
       "type": "n8n-nodes-base.function",
       "typeVersion": 2,
-      "position": [500, 350]
+      "position": [
+        500,
+        350
+      ]
     },
     {
       "parameters": {
         "method": "GET",
         "url": "https://money.shadowmarket.ai/tools/order_status",
-        "options": { "timeout": 60000, "allowUnauthorizedCerts": true }
+        "options": {
+          "timeout": 60000,
+          "allowUnauthorizedCerts": true
+        }
       },
       "id": "c1000000-0002-4000-8000-000000000002",
       "name": "Get Order Status",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [750, 350]
+      "position": [
+        750,
+        350
+      ]
     },
     {
       "parameters": {
@@ -55,19 +67,28 @@
       "name": "Kill Switch Active?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1000, 350]
+      "position": [
+        1000,
+        350
+      ]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://money.shadowmarket.ai/tools/close_all",
-        "options": { "timeout": 60000, "allowUnauthorizedCerts": true }
+        "options": {
+          "timeout": 60000,
+          "allowUnauthorizedCerts": true
+        }
       },
       "id": "c1000000-0002-4000-8000-000000000004",
       "name": "Emergency Close All",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1250, 150]
+      "position": [
+        1250,
+        150
+      ]
     },
     {
       "parameters": {
@@ -76,44 +97,64 @@
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "chat_id", "value": "=699992965" },
+            {
+              "name": "chat_id",
+              "value": "=699992965"
+            },
             {
               "name": "text",
               "value": "=\ud83d\udea8 KILL SWITCH TRIGGERED\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nReason: {{ $json.kill_switch_reason }}\nDaily P&L: Rs.{{ $json.daily_pnl }}\nAll positions being closed!\n\nManual intervention may be needed."
             }
           ]
         },
-        "options": { "allowUnauthorizedCerts": true }
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
       },
       "id": "c1000000-0002-4000-8000-000000000005",
       "name": "Alert Kill Switch",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1500, 150]
+      "position": [
+        1500,
+        150
+      ]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://money.shadowmarket.ai/tools/update_all_trailing_sl",
-        "options": { "timeout": 60000, "allowUnauthorizedCerts": true }
+        "options": {
+          "timeout": 60000,
+          "allowUnauthorizedCerts": true
+        }
       },
       "id": "c1000000-0002-4000-8000-000000000014",
       "name": "Update Trailing SL",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1250, 300]
+      "position": [
+        1250,
+        300
+      ]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://money.shadowmarket.ai/tools/check_exit_strategies",
-        "options": { "timeout": 60000, "allowUnauthorizedCerts": true }
+        "options": {
+          "timeout": 60000,
+          "allowUnauthorizedCerts": true
+        }
       },
       "id": "c1000000-0002-4000-8000-000000000015",
       "name": "Check Exit Strategies",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1500, 300]
+      "position": [
+        1500,
+        300
+      ]
     },
     {
       "parameters": {
@@ -123,7 +164,10 @@
       "name": "Check SL/Target",
       "type": "n8n-nodes-base.function",
       "typeVersion": 2,
-      "position": [1750, 300]
+      "position": [
+        1750,
+        300
+      ]
     },
     {
       "parameters": {
@@ -132,39 +176,59 @@
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "chat_id", "value": "=699992965" },
-            { "name": "text", "value": "={{ $json.text }}" }
+            {
+              "name": "chat_id",
+              "value": "=699992965"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.text }}"
+            }
           ]
         },
-        "options": { "allowUnauthorizedCerts": true }
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
       },
       "id": "c1000000-0002-4000-8000-000000000008",
       "name": "Send Trade Alert",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2000, 300]
+      "position": [
+        2000,
+        300
+      ]
     },
     {
       "parameters": {
-        "functionCode": "// Only run F&O check every 15 minutes (on :00, :15, :30, :45)\nconst minute = new Date().getMinutes();\nif (minute % 15 !== 0) {\n  return [];  // Skip — not a 15-min mark\n}\nreturn [{ json: { run_fo: true } }];"
+        "functionCode": "// Only run F&O check every 15 minutes (on :00, :15, :30, :45)\nconst minute = new Date().getMinutes();\nif (minute % 15 !== 0) {\n  return [];  // Skip \u2014 not a 15-min mark\n}\nreturn [{ json: { run_fo: true } }];"
       },
       "id": "c1000000-0002-4000-8000-000000000009",
       "name": "F&O Timer Gate",
       "type": "n8n-nodes-base.function",
       "typeVersion": 2,
-      "position": [1250, 650]
+      "position": [
+        1250,
+        650
+      ]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://money.shadowmarket.ai/tools/get_fo_signal",
-        "options": { "timeout": 60000, "allowUnauthorizedCerts": true }
+        "options": {
+          "timeout": 60000,
+          "allowUnauthorizedCerts": true
+        }
       },
       "id": "c1000000-0002-4000-8000-000000000010",
       "name": "Get F&O Signal",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1500, 650]
+      "position": [
+        1500,
+        650
+      ]
     },
     {
       "parameters": {
@@ -188,7 +252,10 @@
       "name": "F&O Has Signal?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1750, 650]
+      "position": [
+        1750,
+        650
+      ]
     },
     {
       "parameters": {
@@ -197,20 +264,28 @@
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "chat_id", "value": "=699992965" },
+            {
+              "name": "chat_id",
+              "value": "=699992965"
+            },
             {
               "name": "text",
               "value": "=\ud83d\udcca F&O Intraday Signal\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nVerdict: {{ $json.verdict }}\nPCR: {{ $json.pcr || 'N/A' }}\nOI Interpretation: {{ $json.oi_interpretation || 'N/A' }}\nStatus: {{ $json.status || 'N/A' }}"
             }
           ]
         },
-        "options": { "allowUnauthorizedCerts": true }
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
       },
       "id": "c1000000-0002-4000-8000-000000000012",
       "name": "Send F&O Alert",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2000, 550]
+      "position": [
+        2000,
+        550
+      ]
     },
     {
       "parameters": {},
@@ -218,56 +293,193 @@
       "name": "F&O No Signal",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [2000, 750]
+      "position": [
+        2000,
+        750
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://money.shadowmarket.ai/api/reconcile/run",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "alert",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "c1000000-0002-4000-8000-000000000020",
+      "name": "Broker Reconcile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        500,
+        520
+      ],
+      "notes": "Runs every 5 min during market hours \u2014 detects ghost/phantom/qty-drift positions and alerts via Telegram when drift found."
     }
   ],
   "connections": {
     "Schedule Trigger": {
-      "main": [[
-        {"node": "Holiday Check", "type": "main", "index": 0}
-      ]]
+      "main": [
+        [
+          {
+            "node": "Holiday Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Holiday Check": {
-      "main": [[
-        {"node": "Get Order Status", "type": "main", "index": 0},
-        {"node": "F&O Timer Gate", "type": "main", "index": 0}
-      ]]
+      "main": [
+        [
+          {
+            "node": "Get Order Status",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "F&O Timer Gate",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Broker Reconcile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Get Order Status": {
-      "main": [[{"node": "Kill Switch Active?", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Kill Switch Active?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Kill Switch Active?": {
       "main": [
-        [{"node": "Emergency Close All", "type": "main", "index": 0}],
-        [{"node": "Update Trailing SL", "type": "main", "index": 0}]
+        [
+          {
+            "node": "Emergency Close All",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Trailing SL",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Emergency Close All": {
-      "main": [[{"node": "Alert Kill Switch", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Alert Kill Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Update Trailing SL": {
-      "main": [[{"node": "Check Exit Strategies", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Check Exit Strategies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Check Exit Strategies": {
-      "main": [[{"node": "Check SL/Target", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Check SL/Target",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Check SL/Target": {
-      "main": [[{"node": "Send Trade Alert", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Send Trade Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "F&O Timer Gate": {
-      "main": [[{"node": "Get F&O Signal", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Get F&O Signal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Get F&O Signal": {
-      "main": [[{"node": "F&O Has Signal?", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "F&O Has Signal?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "F&O Has Signal?": {
       "main": [
-        [{"node": "Send F&O Alert", "type": "main", "index": 0}],
-        [{"node": "F&O No Signal", "type": "main", "index": 0}]
+        [
+          {
+            "node": "Send F&O Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "F&O No Signal",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
   "active": false,
-  "settings": { "executionOrder": "v1" },
-  "tags": [{ "name": "mkumaran-trading-os" }]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "mkumaran-trading-os"
+    }
+  ]
 }
