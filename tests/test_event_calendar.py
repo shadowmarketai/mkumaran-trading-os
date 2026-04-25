@@ -2,9 +2,6 @@
 
 from datetime import date, datetime, timedelta, timezone
 
-
-IST = timezone(timedelta(hours=5, minutes=30))
-
 from mcp_server.event_calendar import (
     DEFAULT_BUFFERS,
     KNOWN_TYPES,
@@ -16,6 +13,8 @@ from mcp_server.event_calendar import (
     get_calendar,
     is_expiry_day,
 )
+
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 # ── Fixtures ────────────────────────────────────────────────
