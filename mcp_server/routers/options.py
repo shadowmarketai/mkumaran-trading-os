@@ -675,14 +675,17 @@ async def api_quick_strangle(
         provider = get_provider()
         dhan = provider.dhan
         if dhan.logged_in:
-            expiries = await asyncio.to_thread(dhan.get_expiry_list, inst, "NSE")
+            # Index option chains live in NFO, not NSE
+            NFO_INSTRUMENTS = {"BANKNIFTY", "NIFTY", "MIDCPNIFTY", "FINNIFTY"}
+            chain_exchange = "NFO" if inst in NFO_INSTRUMENTS else "NSE"
+            expiries = await asyncio.to_thread(dhan.get_expiry_list, inst, chain_exchange)
             if expiries:
                 # Pick the nearest expiry that's at least dte days away
                 from datetime import date, timedelta
                 min_date = (date.today() + timedelta(days=max(dte - 2, 1))).isoformat()
                 valid = [e for e in sorted(expiries) if e >= min_date]
                 expiry = valid[0] if valid else expiries[-1]
-                live = await asyncio.to_thread(dhan.get_option_chain, inst, expiry, "NSE")
+                live = await asyncio.to_thread(dhan.get_option_chain, inst, expiry, chain_exchange)
                 if live and len(live) > 5:
                     chain = live
                     chain_source = f"dhan_live ({expiry})"
