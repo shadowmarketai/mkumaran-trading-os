@@ -214,26 +214,12 @@ def generate_mwa_signals(
         except Exception as opt_err:  # noqa: BLE001
             logger.debug("Option enrichment failed for %s: %s", ticker, opt_err)
 
-        # ── POS 5 EMA shadow observation (weight = 0) ────────────────────
-        # Runs alongside the existing scanner confluence but does NOT
-        # influence direction, entry, or confidence. Tagged as "shadow"
-        # so the dashboard can show it separately for 30-day validation
-        # before weight is promoted above zero.
+        # POS 5 EMA shadow — KILLED 2026-04-27 after backtest validation.
+        # 15m data: HDFCBANK 56 trades 32% WR Sharpe -0.99;
+        #           SBIN     57 trades 36.8% WR Sharpe -0.96.
+        # All gates failed. Shadow fields kept for schema compat only.
         pos_5ema_fired: bool = False
         pos_5ema_direction: str | None = None
-        try:
-            from mcp_server.pos_five_ema import FiveEMAGenerator
-            _gen = FiveEMAGenerator()
-            _sig = _gen.detect_latest(df, ticker)
-            if _sig is not None:
-                pos_5ema_fired = True
-                pos_5ema_direction = _sig.direction
-                logger.info(
-                    "POS_5EMA shadow: %s fired %s (confidence=%.2f) — weight=0, observe only",
-                    ticker, _sig.direction, _sig.confidence,
-                )
-        except Exception as _e5:
-            logger.debug("POS 5 EMA shadow error for %s: %s", ticker, _e5)
 
         signals.append({
             "ticker": ticker,
