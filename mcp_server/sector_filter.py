@@ -63,18 +63,24 @@ def get_sector_strength() -> dict[str, str]:
 
     for sector, symbol in SECTOR_INDICES.items():
         try:
-            data = yf.download(symbol, start=start_4w, end=end, progress=False)
+            data = yf.download(symbol, start=start_4w, end=end, progress=False, auto_adjust=True)
 
-            if len(data) < 5:
+            if data is None or data.empty or len(data) < 5:
                 results[sector] = "NEUTRAL"
                 continue
 
-            # 4-week return
-            ret_4w = (data['Close'].iloc[-1] - data['Close'].iloc[0]) / data['Close'].iloc[0] * 100
+            # Flatten multi-level columns (yfinance ≥ 0.2.40 returns MultiIndex)
+            if isinstance(data.columns, __import__("pandas").MultiIndex):
+                data.columns = data.columns.get_level_values(0)
+
+            close = data["Close"]
+
+            # 4-week return — extract scalar with float()
+            ret_4w = float((close.iloc[-1] - close.iloc[0]) / close.iloc[0] * 100)
 
             # 1-week return
             week_start = max(0, len(data) - 5)
-            ret_1w = (data['Close'].iloc[-1] - data['Close'].iloc[week_start]) / data['Close'].iloc[week_start] * 100
+            ret_1w = float((close.iloc[-1] - close.iloc[week_start]) / close.iloc[week_start] * 100)
 
             # Classification
             if ret_4w > 3 and ret_1w > 1:

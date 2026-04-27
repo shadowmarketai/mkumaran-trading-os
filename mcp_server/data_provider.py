@@ -1469,6 +1469,34 @@ class DhanSource:
             logger.debug("Dhan quote failed for %s:%s: %s", exchange, symbol, e)
         return {}
 
+    def get_positions(self) -> list:
+        """Fetch open positions from Dhan. Returns [] on error or not logged in."""
+        if not self.logged_in or not self.client:
+            return []
+        try:
+            resp = self.client.get_positions()
+            if resp and isinstance(resp, dict) and resp.get("status") == "success":
+                return resp.get("data", [])
+            if isinstance(resp, list):
+                return resp
+        except Exception as e:
+            logger.debug("Dhan get_positions failed: %s", e)
+        return []
+
+    def get_holdings(self) -> list:
+        """Fetch holdings from Dhan. Returns [] on error or not logged in."""
+        if not self.logged_in or not self.client:
+            return []
+        try:
+            resp = self.client.get_holdings()
+            if resp and isinstance(resp, dict) and resp.get("status") == "success":
+                return resp.get("data", [])
+            if isinstance(resp, list):
+                return resp
+        except Exception as e:
+            logger.debug("Dhan get_holdings failed: %s", e)
+        return []
+
 
 # ══════════════════════════════════════════════════════════════════
 # MASTER DATA PROVIDER — Orchestrates all sources with failover
