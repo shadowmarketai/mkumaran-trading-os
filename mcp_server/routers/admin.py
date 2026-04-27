@@ -487,3 +487,94 @@ async def api_tax_statement_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ── Dhan intraday backfill ─────────────────────────────────────
+
+
+_backfill_status: dict = {"running": False, "progress": "", "pid": None}
+
+
+@router.post("/tools/run_backfill")
+async def tool_run_backfill(
+    years: int = 5,
+    ticker: str | None = None,
+    resume: bool = True,
+):
+    """Launch the Dhan intraday OHLCV backfill as a background asyncio task.
+
+    Runs inside the FastAPI process — survives Coolify terminal disconnects.
+
+    Params:
+      years:   years of 15-min history to pull (default 5)
+      ticker:  single ticker (default: all 100 Nifty stocks)
+      resume:  skip chunks already in backfill_progress table (default true)
+
+    Check progress: GET /tools/backfill_status
+    """
+    global _backfill_status
+
+    if _backfill_status.get("running"):
+        return {
+            "status": "already_running",
+            "progress": _backfill_status.get("progress"),
+        }
+
+    import asyncio
+
+    async def _run():
+        global _backfill_status
+        _backfill_status = {"running": True, "progress": "starting...", "pid": None}
+        try:
+            import sys
+            sys.path.insert(0, "/app")
+            # Import and run the backfill inline
+            from scripts.backfill_dhan_intraday import (
+                NIFTY_100, backfill_ticker, _ensure_progress_table,
+                _build_ca_skip_dates,
+            )
+            from mcp_server.db import SessionLocal
+            from mcp_server.data_provider import get_provider
+
+            universe = [ticker.upper()] if ticker else NIFTY_100
+            total_days = years * 365
+            session = SessionLocal()
+            _ensure_progress_table(session)
+            provider = get_provider()
+            dhan_source = provider.dhan
+            if not dhan_source.logged_in:
+                ok = dhan_source.login()
+                if not ok:
+                    _backfill_status = {"running": False, "progress": "FAILED: Dhan login failed"}
+                    return
+
+            ca_skip = _build_ca_skip_dates()
+            grand_total = 0
+
+            for i, sym in enumerate(universe, 1):
+                _backfill_status["progress"] = f"[{i}/{len(universe)}] {sym} — {grand_total} bars so far"
+                bars = await asyncio.to_thread(
+                    backfill_ticker, dhan_source, sym, total_days, session, resume, ca_skip
+                )
+                grand_total += bars
+
+            session.close()
+            _backfill_status = {
+                "running": False,
+                "progress": f"DONE — {grand_total} bars across {len(universe)} tickers",
+            }
+        except Exception as e:
+            _backfill_status = {"running": False, "progress": f"FAILED: {e}"}
+            logger.error("Backfill task failed: %s", e)
+
+    asyncio.create_task(_run())
+    return {
+        "status": "started",
+        "message": f"Backfill running in background ({years}Y, {'all Nifty 100' if not ticker else ticker}). Poll GET /tools/backfill_status for progress.",
+    }
+
+
+@router.get("/tools/backfill_status")
+async def tool_backfill_status():
+    """Return current backfill progress."""
+    return _backfill_status
