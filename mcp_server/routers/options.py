@@ -452,21 +452,52 @@ async def api_build_strangle(
     target_delta: float = 0.15,
     structure: str = "IRON_CONDOR",
     wing_width_strikes: int = 1,
+    vix: float = 0.0,
+    iv: float = 0.18,
+    strike_step: float = 100.0,
 ):
-    """Construct an iron condor or naked strangle from a live options chain.
+    """Build an iron condor or naked strangle using a synthetic Black-Scholes chain.
 
-    Fetches the options chain for `instrument`, picks strikes at
-    `target_delta`, and returns the full position structure with net credit,
-    max loss, and breakevens.
+    Uses Black-Scholes to price all strikes — no live broker chain required.
+    Kite/Dhan chain fetching is not used (that function doesn't exist yet).
 
-    Gate: returns 400 if the IV regime says sell_premium_ok=False.
+    Required params:
+      instrument:        BANKNIFTY, NIFTY, MIDCPNIFTY, FINNIFTY, SENSEX, BANKEX
+      spot:              Current underlying price (e.g. 56322)
+      vix:               Current India VIX (e.g. 16.5) — from nseindia.com
+
+    Optional params:
+      dte:               Days to expiry (default 5)
+      target_delta:      Absolute delta for short legs (default 0.15)
+      structure:         IRON_CONDOR or NAKED_STRANGLE (default IRON_CONDOR)
+      wing_width_strikes: Strike steps for wings (default 1)
+      iv:                Implied volatility for pricing (default 0.18 = 18%)
+      strike_step:       Points between strikes (default 100 for BANKNIFTY)
+
+    Example:
+      POST /api/options-seller/build-strangle?instrument=BANKNIFTY
+        &spot=56322&dte=7&target_delta=0.12&structure=IRON_CONDOR
+        &vix=16.5&iv=0.18&strike_step=100
     """
     import asyncio
-    from mcp_server.options_seller.iv_engine import get_iv_regime
-    from mcp_server.options_selector import get_options_chain
+    from mcp_server.options_seller.iv_engine import classify_iv, _fetch_vix_history
+    from mcp_server.options_greeks import calculate_greeks
+    from mcp_server.options_seller.strike_selector import build_strangle
 
-    # IV gate — don't build if regime is CRUSHED or EXTREME
-    regime = await asyncio.to_thread(get_iv_regime, instrument, spot)
+    # Require manual VIX since live fetch is unreliable in container
+    if vix <= 0:
+        return {
+            "status": "error",
+            "reason": "Pass ?vix=<current_india_vix> (e.g. ?vix=16.5). "
+                      "Check nseindia.com or your broker terminal for the current value.",
+        }
+
+    # IV regime gate
+    vix_history = await asyncio.to_thread(_fetch_vix_history, 252)
+    hist_90 = vix_history[-90:] if len(vix_history) >= 90 else vix_history
+    hist_1y = vix_history[-252:] if len(vix_history) >= 252 else vix_history
+    regime = classify_iv(instrument.upper(), vix, hist_90, hist_1y)
+
     if not regime.sell_premium_ok:
         return {
             "status": "blocked",
@@ -474,26 +505,45 @@ async def api_build_strangle(
             "regime": regime.as_dict(),
         }
 
-    # Fetch chain
-    try:
-        chain = await asyncio.to_thread(get_options_chain, instrument)
-    except Exception as e:
-        return {"status": "error", "reason": f"Chain fetch failed: {e}"}
+    # Build synthetic chain using Black-Scholes
+    # ±15 strikes around ATM at the given step
+    chain: dict = {}
+    atm = round(spot / strike_step) * strike_step
+    for i in range(-15, 16):
+        strike = atm + i * strike_step
+        if strike <= 0:
+            continue
+        ce = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="CE")
+        pe = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="PE")
+        chain[float(strike)] = {
+            "CE": {"ltp": max(ce.price, 0.5), "iv": iv},
+            "PE": {"ltp": max(pe.price, 0.5), "iv": iv},
+        }
 
-    from mcp_server.options_seller.strike_selector import build_strangle
     pos = build_strangle(
         instrument=instrument,
         spot=spot,
-        chain=chain or {},
+        chain=chain,
         dte=dte,
         target_delta=target_delta,
         structure=structure,
         wing_width_strikes=wing_width_strikes,
+        min_premium=10.0,
     )
-    if pos is None:
-        return {"status": "error", "reason": "Could not build position — chain too sparse or premium too low"}
 
-    return {"status": "ok", "position": pos.as_dict(), "regime": regime.as_dict()}
+    if pos is None:
+        return {
+            "status": "error",
+            "reason": "Could not build position — try lowering target_delta or adjusting strike_step",
+        }
+
+    return {
+        "status": "ok",
+        "chain_source": "synthetic_bs",
+        "note": "Priced using Black-Scholes. Use these strikes as a starting point; verify actual premiums in your broker before placing.",
+        "position": pos.as_dict(),
+        "regime": regime.as_dict(),
+    }
 
 
 @router.post("/api/options-seller/evaluate-adjustment")
