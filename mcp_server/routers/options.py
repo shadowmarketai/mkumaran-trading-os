@@ -472,7 +472,6 @@ async def api_build_strangle(
         &vix=16.5&iv=0.18&strike_step=100
     """
     import asyncio
-    import math
     from mcp_server.options_seller.iv_engine import classify_iv, _fetch_vix_history
     from mcp_server.options_greeks import calculate_greeks
 
