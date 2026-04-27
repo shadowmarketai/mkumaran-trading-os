@@ -395,18 +395,53 @@ async def api_options_strategy_build(req: StrategyBuildRequest):
 
 
 @router.get("/api/options-seller/iv-regime/{instrument}")
-async def api_iv_regime(instrument: str, spot: float = 0.0):
+async def api_iv_regime(
+    instrument: str,
+    spot: float = 0.0,
+    vix: float = 0.0,
+):
     """Classify the current IV regime for an instrument.
 
     Returns regime label (CRUSHED/LOW/NORMAL/ELEVATED/EXTREME),
     VIX percentiles, sell_premium_ok gate, and suggested DTE + delta.
 
-    No live options chain is fetched here — uses India VIX only.
-    Pass spot > 0 to enable ATM-IV extraction from chain in a future call.
+    Optional: pass ?vix=16.5 to supply India VIX manually when the live
+    fetch fails (e.g. container network restrictions). Look up the current
+    value at nseindia.com or your broker terminal.
+
+    Example:
+      GET /api/options-seller/iv-regime/BANKNIFTY?vix=16.5
     """
     import asyncio
-    from mcp_server.options_seller.iv_engine import get_iv_regime
-    regime = await asyncio.to_thread(get_iv_regime, instrument, spot)
+    import numpy as np
+    from mcp_server.options_seller.iv_engine import (
+        classify_iv, _fetch_vix_history, _fetch_vix_current,
+    )
+
+    # Fetch VIX history (needed for percentile rank)
+    vix_history = await asyncio.to_thread(_fetch_vix_history, 252)
+
+    # Use manual vix if provided and live fetch returned 0
+    vix_now = vix if vix > 0 else await asyncio.to_thread(_fetch_vix_current)
+
+    if vix_now <= 0:
+        return {
+            "status": "error",
+            "message": (
+                "India VIX fetch returned 0. Pass ?vix=<current_value> manually. "
+                "Current VIX is shown on nseindia.com or your broker terminal."
+            ),
+        }
+
+    hist_90 = vix_history[-90:] if len(vix_history) >= 90 else vix_history
+    hist_1y = vix_history[-252:] if len(vix_history) >= 252 else vix_history
+
+    regime = classify_iv(
+        instrument=instrument.upper(),
+        vix_current=vix_now,
+        vix_history_90d=hist_90,
+        vix_history_1y=hist_1y,
+    )
     return {"status": "ok", **regime.as_dict()}
 
 
