@@ -413,7 +413,6 @@ async def api_iv_regime(
       GET /api/options-seller/iv-regime/BANKNIFTY?vix=16.5
     """
     import asyncio
-    import numpy as np
     from mcp_server.options_seller.iv_engine import (
         classify_iv, _fetch_vix_history, _fetch_vix_current,
     )
