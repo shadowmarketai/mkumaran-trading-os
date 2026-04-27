@@ -374,16 +374,48 @@ def _simulate_trades(
         entry_cost = _calculate_transaction_cost(actual_entry, sig["qty"], is_sell=False)
         total_costs += entry_cost
 
+        # Two-stage exit state (used when sig has use_partial_exit=True)
+        # T1 = partial target (1:1) — on hit, book half and move SL to breakeven
+        # T2 = final target (2:1) — on hit, close remaining half
+        use_partial = sig.get("use_partial_exit", False)
+        partial_target = sig.get("partial_target")
+        current_sl = sig["stop_loss"]      # tracks after BE move
+        partial_booked = False             # True once T1 hit and half closed
+
         for j in range(i + 1, min(i + max_hold, len(data))):
             future_open = float(data["open"].iloc[j])
             future_high = float(data["high"].iloc[j])
             future_low = float(data["low"].iloc[j])
 
-            # Gap-through-SL: if the bar opens past the stop, fill at open.
-            # Real broker fill lands at the first available price, not the SL level.
+            # ── Partial exit: T1 hit → book half, move SL to breakeven ──
+            if use_partial and not partial_booked and partial_target is not None:
+                t1_hit = (
+                    (is_long and future_high >= partial_target)
+                    or (not is_long and future_low <= partial_target)
+                )
+                if t1_hit:
+                    # Book half position at T1 price
+                    half_qty = max(sig["qty"] // 2, 1)
+                    t1_exit = _apply_slippage(partial_target, sig["direction"], is_entry=False, slippage_pct=slippage_pct)
+                    t1_cost = _calculate_transaction_cost(t1_exit, half_qty, is_sell=True)
+                    total_costs += t1_cost
+                    if is_long:
+                        t1_pnl = half_qty * (t1_exit - actual_entry) - (entry_cost * half_qty / sig["qty"]) - t1_cost
+                    else:
+                        t1_pnl = half_qty * (actual_entry - t1_exit) - (entry_cost * half_qty / sig["qty"]) - t1_cost
+                    current_capital += t1_pnl
+                    equity.append(current_capital)
+                    # Move SL to breakeven (actual entry price)
+                    current_sl = actual_entry
+                    partial_booked = True
+                    # Reduce remaining qty to half
+                    sig = dict(sig)
+                    sig["qty"] = sig["qty"] - half_qty
+
+            # Gap-through-SL: if the bar opens past the (possibly moved) stop, fill at open.
             gapped_sl = (
-                (is_long and future_open <= sig["stop_loss"])
-                or (not is_long and future_open >= sig["stop_loss"])
+                (is_long and future_open <= current_sl)
+                or (not is_long and future_open >= current_sl)
             )
             # Gap-through-target — mirror case, fill at open rather than target.
             gapped_tgt = (
@@ -395,9 +427,9 @@ def _simulate_trades(
             target_hit = (
                 future_high >= sig["target"] if is_long else future_low <= sig["target"]
             )
-            # Check stop loss hit
+            # Check stop loss hit (against potentially moved SL)
             sl_hit = (
-                future_low <= sig["stop_loss"] if is_long else future_high >= sig["stop_loss"]
+                future_low <= current_sl if is_long else future_high >= current_sl
             )
 
             # Gap-SL wins the tie-break — if the bar opens past the stop,
@@ -420,7 +452,7 @@ def _simulate_trades(
                     "entry": round(actual_entry, 2),
                     "exit": round(actual_exit, 2),
                     "entry_ideal": sig["entry"],
-                    "exit_ideal": sig["stop_loss"],
+                    "exit_ideal": current_sl,
                     "slippage_entry": round(abs(actual_entry - sig["entry"]), 2),
                     "slippage_exit": round(abs(actual_exit - future_open), 2),
                     "costs": round(entry_cost + exit_cost, 2),
@@ -521,7 +553,7 @@ def _simulate_trades(
                     "entry": round(actual_entry, 2),
                     "exit": round(actual_exit, 2),
                     "entry_ideal": sig["entry"],
-                    "exit_ideal": sig["stop_loss"],
+                    "exit_ideal": current_sl,
                     "slippage_entry": round(abs(actual_entry - sig["entry"]), 2),
                     "slippage_exit": round(abs(actual_exit - sig["stop_loss"]), 2),
                     "costs": round(entry_cost + exit_cost, 2),
