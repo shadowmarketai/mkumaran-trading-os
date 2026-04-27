@@ -622,3 +622,78 @@ async def api_open_positions():
         }
     finally:
         db.close()
+
+
+@router.get("/api/options-seller/strangle/{instrument}/{spot}/{vix}")
+async def api_quick_strangle(
+    instrument: str,
+    spot: float,
+    vix: float,
+    dte: int = 7,
+    wings: int = 3,
+):
+    """Short URL for building a BANKNIFTY/NIFTY iron condor — fits in one terminal line.
+
+    Uses sensible defaults: target_delta=0.12, IRON_CONDOR, iv=0.18, strike_step=100.
+
+    Example (fits in 80 chars):
+      GET /api/options-seller/strangle/BANKNIFTY/56322/16.5
+      GET /api/options-seller/strangle/BANKNIFTY/56322/16.5?dte=7&wings=3
+    """
+    from mcp_server.options_seller.iv_engine import classify_iv, _fetch_vix_history
+    from mcp_server.options_greeks import calculate_greeks
+    from mcp_server.options_seller.strike_selector import build_strangle
+    import asyncio
+
+    # Instrument defaults
+    STEP_MAP = {
+        "BANKNIFTY": 100.0, "NIFTY": 50.0, "MIDCPNIFTY": 25.0,
+        "FINNIFTY": 50.0, "SENSEX": 100.0, "BANKEX": 100.0,
+    }
+    inst = instrument.upper()
+    step = STEP_MAP.get(inst, 100.0)
+    iv = 0.18
+
+    # IV regime
+    vix_history = await asyncio.to_thread(_fetch_vix_history, 252)
+    hist_90 = vix_history[-90:] if len(vix_history) >= 90 else vix_history
+    hist_1y = vix_history[-252:] if len(vix_history) >= 252 else vix_history
+    regime = classify_iv(inst, vix, hist_90, hist_1y)
+
+    if not regime.sell_premium_ok:
+        return {
+            "status": "blocked",
+            "reason": f"IV regime {regime.label} — {regime.reason}",
+            "regime": regime.as_dict(),
+        }
+
+    # Synthetic chain
+    chain: dict = {}
+    atm = round(spot / step) * step
+    for i in range(-15, 16):
+        strike = atm + i * step
+        if strike <= 0:
+            continue
+        ce = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="CE")
+        pe = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="PE")
+        chain[float(strike)] = {
+            "CE": {"ltp": max(ce.price, 0.5), "iv": iv},
+            "PE": {"ltp": max(pe.price, 0.5), "iv": iv},
+        }
+
+    pos = build_strangle(
+        instrument=inst, spot=spot, chain=chain, dte=dte,
+        target_delta=0.12, structure="IRON_CONDOR",
+        wing_width_strikes=wings, min_premium=10.0,
+    )
+
+    if pos is None:
+        return {"status": "error", "reason": "Could not build — try different wings or dte"}
+
+    return {
+        "status": "ok",
+        "chain_source": "synthetic_bs",
+        "note": "Verify actual premiums in your broker before placing.",
+        "position": pos.as_dict(),
+        "regime": regime.as_dict(),
+    }
