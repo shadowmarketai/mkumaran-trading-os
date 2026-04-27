@@ -667,19 +667,47 @@ async def api_quick_strangle(
             "regime": regime.as_dict(),
         }
 
-    # Synthetic chain
+    # Try Dhan live chain first — real premiums + IV
     chain: dict = {}
-    atm = round(spot / step) * step
-    for i in range(-15, 16):
-        strike = atm + i * step
-        if strike <= 0:
-            continue
-        ce = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="CE")
-        pe = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="PE")
-        chain[float(strike)] = {
-            "CE": {"ltp": max(ce.price, 0.5), "iv": iv},
-            "PE": {"ltp": max(pe.price, 0.5), "iv": iv},
-        }
+    chain_source = "synthetic_bs"
+    try:
+        from mcp_server.data_provider import get_provider
+        provider = get_provider()
+        dhan = provider.dhan
+        if dhan.logged_in:
+            expiries = await asyncio.to_thread(dhan.get_expiry_list, inst, "NSE")
+            if expiries:
+                # Pick the nearest expiry that's at least dte days away
+                from datetime import date, timedelta
+                min_date = (date.today() + timedelta(days=max(dte - 2, 1))).isoformat()
+                valid = [e for e in sorted(expiries) if e >= min_date]
+                expiry = valid[0] if valid else expiries[-1]
+                live = await asyncio.to_thread(dhan.get_option_chain, inst, expiry, "NSE")
+                if live and len(live) > 5:
+                    chain = live
+                    chain_source = f"dhan_live ({expiry})"
+                    # Extract ATM IV from chain for better pricing
+                    atm_strike = round(spot / step) * step
+                    atm_data = chain.get(float(atm_strike), {})
+                    atm_ce = atm_data.get("CE", {})
+                    if atm_ce.get("iv", 0) > 0:
+                        iv = float(atm_ce["iv"])
+    except Exception as e:
+        logger.debug("Dhan chain fetch failed, using synthetic: %s", e)
+
+    # Fallback: synthetic Black-Scholes chain
+    if not chain:
+        atm = round(spot / step) * step
+        for i in range(-15, 16):
+            strike = atm + i * step
+            if strike <= 0:
+                continue
+            ce = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="CE")
+            pe = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="PE")
+            chain[float(strike)] = {
+                "CE": {"ltp": max(ce.price, 0.5), "iv": iv},
+                "PE": {"ltp": max(pe.price, 0.5), "iv": iv},
+            }
 
     pos = build_strangle(
         instrument=inst, spot=spot, chain=chain, dte=dte,
@@ -692,8 +720,8 @@ async def api_quick_strangle(
 
     return {
         "status": "ok",
-        "chain_source": "synthetic_bs",
-        "note": "Verify actual premiums in your broker before placing.",
+        "chain_source": chain_source,
+        "note": "Priced from Dhan live chain." if "dhan" in chain_source else "Priced using Black-Scholes — verify actual premiums in broker.",
         "position": pos.as_dict(),
         "regime": regime.as_dict(),
     }
