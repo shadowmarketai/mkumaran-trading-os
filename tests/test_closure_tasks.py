@@ -61,19 +61,22 @@ def test_pos_5ema_shadow_fields_present_in_signal(monkeypatch):
     assert isinstance(sig["pos_5ema_shadow"], bool)
 
 
-def test_pos_5ema_shadow_does_not_change_direction(monkeypatch):
-    """Shadow field must not alter the primary signal direction."""
+def test_pos_5ema_shadow_killed_shadow_always_false(monkeypatch):
+    """Shadow was killed after failed backtest (2026-04-27).
+    pos_5ema_shadow must always be False regardless of what detect_latest returns.
+    The shadow fields stay in the signal dict for schema compatibility.
+    """
     from mcp_server.mwa_signal_generator import generate_mwa_signals
 
     df = _ohlcv(80, "up")
     stock_data = {"SBIN": df}
-    scanner_results = {"swing_low": {"SBIN": True}}  # bullish scanner
+    scanner_results = {"swing_low": {"SBIN": True}}
 
     monkeypatch.setattr("mcp_server.mwa_signal_generator.settings.RRMS_CAPITAL", 100000)
     monkeypatch.setattr("mcp_server.mwa_signal_generator.settings.RRMS_RISK_PCT", 0.02)
     monkeypatch.setattr("mcp_server.mwa_signal_generator.settings.RRMS_MIN_RRR", 3.0)
 
-    # Force the 5 EMA to fire SHORT (opposite to primary)
+    # Even if detect_latest fires, shadow must not propagate
     mock_sig = MagicMock()
     mock_sig.direction = "SHORT"
     mock_sig.confidence = 0.6
@@ -87,9 +90,9 @@ def test_pos_5ema_shadow_does_not_change_direction(monkeypatch):
         )
 
     assert len(signals) == 1
-    assert signals[0]["direction"] == "LONG"  # primary unchanged
-    assert signals[0]["pos_5ema_shadow"] is True
-    assert signals[0]["pos_5ema_shadow_direction"] == "SHORT"
+    assert signals[0]["direction"] == "LONG"            # primary unchanged
+    assert signals[0]["pos_5ema_shadow"] is False        # shadow killed
+    assert signals[0]["pos_5ema_shadow_direction"] is None
 
 
 def test_pos_5ema_shadow_error_does_not_kill_signal(monkeypatch):

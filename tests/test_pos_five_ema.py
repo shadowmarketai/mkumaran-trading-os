@@ -121,8 +121,9 @@ def test_long_setup_with_below_ema_and_breakout():
     assert sig.direction == "LONG"
     assert sig.entry == Decimal("110.50"), f"Entry must be setup high, got {sig.entry}"
     assert sig.stop_loss == Decimal("109.00"), f"Stop must be setup low, got {sig.stop_loss}"
-    # Risk = 1.50; target = entry + 2*risk = 113.50
-    assert sig.target == Decimal("113.50")
+    # Risk = 1.50; T1 (partial) = entry + 1*risk = 112.00; T2 (full) = entry + 2*risk = 113.50
+    assert sig.target == Decimal("112.00"), f"T1 must be 1:1 target, got {sig.target}"
+    assert sig.target_2 == Decimal("113.50"), f"T2 must be 2:1 target, got {sig.target_2}"
     # Filters — value comes back as numpy.bool_; check truthiness, not identity
     assert sig.filters_passed["range_below_ema5"]
     assert sig.filters_passed["trend_filter"]
@@ -163,7 +164,9 @@ def test_short_setup_with_above_ema_and_breakdown():
     # Entry = setup_low = 189.5; stop = setup_high = 191.0; risk = 1.50
     assert sig.entry == Decimal("189.50")
     assert sig.stop_loss == Decimal("191.00")
-    assert sig.target == Decimal("186.50")  # 189.50 - 2*1.50 = 186.50
+    # T1 = 189.50 - 1*1.50 = 188.00; T2 = 189.50 - 2*1.50 = 186.50
+    assert sig.target == Decimal("188.00")
+    assert sig.target_2 == Decimal("186.50")
 
 
 # ── Backtester adapter ──────────────────────────────────────

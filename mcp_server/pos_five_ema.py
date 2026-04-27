@@ -52,7 +52,7 @@ DEFAULT_EMA_PERIOD = 5
 DEFAULT_TREND_EMA = 50
 DEFAULT_ATR_PERIOD = 14
 DEFAULT_MIN_VOLUME_RATIO = 1.0   # v2: volume filter disabled
-DEFAULT_RISK_REWARD = 2.0        # v2: 1:2 RRR
+DEFAULT_RISK_REWARD = 1.0        # v2: T1 at 1:1 (partial exit), T2 at 2:1 (trail)
 DEFAULT_VOL_AVG_WINDOW = 20
 MAX_RISK_ATR_MULT = 1.5          # v2: skip setup if risk > 1.5×ATR
 
@@ -85,12 +85,14 @@ class FiveEMASignal:
             "direction": self.direction,
             "entry": float(self.entry),
             "stop_loss": float(self.stop_loss),
-            "target": float(self.target),
+            "target": float(self.target_2),      # T2 = 2:1 (full target)
+            "partial_target": float(self.target), # T1 = 1:1 (book half, move SL to BE)
             "qty": qty,
             "risk_per_share": float(self.risk_per_share),
             "source": "pos_5ema",
             "pattern": "5ema_breakout",
             "confidence": int(round(self.confidence * 100)),
+            "use_partial_exit": True,
         }
 
 
@@ -214,8 +216,8 @@ class FiveEMAGenerator:
                     "trigger_fired": current["low"] < setup["low"],
                 }
                 if all(filters.values()):
-                    target_1 = entry - risk * self.rr
-                    target_2 = entry - risk * 3.0
+                    target_1 = entry - risk * self.rr        # 1:1 partial exit
+                    target_2 = entry - risk * self.rr * 2.0  # 2:1 trail exit
                     return self._build_signal(
                         symbol=symbol, idx=idx, direction="SHORT",
                         entry=entry, stop=stop,
@@ -240,8 +242,8 @@ class FiveEMAGenerator:
                     "trigger_fired": current["high"] > setup["high"],
                 }
                 if all(filters.values()):
-                    target_1 = entry + risk * self.rr
-                    target_2 = entry + risk * 3.0
+                    target_1 = entry + risk * self.rr        # 1:1 partial exit
+                    target_2 = entry + risk * self.rr * 2.0  # 2:1 trail exit
                     return self._build_signal(
                         symbol=symbol, idx=idx, direction="LONG",
                         entry=entry, stop=stop,
