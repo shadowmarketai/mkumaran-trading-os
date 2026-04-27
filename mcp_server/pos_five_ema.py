@@ -40,13 +40,21 @@ from mcp_server.money import Numeric, round_tick, to_money
 logger = logging.getLogger(__name__)
 
 
-# ── Defaults (tunable; lock final values via backtest) ──────
+# ── Defaults v2 (tuned 2026-04-27 after failed v1 backtest) ─
+# v1 issues: full-range condition too strict (56 trades/3Y),
+# 1:2 RRR too easy to reverse out of, volume filter too noisy on 15m.
+# v2 changes:
+#   - RRR: 2.0 → 3.0 (user preference + forces higher-quality setups)
+#   - Range: close one side of EMA5 (not full candle)
+#   - Max risk: skip if risk > MAX_RISK_ATR_MULT × ATR (wide bodies)
+#   - Volume: disabled (min_volume_ratio=1.0)
 DEFAULT_EMA_PERIOD = 5
 DEFAULT_TREND_EMA = 50
 DEFAULT_ATR_PERIOD = 14
-DEFAULT_MIN_VOLUME_RATIO = 1.2
-DEFAULT_RISK_REWARD = 2.0
+DEFAULT_MIN_VOLUME_RATIO = 1.0   # v2: volume filter disabled
+DEFAULT_RISK_REWARD = 2.0        # v2: 1:2 RRR
 DEFAULT_VOL_AVG_WINDOW = 20
+MAX_RISK_ATR_MULT = 1.5          # v2: skip setup if risk > 1.5×ATR
 
 
 @dataclass
@@ -187,61 +195,59 @@ class FiveEMAGenerator:
             if pd.isna(setup[col]):
                 return None
 
-        # SHORT: setup candle's full range sits ABOVE 5 EMA, breakdown trigger
-        if setup["low"] > setup["ema5"]:
-            filters = {
-                "range_above_ema5": True,
-                "trend_filter": setup["close"] < setup["ema_trend"],
-                "volume_filter": setup["volume"] > setup["vol_avg"] * self.min_volume_ratio,
-                "trigger_fired": current["low"] < setup["low"],
-            }
-            if all(filters.values()):
-                entry = setup["low"]
-                stop = setup["high"]
-                risk = stop - entry
-                target_1 = entry - risk * self.rr
-                target_2 = entry - risk * 3.0
-                return self._build_signal(
-                    symbol=symbol,
-                    idx=idx,
-                    direction="SHORT",
-                    entry=entry,
-                    stop=stop,
-                    target_1=target_1,
-                    target_2=target_2,
-                    risk=risk,
-                    setup_row=setup,
-                    feats=feats,
-                    filters=filters,
-                )
+        atr_val = float(setup["atr"]) if not pd.isna(setup["atr"]) else 0.0
 
-        # LONG: setup candle's full range sits BELOW 5 EMA, breakout trigger
-        if setup["high"] < setup["ema5"]:
-            filters = {
-                "range_below_ema5": True,
-                "trend_filter": setup["close"] > setup["ema_trend"],
-                "volume_filter": setup["volume"] > setup["vol_avg"] * self.min_volume_ratio,
-                "trigger_fired": current["high"] > setup["high"],
-            }
-            if all(filters.values()):
-                entry = setup["high"]
-                stop = setup["low"]
-                risk = entry - stop
-                target_1 = entry + risk * self.rr
-                target_2 = entry + risk * 3.0
-                return self._build_signal(
-                    symbol=symbol,
-                    idx=idx,
-                    direction="LONG",
-                    entry=entry,
-                    stop=stop,
-                    target_1=target_1,
-                    target_2=target_2,
-                    risk=risk,
-                    setup_row=setup,
-                    feats=feats,
-                    filters=filters,
-                )
+        # SHORT v2: setup candle CLOSES above EMA5 (relaxed from full-range)
+        # and low does not dip more than 0.2% below EMA5 (body stays above).
+        if setup["close"] > setup["ema5"] and setup["low"] > setup["ema5"] * 0.998:
+            entry = setup["low"]
+            stop = setup["high"]
+            risk = stop - entry
+            # Max-risk filter: skip wide-body candles (stop too far → bad R:R)
+            if atr_val > 0 and risk > atr_val * MAX_RISK_ATR_MULT:
+                pass  # wide body — skip
+            else:
+                filters = {
+                    "range_above_ema5": True,
+                    "trend_filter": setup["close"] < setup["ema_trend"],
+                    "volume_filter": setup["volume"] >= setup["vol_avg"] * self.min_volume_ratio,
+                    "trigger_fired": current["low"] < setup["low"],
+                }
+                if all(filters.values()):
+                    target_1 = entry - risk * self.rr
+                    target_2 = entry - risk * 3.0
+                    return self._build_signal(
+                        symbol=symbol, idx=idx, direction="SHORT",
+                        entry=entry, stop=stop,
+                        target_1=target_1, target_2=target_2, risk=risk,
+                        setup_row=setup, feats=feats, filters=filters,
+                    )
+
+        # LONG v2: setup candle CLOSES below EMA5 (relaxed from full-range)
+        # and high does not exceed EMA5 by more than 0.2%.
+        if setup["close"] < setup["ema5"] and setup["high"] < setup["ema5"] * 1.002:
+            entry = setup["high"]
+            stop = setup["low"]
+            risk = entry - stop
+            # Max-risk filter
+            if atr_val > 0 and risk > atr_val * MAX_RISK_ATR_MULT:
+                pass  # wide body — skip
+            else:
+                filters = {
+                    "range_below_ema5": True,
+                    "trend_filter": setup["close"] > setup["ema_trend"],
+                    "volume_filter": setup["volume"] >= setup["vol_avg"] * self.min_volume_ratio,
+                    "trigger_fired": current["high"] > setup["high"],
+                }
+                if all(filters.values()):
+                    target_1 = entry + risk * self.rr
+                    target_2 = entry + risk * 3.0
+                    return self._build_signal(
+                        symbol=symbol, idx=idx, direction="LONG",
+                        entry=entry, stop=stop,
+                        target_1=target_1, target_2=target_2, risk=risk,
+                        setup_row=setup, feats=feats, filters=filters,
+                    )
 
         return None
 
