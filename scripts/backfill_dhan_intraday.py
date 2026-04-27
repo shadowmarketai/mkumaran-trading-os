@@ -252,7 +252,7 @@ def backfill_ticker(
     skipped_chunks = 0
 
     # Resolve security_id
-    sec_id = dhan_source._resolve_security_id(f"NSE:{ticker}")
+    sec_id = dhan_source._resolve_security_id(ticker)
     if not sec_id:
         logger.warning("%s: no security_id found — skipping", ticker)
         return 0
