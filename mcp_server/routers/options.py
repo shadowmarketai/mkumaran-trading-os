@@ -688,36 +688,45 @@ async def api_quick_strangle(
             "regime": regime.as_dict(),
         }
 
-    # Try Dhan live chain first — real premiums + IV
+    # Try NSE India free API first (no auth needed, works for indices)
     chain: dict = {}
     chain_source = "synthetic_bs"
     try:
         from mcp_server.data_provider import get_provider
         provider = get_provider()
-        dhan = provider.dhan
-        if dhan.logged_in:
-            # Index option chains live in NFO, not NSE
-            NFO_INSTRUMENTS = {"BANKNIFTY", "NIFTY", "MIDCPNIFTY", "FINNIFTY"}
-            chain_exchange = "NFO" if inst in NFO_INSTRUMENTS else "NSE"
-            expiries = await asyncio.to_thread(dhan.get_expiry_list, inst, chain_exchange)
-            if expiries:
-                # Pick the nearest expiry that's at least dte days away
-                from datetime import date, timedelta
-                min_date = (date.today() + timedelta(days=max(dte - 2, 1))).isoformat()
-                valid = [e for e in sorted(expiries) if e >= min_date]
-                expiry = valid[0] if valid else expiries[-1]
-                live = await asyncio.to_thread(dhan.get_option_chain, inst, expiry, chain_exchange)
-                if live and len(live) > 5:
-                    chain = live
-                    chain_source = f"dhan_live ({expiry})"
-                    # Extract ATM IV from chain for better pricing
-                    atm_strike = round(spot / step) * step
-                    atm_data = chain.get(float(atm_strike), {})
-                    atm_ce = atm_data.get("CE", {})
-                    if atm_ce.get("iv", 0) > 0:
-                        iv = float(atm_ce["iv"])
+        # NSESource.get_option_chain uses the free NSE option-chain-indices API
+        raw = await asyncio.to_thread(provider.nse.get_option_chain, inst)
+        # NSE returns {"records": {"data": [{strikePrice, CE:{lastPrice,iv,...}, PE:{...}}]}}
+        records = raw.get("records", raw.get("filtered", {}))
+        data = records.get("data", [])
+        if data and len(data) > 5:
+            for row in data:
+                strike = float(row.get("strikePrice", 0))
+                if strike <= 0:
+                    continue
+                ce_raw = row.get("CE", {})
+                pe_raw = row.get("PE", {})
+                chain[strike] = {
+                    "CE": {
+                        "ltp": float(ce_raw.get("lastPrice", 0) or 0),
+                        "iv": float(ce_raw.get("impliedVolatility", 0) or 0) / 100,
+                        "oi": int(ce_raw.get("openInterest", 0) or 0),
+                    },
+                    "PE": {
+                        "ltp": float(pe_raw.get("lastPrice", 0) or 0),
+                        "iv": float(pe_raw.get("impliedVolatility", 0) or 0) / 100,
+                        "oi": int(pe_raw.get("openInterest", 0) or 0),
+                    },
+                }
+            if chain:
+                chain_source = "nse_live"
+                # Use ATM IV for BS fallback accuracy
+                atm_strike = round(spot / step) * step
+                atm_ce_iv = chain.get(float(atm_strike), {}).get("CE", {}).get("iv", 0)
+                if atm_ce_iv > 0:
+                    iv = atm_ce_iv
     except Exception as e:
-        logger.debug("Dhan chain fetch failed, using synthetic: %s", e)
+        logger.debug("NSE chain fetch failed, using synthetic: %s", e)
 
     # Fallback: synthetic Black-Scholes chain
     if not chain:
