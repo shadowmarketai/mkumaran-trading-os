@@ -624,6 +624,27 @@ async def api_open_positions():
         db.close()
 
 
+@router.get("/api/options-seller/debug-chain/{instrument}")
+async def api_debug_chain(instrument: str):
+    """Debug: show what Dhan returns for this instrument's option chain."""
+    import asyncio
+    from mcp_server.data_provider import get_provider
+    inst = instrument.upper()
+    provider = get_provider()
+    dhan = provider.dhan
+    result = {"logged_in": dhan.logged_in}
+    if not dhan.logged_in:
+        return result
+    # Try all exchange variants
+    for exch in ("NSE", "NFO", "BSE"):
+        sid = dhan._resolve_security_id(inst, exch)
+        result[f"security_id_{exch}"] = sid
+        if sid:
+            expiries = await asyncio.to_thread(dhan.get_expiry_list, inst, exch)
+            result[f"expiries_{exch}"] = expiries[:5] if expiries else []
+    return result
+
+
 @router.get("/api/options-seller/strangle/{instrument}/{spot}/{vix}")
 async def api_quick_strangle(
     instrument: str,
