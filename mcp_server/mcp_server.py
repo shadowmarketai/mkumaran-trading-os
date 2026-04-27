@@ -1176,6 +1176,8 @@ AUTH_PUBLIC_PATHS = {
     "/api/fno/option_greeks",
     # Sheets reconciliation (n8n compatible, idempotent)
     "/tools/backfill_sheets_outcomes",
+    # Dhan intraday backfill (internal admin, no sensitive data returned)
+    "/tools/run_backfill", "/tools/backfill_status",
     # Self-development system (n8n compatible)
     "/tools/run_self_development",
     "/tools/run_postmortems",
