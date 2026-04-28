@@ -217,10 +217,12 @@ def run_one(
             "validation": validation,
         }
     except Exception as exc:
+        import traceback as _tb
         result = {
             "ticker": ticker, "strategy": strategy, "interval": interval,
             "status": "error",
             "error": str(exc),
+            "traceback": _tb.format_exc(),
         }
         logger.warning("Error %s/%s: %s", strategy, ticker, exc)
 
