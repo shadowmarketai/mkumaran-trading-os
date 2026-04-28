@@ -667,19 +667,101 @@ async def api_quick_strangle(
             "regime": regime.as_dict(),
         }
 
-    # Synthetic chain
+    # ── Try live chain sources ────────────────────────────────────────
     chain: dict = {}
-    atm = round(spot / step) * step
-    for i in range(-15, 16):
-        strike = atm + i * step
-        if strike <= 0:
-            continue
-        ce = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="CE")
-        pe = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="PE")
-        chain[float(strike)] = {
-            "CE": {"ltp": max(ce.price, 0.5), "iv": iv},
-            "PE": {"ltp": max(pe.price, 0.5), "iv": iv},
-        }
+    chain_source = "synthetic_bs"
+
+    # 1. Dhan option chain (IDX_I segment for indices)
+    try:
+        from mcp_server.data_provider import get_provider
+        from datetime import date, timedelta
+        provider = get_provider()
+        dhan = provider.dhan
+        if dhan.logged_in:
+            # BANKNIFTY/NIFTY index options use IDX_I as the underlying segment
+            # security_id=25 is BANKNIFTY index (NSE segment)
+            IDX_SEC_IDS = {
+                "BANKNIFTY": "25", "NIFTY": "13", "FINNIFTY": "27",
+                "MIDCPNIFTY": "11915", "SENSEX": "1", "BANKEX": "2",
+            }
+            sec_id = IDX_SEC_IDS.get(inst)
+            if sec_id:
+                for seg in ("IDX_I", "NSE_FNO", "NSE_EQ"):
+                    expiry_resp = dhan.client.expiry_list(
+                        under_security_id=sec_id,
+                        under_exchange_segment=seg,
+                    )
+                    expiries = expiry_resp.get("data", []) if isinstance(expiry_resp, dict) else []
+                    if expiries:
+                        min_date = (date.today() + timedelta(days=1)).isoformat()
+                        valid = [e for e in sorted(str(e) for e in expiries) if str(e) >= min_date]
+                        expiry = valid[0] if valid else str(expiries[0])
+                        chain_resp = dhan.client.option_chain(
+                            under_security_id=sec_id,
+                            under_exchange_segment=seg,
+                            expiry=expiry,
+                        )
+                        raw_data = chain_resp.get("data", []) if isinstance(chain_resp, dict) else []
+                        for row in raw_data:
+                            strike = float(row.get("strikePrice", 0))
+                            if strike <= 0:
+                                continue
+                            ce_d = row.get("callOption", row.get("CE", {}))
+                            pe_d = row.get("putOption", row.get("PE", {}))
+                            chain[strike] = {
+                                "CE": {"ltp": float(ce_d.get("ltp", ce_d.get("lastPrice", 0)) or 0), "iv": float(ce_d.get("iv", ce_d.get("impliedVolatility", 0.18)) or 0.18)},
+                                "PE": {"ltp": float(pe_d.get("ltp", pe_d.get("lastPrice", 0)) or 0), "iv": float(pe_d.get("iv", pe_d.get("impliedVolatility", 0.18)) or 0.18)},
+                            }
+                        if chain:
+                            chain_source = f"dhan_live ({expiry}, {seg})"
+                            atm_iv_val = chain.get(round(spot / step) * step, {}).get("CE", {}).get("iv", 0)
+                            if atm_iv_val > 0:
+                                iv = float(atm_iv_val)
+                            break
+    except Exception as e:
+        logger.debug("Dhan option chain failed: %s", e)
+
+    # 2. NSE free API fallback
+    if not chain:
+        try:
+            from mcp_server.data_provider import get_provider
+            provider = get_provider()
+            raw = await asyncio.to_thread(provider.nse.get_option_chain, inst)
+            records = raw.get("records", raw.get("filtered", {}))
+            data = records.get("data", [])
+            for row in data:
+                strike = float(row.get("strikePrice", 0))
+                if strike <= 0:
+                    continue
+                ce_raw = row.get("CE", {})
+                pe_raw = row.get("PE", {})
+                if not ce_raw and not pe_raw:
+                    continue
+                chain[strike] = {
+                    "CE": {"ltp": float(ce_raw.get("lastPrice", 0) or 0), "iv": float(ce_raw.get("impliedVolatility", 18) or 18) / 100},
+                    "PE": {"ltp": float(pe_raw.get("lastPrice", 0) or 0), "iv": float(pe_raw.get("impliedVolatility", 18) or 18) / 100},
+                }
+            if chain:
+                chain_source = "nse_live"
+                atm_ce_iv = chain.get(round(spot / step) * step, {}).get("CE", {}).get("iv", 0)
+                if atm_ce_iv > 0:
+                    iv = atm_ce_iv
+        except Exception as e:
+            logger.debug("NSE chain failed: %s", e)
+
+    # 3. Synthetic Black-Scholes fallback
+    if not chain:
+        atm = round(spot / step) * step
+        for i in range(-15, 16):
+            strike = atm + i * step
+            if strike <= 0:
+                continue
+            ce = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="CE")
+            pe = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="PE")
+            chain[float(strike)] = {
+                "CE": {"ltp": max(ce.price, 0.5), "iv": iv},
+                "PE": {"ltp": max(pe.price, 0.5), "iv": iv},
+            }
 
     pos = build_strangle(
         instrument=inst, spot=spot, chain=chain, dte=dte,
@@ -692,8 +774,8 @@ async def api_quick_strangle(
 
     return {
         "status": "ok",
-        "chain_source": "synthetic_bs",
-        "note": "Verify actual premiums in your broker before placing.",
+        "chain_source": chain_source,
+        "note": "Live premiums." if "live" in chain_source or "dhan" in chain_source else "Synthetic BS — verify premiums in broker.",
         "position": pos.as_dict(),
         "regime": regime.as_dict(),
     }
