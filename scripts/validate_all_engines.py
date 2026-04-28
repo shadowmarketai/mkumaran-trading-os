@@ -391,17 +391,23 @@ def write_comparison_md(aggs: list[dict], output_path: Path) -> None:
                 return f"{v * 100:.0f}%"
             return f"{v:.{decimals}f}"
 
+        # win_rate from backtester is already 0-100 (e.g. 62.5 = 62.5%)
+        # sig_rate, consistency, bootstrap_robust_rate are 0-1 fractions
+        wr_str  = f"{wr:.1f}%" if wr is not None else "—"
+        sig_str = f"{sig * 100:.0f}%" if sig is not None else "—"
+        con_str = f"{cons * 100:.0f}%" if cons is not None else "—"
+        bs_str  = f"{bs * 100:.0f}%" if bs is not None else "—"
         lines.append(
             f"| **{agg['strategy']}** | {agg['interval']} "
             f"| {ok}/{tot} "
             f"| {_fmt(wf)} "
             f"| {_fmt(p25)}–{_fmt(p75)} "
             f"| {_fmt(pf)} "
-            f"| {_fmt(wr, pct=True)} "
-            f"| {_fmt(sig, pct=True)} "
-            f"| {_fmt(cons, pct=True)} "
+            f"| {wr_str} "
+            f"| {sig_str} "
+            f"| {con_str} "
             f"| {tr:,} "
-            f"| {_fmt(bs, pct=True)} "
+            f"| {bs_str} "
             f"| **{TIER_LABEL[tier]}** |"
         )
 

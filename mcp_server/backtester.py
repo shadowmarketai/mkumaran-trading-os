@@ -837,10 +837,11 @@ def run_backtest(
         "trades": trades[-20:],  # Last 20 trades for inspection
     }
 
+    sharpe_str = f"{metrics['sharpe_ratio']:.2f}" if metrics["sharpe_ratio"] is not None else "n/a"
     logger.info(
-        "Backtest %s (%s): %d trades, %.1f%% win rate, PF: %.2f, Sharpe: %.2f, Costs: %.2f",
+        "Backtest %s (%s): %d trades, %.1f%% win rate, PF: %.2f, Sharpe: %s, Costs: %.2f",
         ticker, strategy, metrics["total_trades"], metrics["win_rate"],
-        metrics["profit_factor"], metrics["sharpe_ratio"], total_costs,
+        metrics["profit_factor"], sharpe_str, total_costs,
     )
 
     return result
