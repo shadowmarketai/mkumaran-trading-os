@@ -624,6 +624,30 @@ async def api_open_positions():
         db.close()
 
 
+def _parse_dhan_chain_rows(raw_data: list) -> dict:
+    """Convert Dhan flat-row option_chain response to {strike: {CE: {...}, PE: {...}}}.
+
+    Dhan returns one row per strike×option_type (flat), not one row per strike
+    with CE/PE nested. Mirrors data_provider.DhanDataSource.get_option_chain.
+    """
+    chain: dict = {}
+    for row in raw_data:
+        strike = float(row.get("strikePrice", 0))
+        if strike <= 0:
+            continue
+        opt_type = row.get("optionType", "").upper()
+        if opt_type not in ("CE", "PE", "CALL", "PUT"):
+            continue
+        opt_type = "CE" if opt_type in ("CE", "CALL") else "PE"
+        if strike not in chain:
+            chain[strike] = {"CE": {"ltp": 0.0, "iv": 0.18}, "PE": {"ltp": 0.0, "iv": 0.18}}
+        chain[strike][opt_type] = {
+            "ltp": float(row.get("ltp", row.get("lastTradedPrice", 0)) or 0),
+            "iv": float(row.get("iv", row.get("impliedVolatility", 0.18)) or 0.18),
+        }
+    return chain
+
+
 @router.get("/api/options-seller/strangle/{instrument}/{spot}/{vix}")
 async def api_quick_strangle(
     instrument: str,
@@ -702,16 +726,7 @@ async def api_quick_strangle(
                             expiry=expiry,
                         )
                         raw_data = chain_resp.get("data", []) if isinstance(chain_resp, dict) else []
-                        for row in raw_data:
-                            strike = float(row.get("strikePrice", 0))
-                            if strike <= 0:
-                                continue
-                            ce_d = row.get("callOption", row.get("CE", {}))
-                            pe_d = row.get("putOption", row.get("PE", {}))
-                            chain[strike] = {
-                                "CE": {"ltp": float(ce_d.get("ltp", ce_d.get("lastPrice", 0)) or 0), "iv": float(ce_d.get("iv", ce_d.get("impliedVolatility", 0.18)) or 0.18)},
-                                "PE": {"ltp": float(pe_d.get("ltp", pe_d.get("lastPrice", 0)) or 0), "iv": float(pe_d.get("iv", pe_d.get("impliedVolatility", 0.18)) or 0.18)},
-                            }
+                        chain = _parse_dhan_chain_rows(raw_data)
                         if chain:
                             chain_source = f"dhan_live ({expiry}, {seg})"
                             atm_iv_val = chain.get(round(spot / step) * step, {}).get("CE", {}).get("iv", 0)
