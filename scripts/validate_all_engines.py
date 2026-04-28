@@ -61,6 +61,24 @@ logging.basicConfig(
 logger = logging.getLogger("validate")
 
 
+def _tg_notify(text: str) -> None:
+    """Fire-and-forget Telegram alert. Silent no-op if creds not set."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat  = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not token or not chat:
+        return
+    try:
+        import urllib.parse
+        import urllib.request
+        payload = urllib.parse.urlencode({"chat_id": chat, "text": text}).encode()
+        urllib.request.urlopen(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data=payload, timeout=5,
+        )
+    except Exception as e:
+        logger.debug("Telegram notify failed: %s", e)
+
+
 # ── Strategy registry ───────────────────────────────────────────────
 # Source of truth: backtester.py line 859.
 # pos_5ema needs 15m interval + Dhan backfill; all others use daily yfinance.
@@ -559,6 +577,14 @@ def main() -> None:
         total, elapsed_total / 60, ok_count, skip_count, err_count,
     )
     logger.info("Results → %s", md_path)
+
+    # Telegram completion alert (uses existing bot credentials from env)
+    _tg_notify(
+        f"✅ Validation complete\n"
+        f"{total} jobs in {elapsed_total / 60:.0f} min\n"
+        f"ok={ok_count} skip={skip_count} err={err_count}\n"
+        f"Table → reports/engine_comparison_{date.today()}.md"
+    )
 
     # Print the table to stdout for easy copy-paste
     print("\n" + md_path.read_text())

@@ -3,7 +3,7 @@
 > Living document. Updated at the end of every meaningful Claude Code session.
 > Every agent reads this FIRST before doing work.
 
-**Last updated:** 2026-04-25 by Claude Opus 4.7 (closure tasks + shadow observer + Dhan backfill)
+**Last updated:** 2026-04-28 by Claude Sonnet 4.6 (Dhan chain fix, paper-trade endpoint, validation harness)
 **Dossier version:** 5
 **Prior versions:** v1 2026-04-22 → v2 2026-04-23 → v3 2026-04-24 AM (Decimal + test-debt) → v4 2026-04-24 PM (router split complete)
 
@@ -95,9 +95,10 @@ Two independent scan loops run in parallel: a **daily-swing MWA loop** (default 
 Ordered by priority.
 
 - [ ] **CRITICAL** — Rotate prod DB password (exposed in chat 2026-04-25). Update Coolify env + restart.
-- [ ] **THIS WEEKEND** — Run Dhan intraday backfill in Coolify console: `python scripts/backfill_dhan_intraday.py --resume` (~1-2 hours). First-time: omit --resume. Smoke with `--ticker HDFCBANK` first to confirm creds work.
-- [ ] **SUNDAY** — Re-run `POST /tools/backtest_validate?ticker=HDFCBANK&strategy=pos_5ema&days=1095&n_simulations=1000&n_bootstrap=500&n_windows=5` after backfill. Expect hundreds of trades (not 0-1). Paste JSON for decision gate.
-- [ ] **DECISION** — Promote pos_5ema weight 0→0.10 if walk-forward Sharpe > 1.2. Kill if < 0.8. Hold at 0 if between.
+- [ ] **SAT EVENING** — Run POC smoke first: `python scripts/validate_all_engines.py --poc` (3 min). Then overnight: `python scripts/validate_all_engines.py --workers 4 --resume`. Validates rrms/smc/wyckoff/vsa/harmonic/confluence across Nifty 100.
+- [ ] **SAT PARALLEL** — Dhan backfill: `python scripts/backfill_dhan_intraday.py --ticker HDFCBANK` (smoke), then `python scripts/backfill_dhan_intraday.py --resume` (full, ~1-2h).
+- [ ] **SUN MORNING** — Add pos_5ema: `python scripts/validate_all_engines.py --strategy pos_5ema --resume`. Then paste `reports/engine_comparison_<date>.md` to Claude for tier analysis.
+- [ ] **DECISION (post-Sunday)** — Tier ranking, weights per engine, kill list. Driven by the comparison table. Criteria: Tier 1 = WF Sharpe ≥ 1.0 + PF ≥ 1.5 + sig_rate ≥ 40%; Tier 2 = WF Sharpe ≥ 0.5; Tier 3 = below; Tier 4 = no data.
 - [ ] **MED** — Rotate prod DB password (see CRITICAL above).
 - [x] ~~Add `pos_5ema` to dashboard Backtesting strategy dropdown~~ — already in STRATEGY_META + strategies array (BacktestingPage.tsx:72,279). Stale TODO.
 - [ ] **LOW** — Tax export module needs real Outcome rows to validate — test after a few signals close.
@@ -245,6 +246,12 @@ Sensitive env highlights:
 ---
 
 ## Session log
+
+### 2026-04-28 (continued) — Paper-trade endpoint + validation harness
+- Worked on: (1) Found greeks_refresh_loop importing `get_options_chain` from options_selector — function didn't exist. Added it (Dhan IDX_I → NSE → empty fallback). (2) No endpoint to open positions — position_manager.open_position() was complete but never called. Added `POST /api/options-seller/open` to router + wired to public paths. (3) Built `scripts/validate_all_engines.py` — full portfolio validation harness: 7 strategies × Nifty 100 × Monte Carlo + Bootstrap + Walk-Forward, checkpoint/resume, Telegram notification on completion, comparison markdown with tier classification. POC ran cleanly end-to-end.
+- Completed: PR #64 merged. 4 commits pushed to main (`ebe78d2`, `644c032`, `aa1a22e`, notification fix).
+- Blocked on: yfinance/NSE blocked in local dev — script verified clean; full data run must be on Coolify.
+- Next up: operator runs validation harness + Dhan backfill this weekend. Sunday: paste comparison table.
 
 ### 2026-04-28 — Dhan option chain parser fix + tests
 - Worked on: Bug in `fix/dhan-option-chain` branch — `_parse_dhan_chain_rows` helper. Previous commit `64d99c9` introduced grouped-format parsing (`callOption`/`putOption`) but Dhan returns flat rows with `optionType`. Bug caused chain to always have `ltp=0` → `build_strangle` failed with "Could not build" despite `chain_source=dhan_live`.
