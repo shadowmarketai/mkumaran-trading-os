@@ -589,6 +589,93 @@ async def api_evaluate_adjustment(
     return {"status": "ok", "decision": decision.as_dict()}
 
 
+@router.post("/api/options-seller/open")
+async def api_open_position(
+    instrument: str,
+    spot: float,
+    vix: float,
+    dte: int = 7,
+    lots: int = 1,
+    paper_mode: bool = True,
+    target_delta: float = 0.15,
+    structure: str = "IRON_CONDOR",
+    wings: int = 1,
+):
+    """Open an options seller position (iron condor or naked strangle).
+
+    Builds a live chain (Dhan → NSE → synthetic BS), runs gate checks
+    (IV regime, event calendar, market regime), then persists the position
+    to options_seller_positions and sends a Telegram alert.
+
+    Defaults to paper_mode=true — set paper_mode=false for live orders.
+
+    Example:
+      POST /api/options-seller/open?instrument=BANKNIFTY&spot=56322&vix=16.5
+    """
+    import asyncio
+    from mcp_server.options_seller.position_manager import open_position
+    from mcp_server.options_selector import get_options_chain
+    from mcp_server.options_greeks import calculate_greeks
+
+    inst = instrument.upper()
+    STEP_MAP = {
+        "BANKNIFTY": 100.0, "NIFTY": 50.0, "MIDCPNIFTY": 25.0,
+        "FINNIFTY": 50.0, "SENSEX": 100.0, "BANKEX": 100.0,
+    }
+    step = STEP_MAP.get(inst, 100.0)
+    iv = 0.18
+
+    # IV regime pre-check (fast fail before fetching chain)
+    from mcp_server.options_seller.iv_engine import classify_iv, _fetch_vix_history
+    vix_history = await asyncio.to_thread(_fetch_vix_history, 252)
+    hist_90 = vix_history[-90:] if len(vix_history) >= 90 else vix_history
+    hist_1y = vix_history[-252:] if len(vix_history) >= 252 else vix_history
+    regime = classify_iv(inst, vix, hist_90, hist_1y)
+    if not regime.sell_premium_ok:
+        return {
+            "status": "blocked",
+            "reason": f"IV regime {regime.label} — {regime.reason}",
+            "regime": regime.as_dict(),
+        }
+
+    # Fetch live chain (Dhan → NSE → synthetic BS fallback)
+    chain: dict = await asyncio.to_thread(get_options_chain, inst)
+    if not chain:
+        atm = round(spot / step) * step
+        for i in range(-15, 16):
+            strike = atm + i * step
+            if strike <= 0:
+                continue
+            ce = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="CE")
+            pe = calculate_greeks(spot, strike, max(dte, 0.1), volatility=iv, option_type="PE")
+            chain[float(strike)] = {
+                "CE": {"ltp": max(ce.price, 0.5), "iv": iv},
+                "PE": {"ltp": max(pe.price, 0.5), "iv": iv},
+            }
+
+    # open_position runs remaining gates (event calendar, market regime) + persists
+    position_id = await asyncio.to_thread(
+        open_position,
+        inst, spot, chain, dte, lots, paper_mode, target_delta, structure, wings,
+    )
+
+    if position_id is None:
+        return {
+            "status": "blocked",
+            "reason": "Gate check failed (event calendar, market regime, or strangle build). Check server logs.",
+        }
+
+    return {
+        "status": "ok",
+        "position_id": position_id,
+        "instrument": inst,
+        "dte": dte,
+        "lots": lots,
+        "paper_mode": paper_mode,
+        "regime": regime.as_dict(),
+    }
+
+
 @router.post("/api/options-seller/close/{position_id}")
 async def api_close_position(position_id: int, reason: str = "manual"):
     """Close an open options seller position and log the exit."""

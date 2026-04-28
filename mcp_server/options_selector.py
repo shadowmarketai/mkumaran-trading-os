@@ -684,3 +684,90 @@ def build_option_recommendation(
         "option_reward_per_lot": plan.get("reward_per_lot", 0),
         "option_rrr": plan.get("option_rrr", 0),
     }
+
+
+# ── Public chain helper (used by greeks_refresh_loop + open endpoint) ──────
+
+
+# Dhan underlying security IDs for index options (IDX_I segment)
+_IDX_SEC_IDS: dict[str, str] = {
+    "BANKNIFTY": "25", "NIFTY": "13", "FINNIFTY": "27",
+    "MIDCPNIFTY": "11915", "SENSEX": "1", "BANKEX": "2",
+}
+
+
+def get_options_chain(instrument: str) -> dict:
+    """Fetch live option chain for an index or stock instrument.
+
+    Returns {strike: {"CE": {"ltp": float, "iv": float}, "PE": {...}}}.
+    Falls back through Dhan (IDX_I/NSE_FNO) → NSE API → empty dict.
+    Used by greeks_refresh_loop and the /api/options-seller/open endpoint.
+    """
+    from datetime import date as _date
+
+    inst = instrument.upper()
+    chain: dict = {}
+
+    # 1. Dhan — IDX_I for indices, NSE_EQ for stocks
+    try:
+        from mcp_server.data_provider import get_provider
+        from mcp_server.routers.options import _parse_dhan_chain_rows
+        dhan = get_provider().dhan
+        if dhan.logged_in:
+            sec_id = _IDX_SEC_IDS.get(inst)
+            segs = ("IDX_I", "NSE_FNO") if sec_id else ()
+            if not sec_id:
+                sec_id = dhan._resolve_security_id(inst, "NSE")
+                segs = ("NSE_EQ",) if sec_id else ()
+            today_str = str(_date.today())
+            for seg in segs:
+                try:
+                    exp_resp = dhan.client.expiry_list(
+                        under_security_id=sec_id,
+                        under_exchange_segment=seg,
+                    )
+                    expiries = exp_resp.get("data", []) if isinstance(exp_resp, dict) else []
+                    valid = sorted(str(e) for e in expiries if str(e) >= today_str)
+                    if not valid:
+                        continue
+                    expiry = valid[0]
+                    chain_resp = dhan.client.option_chain(
+                        under_security_id=sec_id,
+                        under_exchange_segment=seg,
+                        expiry=expiry,
+                    )
+                    raw = chain_resp.get("data", []) if isinstance(chain_resp, dict) else []
+                    chain = _parse_dhan_chain_rows(raw)
+                    if chain:
+                        logger.debug("get_options_chain %s via dhan (%s, %s)", inst, seg, expiry)
+                        return chain
+                except Exception as e:
+                    logger.debug("Dhan chain %s/%s: %s", inst, seg, e)
+    except Exception as e:
+        logger.debug("get_options_chain dhan outer: %s", e)
+
+    # 2. NSE free API
+    if not chain:
+        try:
+            from mcp_server.data_provider import get_provider
+            nse = get_provider().nse
+            raw_nse = nse.get_option_chain(inst)
+            records = raw_nse.get("records", raw_nse.get("filtered", {}))
+            for row in records.get("data", []):
+                strike = float(row.get("strikePrice", 0))
+                if strike <= 0:
+                    continue
+                ce_raw = row.get("CE", {})
+                pe_raw = row.get("PE", {})
+                if not ce_raw and not pe_raw:
+                    continue
+                chain[strike] = {
+                    "CE": {"ltp": float(ce_raw.get("lastPrice", 0) or 0), "iv": float(ce_raw.get("impliedVolatility", 18) or 18) / 100},
+                    "PE": {"ltp": float(pe_raw.get("lastPrice", 0) or 0), "iv": float(pe_raw.get("impliedVolatility", 18) or 18) / 100},
+                }
+            if chain:
+                logger.debug("get_options_chain %s via nse_api (%d strikes)", inst, len(chain))
+        except Exception as e:
+            logger.debug("get_options_chain nse: %s", e)
+
+    return chain

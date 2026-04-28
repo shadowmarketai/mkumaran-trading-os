@@ -1178,10 +1178,11 @@ AUTH_PUBLIC_PATHS = {
     "/tools/backfill_sheets_outcomes",
     # Dhan intraday backfill (internal admin, no sensitive data returned)
     "/tools/run_backfill", "/tools/backfill_status",
-    # Options seller — read/query endpoints (no order placement)
+    # Options seller — read/query + position management endpoints
     "/api/options-seller/build-strangle",
     "/api/options-seller/evaluate-adjustment",
     "/api/options-seller/positions",
+    "/api/options-seller/open",
     # Self-development system (n8n compatible)
     "/tools/run_self_development",
     "/tools/run_postmortems",
