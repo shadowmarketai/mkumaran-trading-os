@@ -31,7 +31,13 @@ logger = logging.getLogger(__name__)
 LARGE_CAP_SLIPPAGE = 0.0005    # 0.05% — Nifty 50 + BankNifty constituents
 MID_CAP_SLIPPAGE = 0.002       # 0.20% — Nifty Next 50 / Nifty Midcap 150
 SMALL_CAP_SLIPPAGE = 0.003     # 0.30% — Smallcap 250 and below
-DEFAULT_SLIPPAGE_PCT = SMALL_CAP_SLIPPAGE  # Conservative default
+DEFAULT_SLIPPAGE_PCT = SMALL_CAP_SLIPPAGE  # Conservative default for daily
+
+# Intraday (15m) slippage: 0.1% per side — much tighter than daily.
+# On 15m bars, stops are 0.4-1% from entry. At 0.3% per side (0.6% round-trip)
+# slippage alone eats the entire stop buffer, inflating losses 3-5× intended.
+# Large-cap NSE market-impact on a 100-share intraday order is 0.05-0.10%.
+INTRADAY_SLIPPAGE_PCT = 0.001   # 0.10% per side
 
 BROKERAGE_PER_ORDER = 20.0     # Flat Rs.20 per order (Zerodha)
 
@@ -387,6 +393,12 @@ def _simulate_trades(
     last_exit_bar = -1
 
     for sig in signals:
+        # Bankruptcy guard: stop simulation if capital is exhausted.
+        # Without this, equity can go negative, which inverts per-trade
+        # return signs and inflates walk-forward Sharpe into meaninglessness.
+        if current_capital <= 0:
+            break
+
         i = sig["bar_idx"]
 
         # Don't overlap trades
@@ -710,7 +722,7 @@ def run_backtest(
     strategy: str = "rrms",
     days: int = 1095,  # Default 3 years (was 365)
     capital: float = 100000,
-    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+    slippage_pct: float | None = None,  # None = auto-select by interval
     interval: str = "1d",
 ) -> dict:
     """
@@ -785,6 +797,12 @@ def run_backtest(
         signals = generate_signals_for_backtest(data_5ema, ticker, capital)
     else:
         signals = _generate_rrms_signals(data, ticker, capital)
+
+    # Auto-select slippage by interval if not explicitly passed.
+    # 15m intraday: 0.1% per side (tight stops need tighter slippage model).
+    # Daily: 0.3% per side (conservative, matches small-cap daily liquidity).
+    if slippage_pct is None:
+        slippage_pct = INTRADAY_SLIPPAGE_PCT if interval != "1d" else DEFAULT_SLIPPAGE_PCT
 
     # Simulate trades with slippage and costs
     trades, equity, total_costs = _simulate_trades(

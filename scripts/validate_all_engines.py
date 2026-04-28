@@ -180,11 +180,6 @@ def run_one(
     from mcp_server.backtester import run_backtest
     from mcp_server.backtest_validation import run_full_validation, summarise
 
-    # Correct annualisation factor per interval:
-    #   1d  → 252 trading days/year
-    #   15m → 252 days × 25 bars/day (NSE 09:15-15:30 = 375 min / 15) = 6300
-    BARS_PER_YEAR = 6300 if interval == "15m" else 252
-
     t0 = time.monotonic()
     try:
         bt = run_backtest(ticker, strategy=strategy, days=days, interval=interval)
@@ -202,10 +197,8 @@ def run_one(
         validation = run_full_validation(
             bt,
             monte_carlo_kwargs={"n_simulations": VALIDATION_CONFIG["n_simulations"]},
-            bootstrap_kwargs=  {"n_bootstrap":   VALIDATION_CONFIG["n_bootstrap"],
-                                "bars_per_year": BARS_PER_YEAR},
-            walk_forward_kwargs={"n_windows":    VALIDATION_CONFIG["n_windows"],
-                                 "bars_per_year": BARS_PER_YEAR},
+            bootstrap_kwargs=  {"n_bootstrap":   VALIDATION_CONFIG["n_bootstrap"]},
+            walk_forward_kwargs={"n_windows":    VALIDATION_CONFIG["n_windows"]},
         )
 
         result = {
