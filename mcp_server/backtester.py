@@ -744,6 +744,10 @@ def run_backtest(
     """
     from mcp_server.nse_scanner import get_stock_data
 
+    # Resolve slippage early so the log line and any early-return paths see a valid float.
+    if slippage_pct is None:
+        slippage_pct = INTRADAY_SLIPPAGE_PCT if interval != "1d" else DEFAULT_SLIPPAGE_PCT
+
     logger.info(
         "Starting backtest: %s with %s strategy over %d days interval=%s (slippage=%.1f%%)",
         ticker, strategy, days, interval, slippage_pct * 100,
@@ -797,12 +801,6 @@ def run_backtest(
         signals = generate_signals_for_backtest(data_5ema, ticker, capital)
     else:
         signals = _generate_rrms_signals(data, ticker, capital)
-
-    # Auto-select slippage by interval if not explicitly passed.
-    # 15m intraday: 0.1% per side (tight stops need tighter slippage model).
-    # Daily: 0.3% per side (conservative, matches small-cap daily liquidity).
-    if slippage_pct is None:
-        slippage_pct = INTRADAY_SLIPPAGE_PCT if interval != "1d" else DEFAULT_SLIPPAGE_PCT
 
     # Simulate trades with slippage and costs
     trades, equity, total_costs = _simulate_trades(
