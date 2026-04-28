@@ -353,3 +353,69 @@ def test_banknifty_lot_size_is_15():
 
 def test_nifty_lot_size_is_25():
     assert LOT_SIZES["NIFTY"] == 25
+
+
+# ── Dhan chain row parser ───────────────────────────────────────────
+
+def test_parse_dhan_chain_rows_flat_format():
+    """Dhan returns flat rows (one per strike×type). Parser must group them."""
+    from mcp_server.routers.options import _parse_dhan_chain_rows
+
+    raw = [
+        {"strikePrice": 24500, "optionType": "CE", "ltp": 120.5, "iv": 0.16},
+        {"strikePrice": 24500, "optionType": "PE", "ltp": 85.0,  "iv": 0.17},
+        {"strikePrice": 24550, "optionType": "CE", "ltp": 95.0,  "iv": 0.15},
+        {"strikePrice": 24550, "optionType": "PE", "ltp": 110.0, "iv": 0.18},
+    ]
+    chain = _parse_dhan_chain_rows(raw)
+
+    assert set(chain.keys()) == {24500.0, 24550.0}
+    assert chain[24500.0]["CE"]["ltp"] == 120.5
+    assert chain[24500.0]["PE"]["ltp"] == 85.0
+    assert chain[24550.0]["CE"]["ltp"] == 95.0
+    assert chain[24550.0]["PE"]["ltp"] == 110.0
+
+
+def test_parse_dhan_chain_rows_grouped_format_returns_zero_ltp():
+    """Grouped format (callOption/putOption) yields empty LTPs — not a valid chain."""
+    from mcp_server.routers.options import _parse_dhan_chain_rows
+
+    # Simulate what the old broken code used to produce: rows grouped with callOption/putOption
+    raw = [
+        {
+            "strikePrice": 24500,
+            "callOption": {"ltp": 120.5, "iv": 0.16},
+            "putOption":  {"ltp": 85.0,  "iv": 0.17},
+        }
+    ]
+    # No optionType key → row is skipped entirely → empty chain
+    chain = _parse_dhan_chain_rows(raw)
+    assert chain == {}
+
+
+def test_parse_dhan_chain_rows_call_put_aliases():
+    """CALL/PUT aliases normalize to CE/PE."""
+    from mcp_server.routers.options import _parse_dhan_chain_rows
+
+    raw = [
+        {"strikePrice": 24500, "optionType": "CALL", "ltp": 100.0, "iv": 0.18},
+        {"strikePrice": 24500, "optionType": "PUT",  "ltp": 90.0,  "iv": 0.19},
+    ]
+    chain = _parse_dhan_chain_rows(raw)
+    assert "CE" in chain[24500.0]
+    assert "PE" in chain[24500.0]
+    assert chain[24500.0]["CE"]["ltp"] == 100.0
+    assert chain[24500.0]["PE"]["ltp"] == 90.0
+
+
+def test_parse_dhan_chain_rows_skips_invalid_strikes():
+    """Zero or negative strikes are ignored."""
+    from mcp_server.routers.options import _parse_dhan_chain_rows
+
+    raw = [
+        {"strikePrice": 0,    "optionType": "CE", "ltp": 10.0, "iv": 0.18},
+        {"strikePrice": -100, "optionType": "PE", "ltp": 10.0, "iv": 0.18},
+        {"strikePrice": 24500, "optionType": "CE", "ltp": 120.0, "iv": 0.16},
+    ]
+    chain = _parse_dhan_chain_rows(raw)
+    assert list(chain.keys()) == [24500.0]

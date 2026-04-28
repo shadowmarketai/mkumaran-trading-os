@@ -95,11 +95,11 @@ Two independent scan loops run in parallel: a **daily-swing MWA loop** (default 
 Ordered by priority.
 
 - [ ] **CRITICAL** — Rotate prod DB password (exposed in chat 2026-04-25). Update Coolify env + restart.
-- [ ] **THIS WEEKEND** — Run Dhan intraday backfill: `python scripts/backfill_dhan_intraday.py` in Coolify console. ~1-2 hours. Fills ohlcv_cache with 5Y × 15-min × Nifty 100.
+- [ ] **THIS WEEKEND** — Run Dhan intraday backfill in Coolify console: `python scripts/backfill_dhan_intraday.py --resume` (~1-2 hours). First-time: omit --resume. Smoke with `--ticker HDFCBANK` first to confirm creds work.
 - [ ] **SUNDAY** — Re-run `POST /tools/backtest_validate?ticker=HDFCBANK&strategy=pos_5ema&days=1095&n_simulations=1000&n_bootstrap=500&n_windows=5` after backfill. Expect hundreds of trades (not 0-1). Paste JSON for decision gate.
 - [ ] **DECISION** — Promote pos_5ema weight 0→0.10 if walk-forward Sharpe > 1.2. Kill if < 0.8. Hold at 0 if between.
 - [ ] **MED** — Rotate prod DB password (see CRITICAL above).
-- [ ] **MED** — Add `pos_5ema` to dashboard Backtesting strategy dropdown (frontend wiring, 30 min).
+- [x] ~~Add `pos_5ema` to dashboard Backtesting strategy dropdown~~ — already in STRATEGY_META + strategies array (BacktestingPage.tsx:72,279). Stale TODO.
 - [ ] **LOW** — Tax export module needs real Outcome rows to validate — test after a few signals close.
 - [ ] **LOW** — Options seller: paper trade 30 days once `options_seller_positions` table is used.
 
@@ -245,6 +245,12 @@ Sensitive env highlights:
 ---
 
 ## Session log
+
+### 2026-04-28 — Dhan option chain parser fix + tests
+- Worked on: Bug in `fix/dhan-option-chain` branch — `_parse_dhan_chain_rows` helper. Previous commit `64d99c9` introduced grouped-format parsing (`callOption`/`putOption`) but Dhan returns flat rows with `optionType`. Bug caused chain to always have `ltp=0` → `build_strangle` failed with "Could not build" despite `chain_source=dhan_live`.
+- Fixed: Extracted `_parse_dhan_chain_rows()` helper to `mcp_server/routers/options.py:627` (mirrors `data_provider.DhanDataSource.get_option_chain`). Added 4 unit tests to `tests/test_options_seller.py`. All pass; ruff clean.
+- Confirmed stale: "Add pos_5ema to backtesting dropdown" TODO — was already in STRATEGY_META + strategies array since a prior session.
+- Next up: PR + merge `fix/dhan-option-chain` → main. Then operator runs backfill in Coolify.
 
 ### 2026-04-22 — `onboarder` initial repo dossier
 - Worked on: Phase 1–7 onboarding per `agents/onboarder.md`
