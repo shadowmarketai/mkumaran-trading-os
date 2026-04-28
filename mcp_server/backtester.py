@@ -44,6 +44,13 @@ STT_PCT = STT_DELIVERY_SELL    # Back-compat alias; delivery is the default
 GST_PCT = 0.18                 # 18% GST on brokerage + exchange + SEBI
 STAMP_DUTY_PCT = 0.00015       # 0.015% stamp duty (buy side)
 
+# Minimum stop distance for daily-bar backtests.
+# Intraday price range on Nifty large-caps is typically 1-3% on any given day.
+# A stop tighter than 0.5% will be hit by normal daily volatility before the
+# target has any chance of being reached — producing artificially low win rates.
+# Applied in _generate_rrms_signals only (engine signals use ATR×1.5, already OK).
+MIN_DAILY_STOP_PCT = 0.005   # 0.5% minimum stop from entry
+
 
 class RRMSStrategy:
     """RRMS strategy for backtesting."""
@@ -242,6 +249,25 @@ def _generate_rrms_signals(
 
         result = engine.calculate(ticker, cmp, ltrp, pivot)
         if result.is_valid:
+            entry = float(result.entry_price)
+            risk = float(result.risk_per_share)
+
+            # Skip signals whose stop is tighter than MIN_DAILY_STOP_PCT.
+            # On daily bars the next bar's intraday range will blow through
+            # a sub-0.5% stop almost every time, producing spuriously low win
+            # rates. These setups are designed for intraday execution, not
+            # daily OHLCV simulation.
+            if entry > 0 and risk / entry < MIN_DAILY_STOP_PCT:
+                continue
+
+            # Cap position size: total exposure must not exceed capital.
+            # RRMS uses risk-based sizing that can reach 40× leverage when
+            # stop is very tight; cap to 1× capital as a hard floor.
+            qty = result.qty
+            if entry > 0:
+                max_qty = max(1, int(capital / entry))
+                qty = min(qty, max_qty)
+
             # RRMSResult lives in the Decimal zone; backtester lives in the
             # analysis zone (numpy/pandas OHLCV). Cross the boundary here so
             # downstream _simulate_trades can multiply against float slippage
@@ -249,11 +275,11 @@ def _generate_rrms_signals(
             signals.append({
                 "bar_idx": i,
                 "direction": "LONG",
-                "entry": float(result.entry_price),
+                "entry": entry,
                 "stop_loss": float(result.stop_loss),
                 "target": float(result.target),
-                "qty": result.qty,
-                "risk_per_share": float(result.risk_per_share),
+                "qty": qty,
+                "risk_per_share": risk,
                 "reward_per_share": float(result.reward_per_share),
                 "source": "rrms",
                 "confidence": 60,
