@@ -56,15 +56,19 @@ logger = logging.getLogger("nse_bhav_backfill")
 # ── Constants ───────────────────────────────────────────────────────
 
 UNDERLYING = "BANKNIFTY"
-NSE_BHAV_URL = (
-    "https://archives.nseindia.com/content/historical/DERIVATIVES"
-    "/{year}/{mon}/fo{dd}{mon}{year}bhav.csv.zip"
-)
-# Fallback URL for older format
-NSE_BHAV_URL_ALT = (
-    "https://archives.nseindia.com/archives/fo/bhav"
-    "/fo{dd}{mon}{year}bhav.csv.zip"
-)
+
+# NSE changed their bhavcopy URL format in mid-2024.
+# The script tries all known formats in order — first match wins.
+NSE_BHAV_URLS = [
+    # Format 1: archives.nseindia.com historical path (works for ~2020–Jun 2024)
+    "https://archives.nseindia.com/content/historical/DERIVATIVES/{year}/{mon}/fo{dd}{mon}{year}bhav.csv.zip",
+    # Format 2: older archives path (fallback for Format 1)
+    "https://archives.nseindia.com/archives/fo/bhav/fo{dd}{mon}{year}bhav.csv.zip",
+    # Format 3: nsearchives.nseindia.com — new domain, new naming (Jul 2024+)
+    "https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{ymd}_F_0000.csv.zip",
+    # Format 4: nsearchives alternate path
+    "https://nsearchives.nseindia.com/archives/fo/bhav/fo{dd}{mon}{year}bhav.csv.zip",
+]
 
 SLEEP_BETWEEN_DAYS = 0.3    # seconds — be gentle with NSE servers
 MAX_RETRIES = 3
@@ -129,11 +133,9 @@ def _fetch_bhav(trade_date: date):
     dd  = trade_date.strftime("%d")
     mon = NSE_MONTHS[trade_date.month]
     yr  = trade_date.strftime("%Y")
+    ymd = trade_date.strftime("%Y%m%d")   # for new-format URLs
 
-    urls = [
-        NSE_BHAV_URL.format(year=yr, mon=mon, dd=dd),
-        NSE_BHAV_URL_ALT.format(year=yr, mon=mon, dd=dd),
-    ]
+    urls = [u.format(year=yr, mon=mon, dd=dd, ymd=ymd) for u in NSE_BHAV_URLS]
 
     for url in urls:
         for attempt in range(MAX_RETRIES):
@@ -148,17 +150,32 @@ def _fetch_bhav(trade_date: date):
                     with zf.open(csv_name) as f:
                         df = pd.read_csv(f)
 
-                # Keep only BankNifty index options
                 df.columns = [c.strip() for c in df.columns]
-                bn = df[
-                    df["SYMBOL"].astype(str).str.strip().str.upper() == "BANKNIFTY"
-                ]
-                bn = bn[bn["INSTRUMENT"].astype(str).str.strip().str.upper() == "OPTIDX"]
+
+                # Handle two known bhavcopy column schemas:
+                # Old (pre-2024): INSTRUMENT, SYMBOL, EXPIRY_DT, STRIKE_PR, OPTION_TYP
+                # New (2024+):    FinInstrmTp / varies — detect by presence of SYMBOL
+                if "SYMBOL" in df.columns and "INSTRUMENT" in df.columns:
+                    bn = df[df["SYMBOL"].astype(str).str.strip().str.upper() == "BANKNIFTY"]
+                    bn = bn[bn["INSTRUMENT"].astype(str).str.strip().str.upper() == "OPTIDX"]
+                else:
+                    # New schema: look for BANKNIFTY in any string column
+                    str_cols = df.select_dtypes(include="object").columns
+                    mask = df[str_cols].apply(
+                        lambda col: col.astype(str).str.strip().str.upper() == "BANKNIFTY"
+                    ).any(axis=1)
+                    bn = df[mask]
+
+                if bn.empty:
+                    logger.debug("%s: URL worked but no BANKNIFTY rows — wrong schema?", trade_date)
+                    break  # Try next URL
+
+                logger.debug("%s: fetched %d rows via %s", trade_date, len(bn), url.split("/")[-1])
                 return bn
 
             except urllib.error.HTTPError as e:
                 if e.code == 404:
-                    return None   # Not a trading day (holiday / weekend)
+                    break   # This URL format is wrong for this date — try next
                 logger.debug("HTTP %d for %s attempt %d", e.code, trade_date, attempt + 1)
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(1.0 * (attempt + 1))
@@ -167,7 +184,7 @@ def _fetch_bhav(trade_date: date):
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(1.0 * (attempt + 1))
 
-    return None
+    return None   # All URLs exhausted — likely a holiday
 
 
 def _parse_bhav_rows(bn_df, trade_date: date) -> list[dict]:
