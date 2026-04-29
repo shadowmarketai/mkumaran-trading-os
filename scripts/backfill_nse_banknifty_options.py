@@ -187,27 +187,61 @@ def _fetch_bhav(trade_date: date):
     return None   # All URLs exhausted — likely a holiday
 
 
+def _col(row, *candidates, default=""):
+    """Try multiple column name candidates, return first non-empty value."""
+    for c in candidates:
+        v = row.get(c)
+        if v is not None and str(v).strip() not in ("", "nan", "-"):
+            return str(v).strip()
+    return default
+
+
 def _parse_bhav_rows(bn_df, trade_date: date) -> list[dict]:
-    """Convert bhavcopy DataFrame to list of bar dicts for DB insert."""
+    """Convert bhavcopy DataFrame to list of bar dicts.
+
+    Handles two NSE bhavcopy column schemas:
+      Old (2020–mid-2024): EXPIRY_DT, STRIKE_PR, OPTION_TYP, OPEN, HIGH, LOW, CLOSE, CONTRACTS, OPEN_INT
+      New (2024+):         XpryDt, StrkPric, OptnTp, OpnPric, HghPric, LwPric, ClsPric, TtlTradgVol, OpnIntrst
+    """
+    # Log columns on first call to aid debugging when 0 strikes are returned
+    cols = list(bn_df.columns)
+    logger.debug("bhavcopy columns: %s", cols[:15])
+
     bars = []
     for _, row in bn_df.iterrows():
         try:
-            expiry_raw = str(row.get("EXPIRY_DT", "") or "").strip()
-            # NSE bhavcopy expiry format: "25-JAN-2024" or "2024-01-25"
+            # ── Expiry ────────────────────────────────────────────
+            expiry_raw = _col(row, "EXPIRY_DT", "XpryDt", "ExprDt")
+            if not expiry_raw:
+                continue
             try:
-                if "-" in expiry_raw and len(expiry_raw) == 11:
+                if len(expiry_raw) == 11 and expiry_raw[2] == "-":
                     expiry = datetime.strptime(expiry_raw, "%d-%b-%Y").date()
                 else:
                     expiry = date.fromisoformat(expiry_raw[:10])
             except ValueError:
                 continue
 
-            strike = float(str(row.get("STRIKE_PR", "0") or "0").strip())
-            option_type = str(row.get("OPTION_TYP", "") or "").strip().upper()
-            if option_type not in ("CE", "PE"):
+            # ── Strike ────────────────────────────────────────────
+            strike_raw = _col(row, "STRIKE_PR", "StrkPric", "StrikePric", "STRIKEPRICE")
+            try:
+                strike = float(strike_raw or "0")
+            except ValueError:
                 continue
             if strike <= 0:
                 continue
+
+            # ── Option type ───────────────────────────────────────
+            option_type = _col(row, "OPTION_TYP", "OptnTp", "OptionType", "OPTIONTYPE").upper()
+            if option_type not in ("CE", "PE"):
+                continue
+
+            # ── OHLCV ─────────────────────────────────────────────
+            def _f(val: str) -> float:
+                try:
+                    return float(val or "0")
+                except ValueError:
+                    return 0.0
 
             bars.append({
                 "underlying":   UNDERLYING,
@@ -215,13 +249,13 @@ def _parse_bhav_rows(bn_df, trade_date: date) -> list[dict]:
                 "strike":       strike,
                 "option_type":  option_type,
                 "bar_time":     datetime.combine(trade_date, datetime.min.time()),
-                "open":         float(str(row.get("OPEN", "0") or "0").strip() or "0"),
-                "high":         float(str(row.get("HIGH", "0") or "0").strip() or "0"),
-                "low":          float(str(row.get("LOW", "0") or "0").strip() or "0"),
-                "close":        float(str(row.get("CLOSE", "0") or "0").strip() or "0"),
-                "volume":       int(float(str(row.get("CONTRACTS", "0") or "0").strip() or "0")),
-                "oi":           int(float(str(row.get("OPEN_INT", "0") or "0").strip() or "0")),
-                "source":       "nse_bhav",
+                "open":   _f(_col(row, "OPEN",  "OpnPric",  "OpenPrice")),
+                "high":   _f(_col(row, "HIGH",  "HghPric",  "HighPrice")),
+                "low":    _f(_col(row, "LOW",   "LwPric",   "LowPrice")),
+                "close":  _f(_col(row, "CLOSE", "ClsPric",  "ClosePrice", "SttlmntPric")),
+                "volume": int(_f(_col(row, "CONTRACTS",   "TtlTradgVol", "Volume"))),
+                "oi":     int(_f(_col(row, "OPEN_INT",    "OpnIntrst",   "OpenInterest"))),
+                "source": "nse_bhav",
             })
         except (ValueError, TypeError):
             continue
@@ -323,6 +357,8 @@ def main() -> None:
                         help="Test a sample of dates before committing to full run")
     parser.add_argument("--dry-run", action="store_true",
                         help="Fetch and parse but don't write to DB")
+    parser.add_argument("--diagnose-date", default=None,
+                        help="Print raw column names for one date (YYYY-MM-DD) and exit")
     args = parser.parse_args()
 
     if args.month:
@@ -335,6 +371,17 @@ def main() -> None:
     else:
         from_date = date.fromisoformat(args.from_date)
         to_date   = date.fromisoformat(args.to_date)
+
+    if args.diagnose_date:
+        d = date.fromisoformat(args.diagnose_date)
+        df = _fetch_bhav(d)
+        if df is None or df.empty:
+            print(f"No data for {d}")
+        else:
+            print(f"Columns ({len(df.columns)}): {list(df.columns)}")
+            print(f"Rows: {len(df)}")
+            print(f"Sample row:\n{df.iloc[0].to_string()}")
+        return
 
     if args.check_coverage:
         check_coverage(from_date, to_date)
