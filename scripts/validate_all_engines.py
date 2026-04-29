@@ -82,15 +82,18 @@ def _tg_notify(text: str) -> None:
 # ── Strategy registry ───────────────────────────────────────────────
 # Source of truth: backtester.py line 859.
 # pos_5ema needs 15m interval + Dhan backfill; all others use daily yfinance.
+#
+# RRMS is NOT listed here. RRMS is a POSITION_SIZER, not an entry engine.
+# Backtesting it as a standalone entry source is a category error.
+# Validate RRMS via downstream P&L attribution on production signals instead.
 ENGINES: list[tuple[str, str, int]] = [
     # (strategy_name, interval, lookback_days)
-    ("rrms",       "1d",  1095),
     ("smc",        "1d",  1095),
     ("wyckoff",    "1d",  1095),
     ("vsa",        "1d",  1095),
     ("harmonic",   "1d",  1095),
     ("confluence", "1d",  1095),
-    ("pos_5ema",   "15m", 1095),  # skip until Dhan backfill is complete
+    ("pos_5ema",   "15m", 1095),
 ]
 
 # ── Universe ────────────────────────────────────────────────────────
