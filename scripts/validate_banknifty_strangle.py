@@ -583,14 +583,28 @@ def walk_forward(
     profitable_windows = [w for w in windows if w["profitable"]]
     consistency = len(profitable_windows) / len(windows)
     avg_ann_return = statistics.mean(w["ann_return_on_margin"] for w in windows)
-    avg_sharpe     = statistics.mean(w["sharpe"] for w in windows)
+
+    # Correct WF Sharpe: single Sharpe on the full chronological out-of-sample
+    # trade sequence. DO NOT average per-window Sharpes — small all-win windows
+    # have near-zero std, making per-window Sharpe → ∞ and the average meaningless.
+    first_test_start = _add_months(start_date, train_months)
+    wf_test_trades = sorted(
+        [t for t in live_trades if t["entry_date"] >= first_test_start],
+        key=lambda t: t["entry_date"],
+    )
+    wf_pnl_list = [t["net_pnl"] for t in wf_test_trades]
+    if len(wf_pnl_list) >= 2:
+        wf_span = max((wf_test_trades[-1]["entry_date"] - wf_test_trades[0]["entry_date"]).days, 1)
+        wf_overall_sharpe = _sharpe(wf_pnl_list, float(wf_span))
+    else:
+        wf_overall_sharpe = 0.0
 
     return {
         "n_windows": len(windows),
         "profitable_windows": len(profitable_windows),
         "consistency": round(consistency, 3),
         "avg_ann_return_on_margin": round(avg_ann_return, 4),
-        "avg_sharpe": round(avg_sharpe, 3),
+        "avg_sharpe": round(wf_overall_sharpe, 3),   # chronological OOS Sharpe
         "windows": windows,
     }
 
@@ -1081,11 +1095,14 @@ def main() -> None:
                         help="Disable VIX percentile gate (benchmark run)")
     parser.add_argument("--output-dir", default="reports",
                         help="Directory for output files")
+    parser.add_argument("--debug-vix", action="store_true",
+                        help="Print per-expiry VIX gate decision and stop (diagnostic only)")
     args = parser.parse_args()
 
     from_date = date.fromisoformat(args.from_date)
     to_date   = date.fromisoformat(args.to_date) if args.to_date else date.today()
     use_vix_gate = not args.no_vix_gate
+    debug_vix = args.debug_vix
 
     logger.info("=== BankNifty Short Strangle Validation ===")
     logger.info("Period: %s → %s | VIX gate: %s | MC runs: %d",
@@ -1111,6 +1128,42 @@ def main() -> None:
     if not spot_series:
         logger.error("No BankNifty spot data available. Cannot proceed.")
         sys.exit(1)
+
+    # ── VIX gate diagnostic (--debug-vix) ─────────────────────────────
+    if debug_vix:
+        print(f"\n{'Expiry':<12} {'Entry':<12} {'VIX':>6} {'Pct':>6} {'Gate':>6}  Decision")
+        print("-" * 65)
+        expiry_dates_all = sorted(options_data.keys())
+        for exp in expiry_dates_all:
+            dow = exp.weekday()
+            entry_monday = exp - timedelta(days=dow)
+            # Find actual entry date
+            all_dates: set = set()
+            for bars in options_data[exp].values():
+                all_dates.update(bars.keys())
+            valid = sorted(d for d in all_dates if entry_monday <= d < exp)
+            actual_entry = valid[0] if valid else entry_monday
+            vix = vix_series.get(actual_entry)
+            pct = vix_pct_series.get(actual_entry)
+            if vix is None:
+                decision = "SKIP (no VIX data)"
+            elif pct is None:
+                decision = "SKIP (no pct data)"
+            elif pct < VIX_LOW_PCT:
+                decision = f"REJECT (pct {pct:.2f} < {VIX_LOW_PCT} — low IV)"
+            elif pct > VIX_HIGH_PCT:
+                decision = f"REJECT (pct {pct:.2f} > {VIX_HIGH_PCT} — spike)"
+            else:
+                decision = f"ACCEPT (pct {pct:.2f})"
+            pct_str = f"{pct:.2f}" if pct is not None else "—"
+            vix_str = f"{vix:.1f}" if vix is not None else "—"
+            print(f"{exp!s:<12} {actual_entry!s:<12} {vix_str:>6} {pct_str:>6}  {decision}")
+        print(f"\nVIX range in data: [{min(vix_series.values()):.1f}, {max(vix_series.values()):.1f}]")
+        vix_vals = sorted(vix_series.values())
+        p30 = vix_vals[int(0.30 * len(vix_vals))]
+        p80 = vix_vals[int(0.80 * len(vix_vals))]
+        print(f"30th pct = {p30:.1f}, 80th pct = {p80:.1f} (global — rolling may differ)")
+        sys.exit(0)
 
     # ── Run simulations ────────────────────────────────────────────────
     expiry_dates = sorted(options_data.keys())
