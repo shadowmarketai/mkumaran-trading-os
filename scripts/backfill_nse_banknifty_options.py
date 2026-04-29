@@ -361,6 +361,8 @@ def main() -> None:
                         help="Skip already-completed dates")
     parser.add_argument("--check-coverage", action="store_true",
                         help="Test a sample of dates before committing to full run")
+    parser.add_argument("--stats", action="store_true",
+                        help="Print data quality stats from DB and exit")
     parser.add_argument("--dry-run", action="store_true",
                         help="Fetch and parse but don't write to DB")
     parser.add_argument("--diagnose-date", default=None,
@@ -391,6 +393,36 @@ def main() -> None:
 
     if args.check_coverage:
         check_coverage(from_date, to_date)
+        return
+
+    if args.stats:
+        from mcp_server.db import SessionLocal
+        from sqlalchemy import text as _text
+        db = SessionLocal()
+        r = db.execute(_text(
+            "SELECT COUNT(DISTINCT expiry_date), COUNT(DISTINCT strike), COUNT(*) "
+            "FROM options_chain_cache WHERE underlying=:u"
+        ), {"u": UNDERLYING}).fetchone()
+        r2 = db.execute(_text(
+            "SELECT MIN(bar_time), MAX(bar_time) FROM options_chain_cache WHERE underlying=:u"
+        ), {"u": UNDERLYING}).fetchone()
+        r3 = db.execute(_text(
+            "SELECT expiry_date, COUNT(DISTINCT strike) as strikes, COUNT(*) as rows "
+            "FROM options_chain_cache WHERE underlying=:u "
+            "GROUP BY expiry_date ORDER BY expiry_date DESC LIMIT 5"
+        ), {"u": UNDERLYING}).fetchall()
+        db.close()
+        print(f"\n{'='*50}")
+        print(f"options_chain_cache — {UNDERLYING}")
+        print(f"{'='*50}")
+        print(f"  Distinct expiries : {r[0]}")
+        print(f"  Distinct strikes  : {r[1]}")
+        print(f"  Total rows        : {r[2]:,}")
+        print(f"  Date range        : {r2[0]} → {r2[1]}")
+        print("\n  Last 5 expiries:")
+        for row in r3:
+            print(f"    {row[0]}  {row[1]} strikes  {row[2]:,} rows")
+        print(f"{'='*50}\n")
         return
 
     logger.info(
