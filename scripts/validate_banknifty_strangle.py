@@ -1166,7 +1166,25 @@ def main() -> None:
         sys.exit(0)
 
     # ── Run simulations ────────────────────────────────────────────────
-    expiry_dates = sorted(options_data.keys())
+    all_expiry_dates = sorted(options_data.keys())
+
+    # Deduplicate: when two expiry dates fall in the same expiry week
+    # (e.g., Dec 24/26 2024 both map to entry Monday Dec 23), keep only
+    # the EARLIER expiry — the one that actually expired first that week.
+    seen_entry_mondays: set[date] = set()
+    expiry_dates: list[date] = []
+    for exp in all_expiry_dates:
+        dow = exp.weekday()
+        entry_monday = exp - timedelta(days=dow)
+        if entry_monday not in seen_entry_mondays:
+            seen_entry_mondays.add(entry_monday)
+            expiry_dates.append(exp)
+
+    if len(expiry_dates) < len(all_expiry_dates):
+        logger.info(
+            "Deduplicated same-week expiries: %d → %d unique expiry weeks",
+            len(all_expiry_dates), len(expiry_dates),
+        )
     logger.info("Found %d expiry dates to simulate", len(expiry_dates))
 
     trades: list[dict] = []
