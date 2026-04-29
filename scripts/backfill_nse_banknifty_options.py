@@ -214,12 +214,18 @@ def _parse_bhav_rows(bn_df, trade_date: date) -> list[dict]:
             expiry_raw = _col(row, "EXPIRY_DT", "XpryDt", "ExprDt")
             if not expiry_raw:
                 continue
-            try:
-                if len(expiry_raw) == 11 and expiry_raw[2] == "-":
-                    expiry = datetime.strptime(expiry_raw, "%d-%b-%Y").date()
-                else:
-                    expiry = date.fromisoformat(expiry_raw[:10])
-            except ValueError:
+            # NSE uses multiple formats across years:
+            # "27JAN2023"   (9 chars, no dashes — most common in old bhavcopy)
+            # "27-JAN-2023" (11 chars, with dashes)
+            # "2023-01-27"  (ISO, 10 chars — new format)
+            expiry = None
+            for fmt in ("%d%b%Y", "%d-%b-%Y", "%Y-%m-%d", "%d-%m-%Y"):
+                try:
+                    expiry = datetime.strptime(expiry_raw.strip(), fmt).date()
+                    break
+                except ValueError:
+                    continue
+            if expiry is None:
                 continue
 
             # ── Strike ────────────────────────────────────────────
