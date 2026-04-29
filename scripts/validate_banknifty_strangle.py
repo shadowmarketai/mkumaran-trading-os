@@ -69,6 +69,29 @@ VIX_HIGH_PCT  = 0.80
 WF_TRAIN_MONTHS = 12
 WF_TEST_MONTHS  = 3
 
+# Monthly variant — entry & exit timing
+MONTHLY_ENTRY_DAYS_BEFORE = 25   # target entry DTE for monthly strangles
+MONTHLY_TIME_EXIT_DTE     = 5    # exit when DTE ≤ this (avoids expiry gamma)
+
+# Tier thresholds per expiry type
+# (from pre-committed criteria docs in docs/strategy_validation/)
+TIER_THRESHOLDS = {
+    "weekly": {
+        "t1_return": 25, "t1_sharpe": 1.0, "t1_dd": 35, "t1_consistency": 0.60, "t1_wr": 0.60,
+        "t2_return_lo": 15, "t2_return_hi": 25, "t2_sharpe_lo": 0.5, "t2_sharpe_hi": 1.0,
+        "t2_dd": 50, "t2_consistency": 0.50,
+        "t3_return_lo": 5, "t3_return_hi": 15, "t3_sharpe_hi": 0.5,
+        "min_trades": 50,
+    },
+    "monthly": {
+        "t1_return": 18, "t1_sharpe": 0.9, "t1_dd": 30, "t1_consistency": 0.60, "t1_wr": 0.65,
+        "t2_return_lo": 10, "t2_return_hi": 18, "t2_sharpe_lo": 0.5, "t2_sharpe_hi": 0.9,
+        "t2_dd": 40, "t2_consistency": 0.50,
+        "t3_return_lo": 5, "t3_return_hi": 10, "t3_sharpe_hi": 0.5,
+        "min_trades": 30,
+    },
+}
+
 # Cost model (from test_plan — matches backtester.py)
 BROKERAGE_PER_ORDER = 20.0       # ₹20 flat per order (each leg each direction)
 STT_SELL_PCT        = 0.000125   # 0.0125% on sell premium (securities transaction tax)
@@ -300,6 +323,20 @@ def _build_vix_percentiles(vix_series: dict[date, float]) -> dict[date, float]:
     return pct_map
 
 
+# ── Monthly expiry selection ────────────────────────────────────────────────
+
+def _select_monthly_expiries(all_expiry_dates: list[date]) -> list[date]:
+    """
+    From a list of expiry dates (which may include weekly + monthly), return
+    only the LAST expiry of each calendar month — this is the monthly contract.
+    """
+    by_month: dict[tuple[int, int], date] = {}
+    for exp in sorted(all_expiry_dates):
+        key = (exp.year, exp.month)
+        by_month[key] = exp  # last expiry in month wins
+    return sorted(by_month.values())
+
+
 # ── Single trade simulation ─────────────────────────────────────────────────
 
 def simulate_trade(
@@ -310,6 +347,7 @@ def simulate_trade(
     vix_series: dict[date, float],
     vix_pct_series: dict[date, float],
     use_vix_gate: bool = True,
+    time_exit_dte: int = 0,      # 0 = exit on expiry day; >0 = exit when DTE <= this
 ) -> dict | None:
     """
     Simulate one strangle cycle.
@@ -415,7 +453,8 @@ def simulate_trade(
         if ce_mid_now is None or pe_mid_now is None:
             continue  # missing bar — check next day
 
-        is_expiry_day = (sim_date == expiry_date)
+        dte_now = (expiry_date - sim_date).days
+        is_time_exit = (sim_date == expiry_date) if time_exit_dte == 0 else (dte_now <= time_exit_dte)
 
         # Gross P&L on the open position (sold at entry, current mark-to-market)
         gross_pnl = ((ce_entry - ce_mid_now) + (pe_entry - pe_mid_now)) * LOT_SIZE
@@ -436,9 +475,9 @@ def simulate_trade(
         pe_delta_now = abs(_bs_delta(spot_now, pe_strike, T_now, RFR, iv_now, "PE"))
         delta_breach = ce_delta_now > 0.30 or pe_delta_now > 0.30
 
-        adjustment_exit = (strike_imminent or delta_breach) and not is_expiry_day
+        adjustment_exit = (strike_imminent or delta_breach) and not is_time_exit
 
-        if gross_pnl >= profit_target or gross_pnl <= stop_threshold or is_expiry_day or adjustment_exit:
+        if gross_pnl >= profit_target or gross_pnl <= stop_threshold or is_time_exit or adjustment_exit:
             # Determine exit reason (priority order)
             if gross_pnl >= profit_target:
                 exit_reason = "profit"
@@ -447,7 +486,7 @@ def simulate_trade(
             elif adjustment_exit:
                 exit_reason = "adjustment"  # Rule 2 or Rule 3 triggered
             else:
-                exit_reason = "time"
+                exit_reason = "time"    # time_exit_dte or expiry day
 
             spot_exit = spot_series.get(sim_date, spot)
             ce_exit = _buy_price(ce_mid_now, ce_strike, spot_exit)
@@ -824,11 +863,13 @@ def check_override_conditions(
     agg: dict,
     mc: dict,
     wf: dict,
+    expiry_type: str = "weekly",
 ) -> list[str]:
     """
-    Check the override conditions from banknifty_strangle_criteria.md.
+    Check override conditions from pre-committed criteria docs.
     Returns list of triggered overrides (empty = no override).
     """
+    thr = TIER_THRESHOLDS.get(expiry_type, TIER_THRESHOLDS["weekly"])
     overrides = []
 
     if mc and "p95" in mc:
@@ -840,8 +881,9 @@ def check_override_conditions(
             overrides.append(f"WF consistency {wf['consistency']:.0%} < 40% → no deploy")
 
     if agg and "n_trades" in agg:
-        if agg["n_trades"] < 50:
-            overrides.append(f"Trade count {agg['n_trades']} < 50 → insufficient statistical mass")
+        min_t = thr["min_trades"]
+        if agg["n_trades"] < min_t:
+            overrides.append(f"Trade count {agg['n_trades']} < {min_t} → insufficient statistical mass")
 
     if wf and "windows" in wf:
         for w in wf["windows"]:
@@ -856,28 +898,31 @@ def check_override_conditions(
 
 # ── Tier verdict ────────────────────────────────────────────────────────────
 
-def determine_tier(agg: dict, wf: dict, mc: dict, overrides: list[str]) -> str:
+def determine_tier(agg: dict, wf: dict, mc: dict, overrides: list[str], expiry_type: str = "weekly") -> str:
     if overrides:
         return "OVERRIDE (check triggers)"
 
-    wf_return = wf.get("avg_ann_return_on_margin", 0) * 100  # convert to %
-    wf_sharpe = wf.get("avg_sharpe", 0)
-    mc_p95_dd = mc.get("p95", 1.0) * 100
+    thr = TIER_THRESHOLDS.get(expiry_type, TIER_THRESHOLDS["weekly"])
+    wf_return   = wf.get("avg_ann_return_on_margin", 0) * 100
+    wf_sharpe   = wf.get("avg_sharpe", 0)
+    mc_p95_dd   = mc.get("p95", 1.0) * 100
     consistency = wf.get("consistency", 0)
-    win_rate  = agg.get("win_rate", 0)
+    win_rate    = agg.get("win_rate", 0)
 
     # Tier 1
-    if (wf_return > 25 and wf_sharpe > 1.0 and
-            mc_p95_dd < 35 and consistency >= 0.60 and win_rate >= 0.60):
+    if (wf_return > thr["t1_return"] and wf_sharpe > thr["t1_sharpe"] and
+            mc_p95_dd < thr["t1_dd"] and consistency >= thr["t1_consistency"] and
+            win_rate >= thr["t1_wr"]):
         return "TIER_1: Strong validation → plan deployment"
 
     # Tier 2
-    if (15 <= wf_return <= 25 and 0.5 <= wf_sharpe <= 1.0 and
-            mc_p95_dd < 50 and consistency >= 0.50):
+    if (thr["t2_return_lo"] <= wf_return <= thr["t2_return_hi"] and
+            thr["t2_sharpe_lo"] <= wf_sharpe <= thr["t2_sharpe_hi"] and
+            mc_p95_dd < thr["t2_dd"] and consistency >= thr["t2_consistency"]):
         return "TIER_2: Marginal → one iteration permitted"
 
     # Tier 3
-    if 5 <= wf_return <= 15 and 0 <= wf_sharpe <= 0.5:
+    if thr["t3_return_lo"] <= wf_return <= thr["t3_return_hi"] and 0 <= wf_sharpe <= thr["t3_sharpe_hi"]:
         return "TIER_3: Edge exists but too thin → move on"
 
     # Tier 4
@@ -1097,16 +1142,21 @@ def main() -> None:
                         help="Directory for output files")
     parser.add_argument("--debug-vix", action="store_true",
                         help="Print per-expiry VIX gate decision and stop (diagnostic only)")
+    parser.add_argument("--expiry-type", choices=["weekly", "monthly"], default="weekly",
+                        help="weekly: Monday entry, expiry-day exit; "
+                             "monthly: 25-DTE entry, 5-DTE time exit")
     args = parser.parse_args()
 
-    from_date = date.fromisoformat(args.from_date)
-    to_date   = date.fromisoformat(args.to_date) if args.to_date else date.today()
+    from_date    = date.fromisoformat(args.from_date)
+    to_date      = date.fromisoformat(args.to_date) if args.to_date else date.today()
     use_vix_gate = not args.no_vix_gate
-    debug_vix = args.debug_vix
+    debug_vix    = args.debug_vix
+    expiry_type  = args.expiry_type
+    time_exit_dte = MONTHLY_TIME_EXIT_DTE if expiry_type == "monthly" else 0
 
     logger.info("=== BankNifty Short Strangle Validation ===")
-    logger.info("Period: %s → %s | VIX gate: %s | MC runs: %d",
-                from_date, to_date, use_vix_gate, args.mc_runs)
+    logger.info("Period: %s → %s | Type: %s | VIX gate: %s | MC runs: %d",
+                from_date, to_date, expiry_type.upper(), use_vix_gate, args.mc_runs)
 
     # ── Load data ──────────────────────────────────────────────────────
     from mcp_server.db import SessionLocal
@@ -1165,44 +1215,49 @@ def main() -> None:
         print(f"30th pct = {p30:.1f}, 80th pct = {p80:.1f} (global — rolling may differ)")
         sys.exit(0)
 
-    # ── Run simulations ────────────────────────────────────────────────
+    # ── Expiry selection and simulation ────────────────────────────────
     all_expiry_dates = sorted(options_data.keys())
 
-    # Deduplicate: when two expiry dates fall in the same expiry week
-    # (e.g., Dec 24/26 2024 both map to entry Monday Dec 23), keep only
-    # the EARLIER expiry — the one that actually expired first that week.
-    seen_entry_mondays: set[date] = set()
-    expiry_dates: list[date] = []
-    for exp in all_expiry_dates:
-        dow = exp.weekday()
-        entry_monday = exp - timedelta(days=dow)
-        if entry_monday not in seen_entry_mondays:
-            seen_entry_mondays.add(entry_monday)
-            expiry_dates.append(exp)
+    if expiry_type == "monthly":
+        # Monthly: last expiry of each calendar month
+        expiry_dates = _select_monthly_expiries(all_expiry_dates)
+        logger.info("Monthly mode: %d total → %d monthly expiries",
+                    len(all_expiry_dates), len(expiry_dates))
+    else:
+        # Weekly: deduplicate same-expiry-week entries
+        seen_entry_mondays: set[date] = set()
+        expiry_dates = []
+        for exp in all_expiry_dates:
+            dow = exp.weekday()
+            monday = exp - timedelta(days=dow)
+            if monday not in seen_entry_mondays:
+                seen_entry_mondays.add(monday)
+                expiry_dates.append(exp)
+        if len(expiry_dates) < len(all_expiry_dates):
+            logger.info("Deduplicated same-week expiries: %d → %d unique expiry weeks",
+                        len(all_expiry_dates), len(expiry_dates))
 
-    if len(expiry_dates) < len(all_expiry_dates):
-        logger.info(
-            "Deduplicated same-week expiries: %d → %d unique expiry weeks",
-            len(all_expiry_dates), len(expiry_dates),
-        )
     logger.info("Found %d expiry dates to simulate", len(expiry_dates))
 
     trades: list[dict] = []
     for expiry_date in expiry_dates:
         expiry_chain = options_data[expiry_date]
 
-        # Entry = Monday of the expiry week
-        dow = expiry_date.weekday()
-        entry_monday = expiry_date - timedelta(days=dow)
+        if expiry_type == "monthly":
+            entry_target = expiry_date - timedelta(days=MONTHLY_ENTRY_DAYS_BEFORE)
+        else:
+            dow = expiry_date.weekday()
+            entry_target = expiry_date - timedelta(days=dow)  # Monday of expiry week
 
         result = simulate_trade(
-            entry_date=entry_monday,
+            entry_date=entry_target,
             expiry_date=expiry_date,
             expiry_chain=expiry_chain,
             spot_series=spot_series,
             vix_series=vix_series,
             vix_pct_series=vix_pct_series,
             use_vix_gate=use_vix_gate,
+            time_exit_dte=time_exit_dte,
         )
         if result:
             trades.append(result)
@@ -1232,13 +1287,14 @@ def main() -> None:
     logger.info("Computing regime breakdown...")
     reg = regime_breakdown(trades, spot_series, vix_series, vix_pct_series)
 
-    overrides = check_override_conditions(agg, mc, wf)
-    tier = determine_tier(agg, wf, mc, overrides)
+    overrides = check_override_conditions(agg, mc, wf, expiry_type)
+    tier = determine_tier(agg, wf, mc, overrides, expiry_type)
 
     # ── Assemble results ───────────────────────────────────────────────
     results = {
         "metadata": {
             "run_date": date.today().isoformat(),
+            "expiry_type": expiry_type,
             "from_date": from_date.isoformat(),
             "to_date": to_date.isoformat(),
             "vix_gate_active": use_vix_gate,
@@ -1269,8 +1325,8 @@ def main() -> None:
     output_dir.mkdir(exist_ok=True)
     run_date_str = date.today().isoformat()
 
-    json_path = output_dir / f"banknifty_strangle_validation_{run_date_str}.json"
-    md_path   = output_dir / f"banknifty_strangle_validation_{run_date_str}.md"
+    json_path = output_dir / f"banknifty_{expiry_type}_strangle_validation_{run_date_str}.json"
+    md_path   = output_dir / f"banknifty_{expiry_type}_strangle_validation_{run_date_str}.md"
 
     json_path.write_text(json.dumps(results, indent=2, default=str), encoding="utf-8")
     logger.info("JSON results written: %s", json_path)
