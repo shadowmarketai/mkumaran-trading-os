@@ -3,8 +3,8 @@
 > Living document. Updated at the end of every meaningful Claude Code session.
 > Every agent reads this FIRST before doing work.
 
-**Last updated:** 2026-04-28 by Claude Sonnet 4.6 (Dhan chain fix, paper-trade endpoint, validation harness)
-**Dossier version:** 5
+**Last updated:** 2026-04-29 by Claude Sonnet 4.6 (options strategy validation complete — all tests closed)
+**Dossier version:** 6
 **Prior versions:** v1 2026-04-22 → v2 2026-04-23 → v3 2026-04-24 AM (Decimal + test-debt) → v4 2026-04-24 PM (router split complete)
 
 ---
@@ -77,16 +77,17 @@ Two independent scan loops run in parallel: a **daily-swing MWA loop** (default 
 
 ## Current phase
 
-**Closure sprint (2026-04-25).** All infrastructure PRs landed. Focus is closing the gap between "shipped" and "deployed + validated." Six closure tasks were identified in a self-audit; three are done, three are operator-side.
+**Strategy decision point (2026-04-29).** Three weekends of options-selling validation complete. All options-selling hypotheses closed with clean verdicts. Operator must now choose next strategic path: pairs trading (Path B) or B2B SaaS pivot (Path C).
 
-**Shipped to prod today (2026-04-25):**
-- `TV_WEBHOOK_SECRET` set in Coolify — HMAC enforcement active ✅
-- PRs #41→#45 merged + `alembic upgrade heads` ran — `options_seller_positions` + `shadow_signal_observations` tables exist in prod ✅
-- POS 5 EMA column-case crash fixed (PR #46, merged) ✅
-- Backfill script `scripts/backfill_dhan_intraday.py` deployed ✅
+**Validation completed this session (2026-04-29):**
+- BankNifty weekly strangle: TIER 4 without gate, OVERRIDE with gate (36 trades, 13.9% WF return — promising but below 50-trade threshold) ✅
+- BankNifty monthly strangle: TIER 4 without gate (2.2% WF return), OVERRIDE with gate (10 trades) ✅
+- Pre-committed criteria docs committed before results: `banknifty_strangle_criteria.md` + `banknifty_monthly_criteria.md` ✅
+- Key finding preserved: VIX gate is load-bearing (19.5pp delta between gated/ungated weekly runs) ✅
 
-**Prod DB credentials:** `postgres://trading:trading_pass_prod@n0ckwgw8os4o80408s40okww:5432/trading_os`
-**Note:** rotate these credentials — exposed in session on 2026-04-25.
+**Validation scripts committed:** `scripts/validate_banknifty_strangle.py` (weekly + monthly via `--expiry-type` flag), `scripts/backfill_nse_banknifty_options.py` (962K rows in DB).
+
+**Infrastructure built and ready for next hypothesis:** backtester, walk-forward, Monte Carlo, bootstrap Sharpe CI, regime breakdown — all reusable.
 
 ---
 
@@ -95,14 +96,11 @@ Two independent scan loops run in parallel: a **daily-swing MWA loop** (default 
 Ordered by priority.
 
 - [ ] **CRITICAL** — Rotate prod DB password (exposed in chat 2026-04-25). Update Coolify env + restart.
-- [ ] **SAT EVENING** — Run POC smoke first: `python scripts/validate_all_engines.py --poc` (3 min). Then overnight: `python scripts/validate_all_engines.py --workers 4 --resume`. Validates rrms/smc/wyckoff/vsa/harmonic/confluence across Nifty 100.
-- [ ] **SAT PARALLEL** — Dhan backfill: `python scripts/backfill_dhan_intraday.py --ticker HDFCBANK` (smoke), then `python scripts/backfill_dhan_intraday.py --resume` (full, ~1-2h).
-- [ ] **SUN MORNING** — Add pos_5ema: `python scripts/validate_all_engines.py --strategy pos_5ema --resume`. Then paste `reports/engine_comparison_<date>.md` to Claude for tier analysis.
-- [ ] **DECISION (post-Sunday)** — Tier ranking, weights per engine, kill list. Driven by the comparison table. Criteria: Tier 1 = WF Sharpe ≥ 1.0 + PF ≥ 1.5 + sig_rate ≥ 40%; Tier 2 = WF Sharpe ≥ 0.5; Tier 3 = below; Tier 4 = no data.
-- [ ] **MED** — Rotate prod DB password (see CRITICAL above).
-- [x] ~~Add `pos_5ema` to dashboard Backtesting strategy dropdown~~ — already in STRATEGY_META + strategies array (BacktestingPage.tsx:72,279). Stale TODO.
-- [ ] **LOW** — Tax export module needs real Outcome rows to validate — test after a few signals close.
-- [ ] **LOW** — Options seller: paper trade 30 days once `options_seller_positions` table is used.
+- [ ] **DECISION NOW** — Choose next strategic path: Path B (NSE equity pairs trading) or Path C (B2B SaaS infrastructure licensing). Options-selling chapter is closed per 2026-04-29 findings.
+- [ ] **IF PATH B** — Write pre-committed pairs criteria doc → build cointegration pairs scanner → pairs backtester. Equity data already in ohlcv_cache.
+- [ ] **IF PATH C** — Define target customer (SEBI RIA / prop firm / family office) → define MVP feature set → pricing + outreach.
+- [ ] **LOW** — Tax export module needs real Outcome rows to validate.
+- [x] ~~Options seller: paper trade 30 days~~ — options-selling hypothesis closed; strategy needs revision before live use.
 
 ---
 
@@ -139,6 +137,7 @@ Last ~15 closed, newest first.
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-04-29 | Options-selling hypothesis closed after 4 test arms | Weekly + monthly BankNifty, with + without VIX gate. All TIER 4 or OVERRIDE. Pre-committed criteria honored throughout. VIX gate is load-bearing (19.5pp weekly delta) but qualifying frequency too low in 2023-2026 low-vol era. No iteration. |
 | 2026-04-24 | PR #11 merged as a **merge commit**, PRs #12 + #13 **squashed** | Merge commit on PR #11 preserves the phased commits (money helpers → RRMS → monitor → backtester fix) so `git bisect` stays useful if a paper-mode regression surfaces. Single-commit / thematic PRs (#12, #13) squash to one tidy main-history entry each. |
 | 2026-04-24 | Relax brittle test assertions to lower-bounds / invariants rather than sync to current exact values | Scanner and signal-chain catalogs grow additively over time. Exact-count tests broke every time the catalog grew; `>= baseline` converts that into a one-way ratchet that only triggers on regressions. Same philosophy applied to mwa_scoring direction labels (assert bull dominates bear rather than a specific label that depends on the denominator). |
 | 2026-04-23 | Two-zone discipline for Decimal enforcement: Money zone (Decimal) = rrms/config/order_manager/signal_monitor/portfolio_risk/signal_cards. Analysis zone (float/numpy/pandas) = TA engines, OHLCV cache, ML features, backtester simulator. Explicit `float(decimal)` cast at crossings | Preserves exact paise math on the decision + persistence paths while keeping TA/ML performant. Backtester cast added after advisor review caught the Decimal × float multiplication risk in `_apply_slippage`. |
@@ -246,6 +245,31 @@ Sensitive env highlights:
 ---
 
 ## Session log
+
+### 2026-04-29 — Options strategy validation complete
+
+Completed the full 3-weekend BankNifty options-selling validation programme:
+
+**Data pipeline:** `scripts/backfill_nse_banknifty_options.py` → 962,799 rows of NSE bhavcopy BankNifty options OHLCV in `options_chain_cache`. Covers 2023-01-02 to 2026-04-28.
+
+**Validation harness:** `scripts/validate_banknifty_strangle.py` — weekly + monthly variants via `--expiry-type` flag. Full walk-forward (12m train/3m test), Monte Carlo (10K runs), bootstrap Sharpe CI, regime breakdown, tier verdict against pre-committed criteria.
+
+**Results (all four test arms):**
+
+| Test | n (gated) | WF return | Verdict |
+|---|---|---|---|
+| Weekly, no VIX gate | 91 | -5.6% | TIER 4 |
+| Weekly, VIX gate ON | 36 | 13.9% | OVERRIDE (< 50 trades) |
+| Monthly, no VIX gate | 34 | 2.2% | TIER 4 |
+| Monthly, VIX gate ON | 10 | 0.2% | OVERRIDE (< 30 trades) |
+
+**Key finding:** VIX gate is load-bearing (19.5pp delta on weekly). India VIX was predominantly below the 30th percentile gate threshold in 2023–2026 (low-vol era). Regime filter works but qualifying frequency too low for statistical significance in this data window.
+
+**Bugs fixed during session:** WF Sharpe artifact (per-window std→0 → Sharpe explodes, fixed by chronological OOS sequence), BankNifty weekly discontinuation (Nov 2024, added `--to 2024-11-14`), duplicate expiry entries (added deduplication), yfinance FutureWarning (cosmetic, not blocking).
+
+**Committed:** Criteria docs at `7d21636` (weekly) and `7d21636` (monthly), validation fixes at `d5d84d5`, `22b5753`, `24dcb9d`. All pushed to main.
+
+**Decision:** Options-selling chapter closed. No further iteration. Next path = B (pairs) or C (B2B). Operator decision pending.
 
 ### 2026-04-28 (continued) — Paper-trade endpoint + validation harness
 - Worked on: (1) Found greeks_refresh_loop importing `get_options_chain` from options_selector — function didn't exist. Added it (Dhan IDX_I → NSE → empty fallback). (2) No endpoint to open positions — position_manager.open_position() was complete but never called. Added `POST /api/options-seller/open` to router + wired to public paths. (3) Built `scripts/validate_all_engines.py` — full portfolio validation harness: 7 strategies × Nifty 100 × Monte Carlo + Bootstrap + Walk-Forward, checkpoint/resume, Telegram notification on completion, comparison markdown with tier classification. POC ran cleanly end-to-end.
