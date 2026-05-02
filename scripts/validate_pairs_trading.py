@@ -444,18 +444,22 @@ def walk_forward_pair(
     oos_span = (max(all_oos_dates) - min(all_oos_dates)).days if len(all_oos_dates) > 1 else 365
 
     # Equity curve + max drawdown
-    equity   = 0.0
-    peak     = 0.0
-    max_dd   = 0.0
-    max_dd_basis = max(sum(all_oos_pnl), 1.0)  # relative to total gain
+    # Normalize by capital deployed per position (2 legs × POSITION_SIZE_PER_LEG),
+    # NOT by running equity peak. Running-peak normalization produces nonsensical
+    # values (e.g., 152%) when the equity peak is tiny (e.g., one small winning trade)
+    # followed by a large stop-loss. Capital-deployed normalization gives DD as
+    # percentage of money-at-risk, which is comparable across pairs and meaningful.
+    capital_per_trade = 2.0 * POSITION_SIZE_PER_LEG  # both legs, ₹1,00,000
+    equity = 0.0
+    peak   = 0.0
+    max_dd = 0.0
     for p in all_oos_pnl_sorted:
         equity += p
         if equity > peak:
             peak = equity
-        if peak > 0:
-            dd = (peak - equity) / peak
-            if dd > max_dd:
-                max_dd = dd
+        dd = (peak - equity) / capital_per_trade
+        if dd > max_dd:
+            max_dd = dd
 
     win_count = sum(1 for p in all_oos_pnl if p > 0)
     coint_pass = sum(1 for w in windows if w["coint_pval"] < 0.05)
