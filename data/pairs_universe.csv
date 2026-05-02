@@ -1,0 +1,11 @@
+pair_id,leg_a_symbol,leg_b_symbol,sector,structural_rationale
+1,HDFCBANK,ICICIBANK,Private Banks,"Both large private banks with similar credit/deposit dynamics and shared macro drivers (RBI rates, NPA cycle)"
+2,TCS,INFY,IT Services,"Both large Indian IT exporters with USD revenue exposure and similar margin profiles"
+3,ONGC,OIL,Oil & Gas E&P,"Both upstream oil/gas explorers with shared crude price exposure"
+4,RELIANCE,IOC,Energy,"Both refiners; cracks and crude exposure correlated"
+5,MARUTI,M&M,Auto OEMs,"Both passenger vehicle manufacturers; shared consumer demand cycle"
+6,HEROMOTOCO,BAJAJ-AUTO,Two-Wheelers,"Both 2W manufacturers with rural demand exposure"
+7,ASIANPAINT,BERGEPAINT,Paints,"Duopoly-like structure; raw material exposure (TiO2 crude derivatives)"
+8,ULTRACEMCO,ACC,Cement,"Both cement majors; shared coal/limestone/diesel cost exposure"
+9,AXISBANK,KOTAKBANK,Private Banks,"Both private banks; similar regulatory and macro exposure to HDFCBANK/ICICIBANK pair"
+10,COALINDIA,NTPC,Power Supply Chain,"Coal supplier and largest power generator; vertical exposure"
