@@ -1,35 +1,29 @@
 """
-BankNifty Weekly Options Backfill — NSE F&O Bhavcopy (free, public)
+NSE F&O Bhavcopy Options Backfill — parametric underlying
 
 NSE publishes daily F&O bhavcopy files at:
   https://archives.nseindia.com/content/historical/DERIVATIVES/<YEAR>/<MON>/fo<DD><MON><YEAR>bhav.csv.zip
 
 Each file contains OHLCV + OI for every option contract that traded that day.
-This script downloads 3 years of bhavcopy files, extracts BankNifty weekly
-option rows, and stores them in options_chain_cache.
-
-Data model change vs 15-min plan
-──────────────────────────────────
-Instead of 15-min bars, each row is ONE TRADING DAY's OHLCV for a contract.
-The strangle validation script will check exit conditions at each day's close
-(50% profit target, 2x stop-loss, time exit on expiry day).
-This is how most retail options sellers actually operate — no intraday HFT.
+This script downloads bhavcopy files for the requested underlying and stores
+daily OHLCV in options_chain_cache.
 
 Usage
 ─────
-    # Check what NSE has (quick)
-    python scripts/backfill_nse_banknifty_options.py --check-coverage
-
-    # Smoke test — one month
-    python scripts/backfill_nse_banknifty_options.py --month 2024-01
-
-    # Full backfill (2023-01 → today)
+    # BankNifty (default)
     python scripts/backfill_nse_banknifty_options.py --resume
 
-    # Specific date range
-    python scripts/backfill_nse_banknifty_options.py --from-date 2024-01-01 --resume
+    # Nifty 50
+    python scripts/backfill_nse_banknifty_options.py --underlying NIFTY --resume
 
-Data quality: after full run, verify with SQL in banknifty_strangle_test_plan.md.
+    # Smoke test — one month
+    python scripts/backfill_nse_banknifty_options.py --underlying NIFTY --month 2024-01
+
+    # Check coverage before committing
+    python scripts/backfill_nse_banknifty_options.py --underlying NIFTY --check-coverage
+
+    # Specific date range
+    python scripts/backfill_nse_banknifty_options.py --underlying NIFTY --from-date 2023-01-01 --resume
 """
 
 from __future__ import annotations
@@ -53,9 +47,9 @@ logging.basicConfig(
 logger = logging.getLogger("nse_bhav_backfill")
 
 
-# ── Constants ───────────────────────────────────────────────────────
+# ── Underlying (set at runtime from --underlying arg) ───────────────
 
-UNDERLYING = "BANKNIFTY"
+UNDERLYING = "BANKNIFTY"   # overridden in main() from CLI arg
 
 # NSE changed their bhavcopy URL format in mid-2024.
 # The script tries all known formats in order — first match wins.
@@ -156,18 +150,18 @@ def _fetch_bhav(trade_date: date):
                 # Old (pre-2024): INSTRUMENT, SYMBOL, EXPIRY_DT, STRIKE_PR, OPTION_TYP
                 # New (2024+):    FinInstrmTp / varies — detect by presence of SYMBOL
                 if "SYMBOL" in df.columns and "INSTRUMENT" in df.columns:
-                    bn = df[df["SYMBOL"].astype(str).str.strip().str.upper() == "BANKNIFTY"]
+                    bn = df[df["SYMBOL"].astype(str).str.strip().str.upper() == UNDERLYING]
                     bn = bn[bn["INSTRUMENT"].astype(str).str.strip().str.upper() == "OPTIDX"]
                 else:
-                    # New schema: look for BANKNIFTY in any string column
+                    # New schema: look for underlying symbol in any string column
                     str_cols = df.select_dtypes(include="object").columns
                     mask = df[str_cols].apply(
-                        lambda col: col.astype(str).str.strip().str.upper() == "BANKNIFTY"
+                        lambda col: col.astype(str).str.strip().str.upper() == UNDERLYING
                     ).any(axis=1)
                     bn = df[mask]
 
                 if bn.empty:
-                    logger.debug("%s: URL worked but no BANKNIFTY rows — wrong schema?", trade_date)
+                    logger.debug("%s: URL worked but no %s rows — wrong schema?", trade_date, UNDERLYING)
                     break  # Try next URL
 
                 logger.debug("%s: fetched %d rows via %s", trade_date, len(bn), url.split("/")[-1])
@@ -352,7 +346,10 @@ def check_coverage(from_date: date, to_date: date) -> None:
 # ── Main ────────────────────────────────────────────────────────────
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="NSE bhavcopy BankNifty options backfill")
+    global UNDERLYING
+    parser = argparse.ArgumentParser(description="NSE bhavcopy options backfill (parametric underlying)")
+    parser.add_argument("--underlying", default="BANKNIFTY",
+                        help="NSE symbol to backfill: BANKNIFTY, NIFTY, FINNIFTY, etc.")
     parser.add_argument("--from-date", default="2023-01-01")
     parser.add_argument("--to-date", default=date.today().isoformat())
     parser.add_argument("--month", default=None,
@@ -368,6 +365,8 @@ def main() -> None:
     parser.add_argument("--diagnose-date", default=None,
                         help="Print raw column names for one date (YYYY-MM-DD) and exit")
     args = parser.parse_args()
+
+    UNDERLYING = args.underlying.upper().strip()
 
     if args.month:
         yr, mo = args.month.split("-")
