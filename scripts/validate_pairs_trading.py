@@ -54,8 +54,14 @@ COOLDOWN_DAYS = 30  # skip pair N days after stop trigger
 WF_TRAIN_MONTHS = 12
 WF_TEST_MONTHS  =  3
 
+# Position sizing: trade this much INR in leg A; hedge_ratio × price_B determines leg B.
+# With ₹1,600 HDFCBANK → ~31 shares per side. Brokerage stays flat per order.
+# Without this, ₹20 brokerage per order × 4 = ₹80 floor on a ₹2,680 position (3%)
+# which overwhelms any reasonable edge.
+POSITION_SIZE_PER_LEG = 50_000.0   # ₹50,000 invested in leg A per trade
+
 # Cost model (equity delivery, per criteria doc)
-BROKERAGE       = 20.0      # ₹20 flat per order
+BROKERAGE       = 20.0      # ₹20 flat per order (not per share)
 STT_SELL_PCT    = 0.00025   # 0.025% on sell (intraday/SLB model)
 EXCHANGE_PCT    = 0.0000345 # 0.00345% per side
 GST_PCT         = 0.18      # 18% on (brokerage + exchange)
@@ -283,26 +289,35 @@ def _calc_pnl(
     holding_days: int,
 ) -> float:
     """
-    P&L for one closed trade (1 unit: 1 share of A vs hedge_ratio shares of B).
-    Positive = profit.
+    P&L for one closed pairs trade sized to POSITION_SIZE_PER_LEG.
+
+    n_units = POSITION_SIZE_PER_LEG / entry_price_A  (fractional shares, fine for backtest)
+    Gross P&L scales with n_units; brokerage is flat ₹20/order regardless of n_units.
     """
+    # Number of "units" of leg A (and hedge_ratio × n_units of leg B)
+    n_units = POSITION_SIZE_PER_LEG / entry_pa if entry_pa > 0 else 1.0
+
     if position == "LONG_SPREAD":
         # Long A, short (hedge_ratio × B)
-        pnl_a = exit_pa - entry_pa
-        pnl_b = -(exit_pb - entry_pb) * hedge_ratio
-        open_cost  = _cost_open(sym_a, sym_b, entry_pa, entry_pb * hedge_ratio)
-        close_cost = _cost_close(sym_a, sym_b, exit_pa, exit_pb * hedge_ratio)
-        borrow     = _borrow_cost(entry_pb * hedge_ratio, holding_days)
+        gross_a = (exit_pa - entry_pa) * n_units
+        gross_b = -(exit_pb - entry_pb) * hedge_ratio * n_units
+        open_cost  = _cost_open(sym_a, sym_b,
+                                entry_pa * n_units, entry_pb * hedge_ratio * n_units)
+        close_cost = _cost_close(sym_a, sym_b,
+                                 exit_pa  * n_units, exit_pb  * hedge_ratio * n_units)
+        borrow     = _borrow_cost(entry_pb * hedge_ratio * n_units, holding_days)
 
     else:  # SHORT_SPREAD
         # Short A, long (hedge_ratio × B)
-        pnl_a = -(exit_pa - entry_pa)
-        pnl_b = (exit_pb - entry_pb) * hedge_ratio
-        open_cost  = _cost_open(sym_b, sym_a, entry_pb * hedge_ratio, entry_pa)
-        close_cost = _cost_close(sym_b, sym_a, exit_pb * hedge_ratio, exit_pa)
-        borrow     = _borrow_cost(entry_pa, holding_days)
+        gross_a = -(exit_pa - entry_pa) * n_units
+        gross_b = (exit_pb - entry_pb) * hedge_ratio * n_units
+        open_cost  = _cost_open(sym_b, sym_a,
+                                entry_pb * hedge_ratio * n_units, entry_pa * n_units)
+        close_cost = _cost_close(sym_b, sym_a,
+                                 exit_pb  * hedge_ratio * n_units, exit_pa  * n_units)
+        borrow     = _borrow_cost(entry_pa * n_units, holding_days)
 
-    return pnl_a + pnl_b - open_cost - close_cost - borrow
+    return gross_a + gross_b - open_cost - close_cost - borrow
 
 
 # ── Walk-forward ──────────────────────────────────────────────────────────────
