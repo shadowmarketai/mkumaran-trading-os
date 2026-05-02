@@ -94,6 +94,7 @@ def _fetch_symbol(symbol: str, start: date, end: date) -> list[dict]:
             vol_val = int(vol_val) if vol_val == vol_val else 0
         rows.append({
             "ticker":   symbol,
+            "exchange": "NSE",
             "interval": "1d",
             "bar_date": d,
             "open":     open_val,
@@ -111,15 +112,16 @@ def _upsert_rows(session, rows: list[dict]) -> int:
     from sqlalchemy import text
     sql = text("""
         INSERT INTO ohlcv_cache
-          (ticker, interval, bar_date, open, high, low, close, volume, fetched_at)
+          (ticker, exchange, interval, bar_date, open, high, low, close, volume, fetched_at)
         VALUES
-          (:ticker, :interval, :bar_date, :open, :high, :low, :close, :volume, NOW())
+          (:ticker, :exchange, :interval, :bar_date, :open, :high, :low, :close, :volume, NOW())
         ON CONFLICT (ticker, interval, bar_date) DO UPDATE
-          SET close = EXCLUDED.close,
-              open  = EXCLUDED.open,
-              high  = EXCLUDED.high,
-              low   = EXCLUDED.low,
-              volume = EXCLUDED.volume,
+          SET close    = EXCLUDED.close,
+              open     = EXCLUDED.open,
+              high     = EXCLUDED.high,
+              low      = EXCLUDED.low,
+              volume   = EXCLUDED.volume,
+              exchange = EXCLUDED.exchange,
               fetched_at = NOW()
     """)
     session.execute(sql, rows)
@@ -180,6 +182,7 @@ def main() -> None:
                 logger.info("%-15s  %d bars", symbol, n)
             except Exception as e:
                 logger.error("Failed %s: %s", symbol, e)
+                session.rollback()  # clear aborted transaction before next symbol
             time.sleep(0.3)  # be gentle with yfinance
 
         logger.info("Done. Total rows written/updated: %d", total)
