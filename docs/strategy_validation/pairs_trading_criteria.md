@@ -125,3 +125,38 @@ before any pairs backtest was run or any cointegration test was observed.
 Context: this follows three documented negative results on options-selling strategies
 (BankNifty weekly and monthly, with and without VIX gate), all tested with
 pre-committed criteria and accepted without iteration. The same discipline applies here.
+
+---
+
+## Postmortem (2026-05-02, after first validation run)
+
+**Result:** All 10 pairs OVERRIDE on trade count. Range: 4–17 trades over 5 years per pair.
+
+**Interpretation under committed criteria:** Inconclusive. The criteria doc as committed
+did not address the case where all pairs return OVERRIDE on sample size.
+
+**What we learned:**
+- 2 of 10 candidate pairs (RELIANCE/IOC, COALINDIA/NTPC) showed full-period cointegration p < 0.05
+- 8 of 10 candidate pairs were not cointegrated; structural-similarity heuristic for pair selection
+  was weaker than expected in Indian large-caps over this period
+- 2021–2026 was a strongly trending period in Indian large-caps, which limits mean-reversion
+  strategies broadly
+- |z| > 2.0 with 12-month training window generates 1–3 trades per pair per year on this universe —
+  insufficient frequency to be statistically valid or commercially viable as a standalone strategy
+
+**Verdict:** Hypothesis is NOT VALIDATED. Hypothesis is also NOT DISPROVEN. The methodology
+as committed could not produce a conclusive answer.
+
+**Action:** Move to Phase 2 (Nifty options) as scheduled. No iteration on pairs methodology.
+
+**Future criteria template improvement:** All future strategy criteria docs must explicitly address
+the case of all-OVERRIDE-on-sample-size. Either as an additional decision tier
+("Tier 0 — insufficient sample") or as a hard rule distinguishing OVERRIDE-induced inconclusiveness
+from genuine Tier 3/4 failure. The two states require different verdicts.
+
+**Possible future revisit (not now, not an iteration of this test):** If revisiting pairs trading
+as a separate research project in the future, new criteria should: (a) use rolling z-score
+normalization (60-day rolling window) for higher signal frequency, (b) test a wider candidate
+universe to find genuinely cointegrated pairs, (c) reconsider whether Engle-Granger cointegration
+is the right structural entry filter for Indian large-cap markets with persistent multi-year trends.
+This is a future project with new pre-committed criteria — not a continuation of this one.
