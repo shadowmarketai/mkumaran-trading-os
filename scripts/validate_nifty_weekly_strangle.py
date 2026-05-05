@@ -37,7 +37,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import math
 import os
 import random
 import statistics
@@ -47,6 +46,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from mcp_server.options_greeks import calculate_greeks  # shared BS implementation
 
 logging.basicConfig(
     level=logging.INFO,
@@ -112,27 +113,7 @@ SLIPPAGE_OTM_PCT    = 0.010
 SLIPPAGE_FAR_PCT    = 0.020
 
 
-# ── Black-Scholes helpers ───────────────────────────────────────────────────
-
-def _norm_cdf(x: float) -> float:
-    a1, a2, a3, a4, a5, p = (
-        0.254829592, -0.284496736, 1.421413741,
-        -1.453152027, 1.061405429, 0.3275911,
-    )
-    sign = 1 if x >= 0 else -1
-    x = abs(x) / math.sqrt(2.0)
-    t = 1.0 / (1.0 + p * x)
-    y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * math.exp(-x * x)
-    return 0.5 * (1.0 + sign * y)
-
-
-def _bs_delta(S: float, K: float, T: float, r: float, sigma: float, opt: str) -> float:
-    if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
-        return 0.0
-    d1 = (math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
-    if opt.upper() == "CE":
-        return _norm_cdf(d1)
-    return _norm_cdf(d1) - 1.0
+# _norm_cdf and _bs_delta removed — using mcp_server.options_greeks.calculate_greeks
 
 
 def _spread_pct(strike: float, spot: float) -> float:
@@ -178,13 +159,10 @@ def _find_target_delta_strike(
     iv_annual: float,
     available_strikes: list[float],
 ) -> float | None:
-    T = max(dte, 1) / 365.0
     best_strike = None
     best_diff = float("inf")
     for K in available_strikes:
-        delta = _bs_delta(spot, K, T, RFR, iv_annual, opt_type)
-        if opt_type.upper() == "PE":
-            delta = abs(delta)
+        delta = abs(calculate_greeks(spot, K, max(dte, 1), RFR, iv_annual, opt_type).delta)
         diff = abs(delta - target_delta)
         if diff < best_diff:
             best_diff = diff
@@ -436,9 +414,8 @@ def simulate_trade(
 
         vix_now  = vix_series.get(sim_date, vix or 15.0)
         iv_now   = (vix_now / 100.0 * NIFTY_VOL_MULT) if vix_now > 0 else 0.14
-        T_now    = max(dte_now, 1) / 365.0
-        ce_delta_now = abs(_bs_delta(spot_now, ce_strike, T_now, RFR, iv_now, "CE"))
-        pe_delta_now = abs(_bs_delta(spot_now, pe_strike, T_now, RFR, iv_now, "PE"))
+        ce_delta_now = abs(calculate_greeks(spot_now, ce_strike, max(dte_now, 1), RFR, iv_now, "CE").delta)
+        pe_delta_now = abs(calculate_greeks(spot_now, pe_strike, max(dte_now, 1), RFR, iv_now, "PE").delta)
         delta_breach = ce_delta_now > 0.30 or pe_delta_now > 0.30
 
         adjustment_exit = (strike_imminent or delta_breach) and not is_time_exit

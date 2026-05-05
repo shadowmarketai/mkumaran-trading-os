@@ -2,10 +2,132 @@ import logging
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
+from typing import Optional
 
 from mcp_server.volatility import scaled_tolerance, calculate_atr_pct
 
 logger = logging.getLogger(__name__)
+
+
+# ── Utility functions (adapted from Vibe-Trading, MIT License) ──────────────
+# Source: https://github.com/HKUDS/Vibe-Trading (agent/src/tools/pattern_tool.py)
+
+def find_support_resistance(
+    close: pd.Series,
+    window: int = 20,
+    num_levels: int = 3,
+) -> dict:
+    """Identify support and resistance levels via peak/valley price clustering.
+
+    Returns dict with 'support' and 'resistance' as lists of price levels,
+    sorted by cluster size (most-tested levels first).
+    """
+    n = len(close)
+    if n < 2 * window + 1:
+        return {"support": [], "resistance": []}
+
+    values = close.values.astype(float)
+    peaks, valleys = [], []
+
+    for i in range(window, n - window):
+        seg = values[i - window: i + window + 1]
+        seg = seg[~np.isnan(seg)]
+        if len(seg) == 0 or np.isnan(values[i]):
+            continue
+        if values[i] == np.max(seg):
+            peaks.append(float(values[i]))
+        if values[i] == np.min(seg):
+            valleys.append(float(values[i]))
+
+    def cluster(prices: list, n_clusters: int) -> list:
+        if not prices:
+            return []
+        sp = sorted(prices)
+        if len(sp) <= n_clusters:
+            return sp
+        clusters: list[list[float]] = [[sp[0]]]
+        rng = sp[-1] - sp[0]
+        thr = rng * 0.05 if rng > 0 else 1.0
+        for p in sp[1:]:
+            if abs(p - float(np.mean(clusters[-1]))) <= thr:
+                clusters[-1].append(p)
+            else:
+                clusters.append([p])
+        centers = [(len(c), float(np.mean(c))) for c in clusters]
+        centers.sort(reverse=True)
+        return [c for _, c in centers[:n_clusters]]
+
+    return {
+        "support": cluster(valleys, num_levels),
+        "resistance": cluster(peaks, num_levels),
+    }
+
+
+def detect_candlestick_signals(
+    open_: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+) -> pd.Series:
+    """Classify each bar as bullish (+1), bearish (-1), or neutral (0).
+
+    Detects: doji (indecision), hammer (bullish reversal), bullish/bearish engulfing.
+    Returns a Series aligned to the close index.
+    """
+    body = (close - open_).abs()
+    total_range = high - low
+    upper_shadow = high - pd.concat([open_, close], axis=1).max(axis=1)
+    lower_shadow = pd.concat([open_, close], axis=1).min(axis=1) - low
+
+    result = pd.Series(0, index=close.index, dtype=int)
+
+    safe_range = total_range.replace(0, np.nan)
+    is_doji = (body / safe_range) < 0.10
+
+    is_hammer = (lower_shadow > 2 * body) & (upper_shadow < body) & ~is_doji
+    result = result.where(~is_hammer, 1)
+
+    prev_bearish = close.shift(1) < open_.shift(1)
+    curr_bullish = close > open_
+    engulf_bull = (
+        prev_bearish & curr_bullish
+        & (open_ <= close.shift(1))
+        & (close >= open_.shift(1))
+        & (body > body.shift(1))
+    )
+    result = result.where(~engulf_bull, 1)
+
+    prev_bullish = close.shift(1) > open_.shift(1)
+    curr_bearish = close < open_
+    engulf_bear = (
+        prev_bullish & curr_bearish
+        & (open_ >= close.shift(1))
+        & (close <= open_.shift(1))
+        & (body > body.shift(1))
+    )
+    result = result.where(~engulf_bear, -1)
+
+    return result
+
+
+def rolling_trend_slope(close: pd.Series, window: int = 20) -> pd.Series:
+    """Compute rolling linear-regression slope over a price series.
+
+    Positive values indicate uptrend; negative indicate downtrend.
+    First window-1 entries are NaN.
+    """
+    n = len(close)
+    slopes = np.full(n, np.nan)
+    values = close.values.astype(float)
+    x = np.arange(window, dtype=float)
+
+    for i in range(window - 1, n):
+        seg = values[i - window + 1: i + 1]
+        if np.any(np.isnan(seg)):
+            continue
+        slopes[i] = np.polyfit(x, seg, 1)[0]
+
+    return pd.Series(slopes, index=close.index)
 
 
 @dataclass
@@ -38,6 +160,7 @@ class PatternEngine:
     Continuation:
     11. Symmetrical/Ascending/Descending Triangle
     12. Flag/Rectangle
+    13. Broadening / Megaphone
     """
 
     def __init__(self, lookback: int = 60):
@@ -67,6 +190,7 @@ class PatternEngine:
             self._detect_rising_wedge,
             self._detect_triangle,
             self._detect_flag_rectangle,
+            self._detect_broadening,
         ]
 
         for detector in detectors:
@@ -392,6 +516,55 @@ class PatternEngine:
                 direction=direction,
                 confidence=0.68,
                 description=f"Strong {'up' if initial_move > 0 else 'down'} move followed by tight consolidation",
+            )
+
+        return None
+
+    def _detect_broadening(self, df: pd.DataFrame) -> Optional[PatternResult]:
+        """Detect Broadening (Megaphone): rising highs AND falling lows simultaneously.
+
+        Signals increasing volatility and indecision — typically precedes sharp moves.
+        Adapted from Vibe-Trading pattern_tool.py (MIT License).
+        """
+        highs = df['high'].values
+        lows = df['low'].values
+        n = len(highs)
+        min_peaks = 2
+
+        # Find local highs and lows with a small window
+        win = max(2, self.lookback // 10)
+        peak_prices, valley_prices = [], []
+
+        for i in range(win, n - win):
+            seg_h = highs[i - win: i + win + 1]
+            seg_l = lows[i - win: i + win + 1]
+            if highs[i] == np.max(seg_h):
+                peak_prices.append(highs[i])
+            if lows[i] == np.min(seg_l):
+                valley_prices.append(lows[i])
+
+        if len(peak_prices) < min_peaks or len(valley_prices) < min_peaks:
+            return None
+
+        peaks_rising = all(
+            peak_prices[j + 1] > peak_prices[j]
+            for j in range(len(peak_prices) - 1)
+        )
+        valleys_falling = all(
+            valley_prices[j + 1] < valley_prices[j]
+            for j in range(len(valley_prices) - 1)
+        )
+
+        if peaks_rising and valleys_falling:
+            return PatternResult(
+                name="Broadening / Megaphone",
+                direction="CONTINUATION",
+                confidence=0.60,
+                description=(
+                    f"Rising highs ({peak_prices[0]:.0f}→{peak_prices[-1]:.0f}) + "
+                    f"falling lows ({valley_prices[0]:.0f}→{valley_prices[-1]:.0f}) — "
+                    "expanding volatility, directional breakout pending"
+                ),
             )
 
         return None
