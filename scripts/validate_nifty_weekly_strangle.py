@@ -1008,8 +1008,8 @@ def main() -> None:
     try:
         options_data = _load_options_data(session, from_date, to_date)
         spot_series  = _load_spot_from_db(session, from_date, to_date)
-        if len(spot_series) < 10:
-            logger.info("Insufficient DB spot, falling back to yfinance (^NSEI)...")
+        if len(spot_series) < 500:
+            logger.info("Sparse DB spot (%d bars), falling back to yfinance (^NSEI)...", len(spot_series))
             spot_series = _load_spot_from_yfinance(from_date, to_date)
     finally:
         session.close()
