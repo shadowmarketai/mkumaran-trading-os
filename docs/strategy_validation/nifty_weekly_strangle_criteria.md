@@ -188,3 +188,48 @@ Context: BankNifty weekly OVERRIDE (13.9% WF return, Sharpe 1.15, 36 trades — 
 but below 50-trade threshold). BankNifty monthly OVERRIDE (10 trades, inconclusive).
 Pairs trading inconclusive. Five prior tests, all accepted without iteration.
 The same discipline applies here.
+
+---
+
+## Postmortem (2026-05-07, after first validation run)
+
+**Result:** TIER 2 — Marginal validation.
+
+**Key metrics (net P&L, after all costs):**
+
+| Metric | Value | Tier 1 threshold | Tier 2 threshold |
+|---|---|---|---|
+| Trade count | 55 | ≥ 50 ✓ | ≥ 50 ✓ |
+| Win rate (net) | 78.2% | ≥ 60% ✓ | — |
+| WF return (OOS) | 16.4% | > 20% | 12–20% ✓ |
+| WF Sharpe (chronological OOS) | 0.556 | > 1.0 | 0.5–1.0 ✓ |
+| WF consistency | 75% (3/4 windows) | ≥ 60% ✓ | ≥ 50% ✓ |
+| MC P95 max drawdown | 28.7% | < 35% ✓ | < 50% ✓ |
+| Aggregate annual return | 8.9% | — | — |
+| Max drawdown (aggregate) | 13.6% | — | — |
+
+**Exit breakdown:**
+- 42/55 (76%) profit exits — exit logic working correctly
+- 4/55 (7%) stop-outs — stops are rare, not the binding constraint
+- 8/55 (15%) adjustment exits — conservative full-close on delta breach
+- 1/55 (2%) time exits
+
+**Decision: Tier 2 accepted. No iteration invoked.**
+
+The criteria permit ONE iteration on exit parameters with a stated structural
+hypothesis. Iteration was evaluated and declined because:
+
+1. 76% profit exits confirms the profit target is functioning correctly
+2. 7% stop rate confirms stops are not killing returns — no structural case for
+   a wider stop
+3. The binding constraint is VIX gate selectivity (120/206 = 58% of weeks
+   filtered) → small OOS window count (4 windows, 55 trades), not exit parameters
+4. Iterating on exit parameters with no structural hypothesis would constitute
+   parameter fishing. The criteria explicitly require a structural hypothesis
+   before iteration. None exists here.
+
+**Conclusion:** Strategy has marginal validated edge. Not Tier 1 deployable as a
+standalone strategy. Parked as a candidate (see docs/strategy_candidates.md).
+
+**Action:** Move to Phase 2 — Nifty monthly short strangle test.
+No further Nifty weekly iteration permitted.
