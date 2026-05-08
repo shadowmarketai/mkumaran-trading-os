@@ -522,6 +522,17 @@ export default function ResearchPage() {
           </p>
         </div>
 
+        {/* ── Next piece ── */}
+        <div className="border border-gray-100 rounded-xl p-5 flex items-center gap-4 hover:border-gray-200 transition-colors my-10">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-400 mb-0.5">Next research</p>
+            <a href="/research/options-selling" className="text-sm font-semibold text-gray-900 hover:text-trading-brand transition-colors">
+              We found one options strategy with marginal validated edge. Here's the honest report.
+            </a>
+          </div>
+          <span className="text-gray-300 text-lg flex-shrink-0">→</span>
+        </div>
+
         <Divider />
 
         {/* ── Disclaimer ── */}

@@ -21,6 +21,7 @@ import SignalMonitorPage from './pages/SignalMonitorPage';
 import MarketMoversPage from './pages/MarketMoversPage';
 import SettingsPage from './pages/SettingsPage';
 import ResearchPage from './pages/ResearchPage';
+import OptionsResearchPage from './pages/OptionsResearchPage';
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -32,6 +33,7 @@ function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/research/nifty-backtest" element={<ResearchPage />} />
+      <Route path="/research/options-selling" element={<OptionsResearchPage />} />
       <Route
         path="/*"
         element={
