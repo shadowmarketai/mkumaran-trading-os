@@ -160,15 +160,70 @@ hypothesis with new pre-committed criteria.
 
 ---
 
-## Postmortem template (to be completed after validation)
+## Postmortem (2026-05-08, after validation run)
 
-After validation completes, append here:
+**Result: OVERRIDE — Sample-size-limited. Inconclusive, not failed.**
 
-- Final tier verdict (mechanical, per criteria above)
-- Trade count: total months, gates applied, trades executed
-- Walk-forward results per window
-- Whether any data quality issues were found
-- Confirmation that no parameter adjustments were made post-hoc
+### Trade count
+- Validation window: 2023-01-01 → 2026-05-08 (41 monthly expiries selected)
+- VIX gate rejected: 27/41 months (66%)
+- Live trades executed: 13
+- Extended window to 2021-01-01 (permitted by criteria): still 13 trades
+  — options_chain_cache (NSE bhavcopy backfill) covers 2023 onwards only;
+    no 2021–2022 option price data available in DB. Extension did not add observations.
+
+### Walk-forward results (on 13 trades — statistically thin, noted)
+
+| Window | N | Ann return | Sharpe | Profitable? |
+|---|---|---|---|---|
+| 2024-01 → 2024-04 | 3 | +ve | — | ✓ |
+| 2024-04 → 2024-07 | 2 | +ve | — | ✓ |
+| 2024-07 → 2024-10 | 1 | +ve | — | ✓ |
+| 2024-10 → 2025-01 | 2 | +ve | — | ✓ |
+| 2025-01 → 2025-04 | 2 | -ve | — | ✗ |
+| 2025-04 → 2025-07 | 2 | +ve | — | ✓ |
+
+WF return: 6.8% | WF Sharpe: 0.334 | WF consistency: 83% (5/6) | MC P95 DD: 25.0%
+
+*These metrics are noted but not used to tier-classify, because n=13 is below the 30-trade
+minimum. The bootstrap Sharpe 95% CI is [-0.97, 15.71] — too wide to draw any conclusion.*
+
+### Observable signals (not a verdict — only documentation)
+
+- Win rate: 84.6% (11 profit exits, 1 adjustment, 1 stop — same exit structure as weekly)
+- MC P95 max DD: 25.0% — would satisfy T1 threshold (<30%) if sample were sufficient
+- WF consistency: 83% — would satisfy T1 threshold (≥60%) if sample were sufficient
+- Binding constraint: VIX gate selectivity (66% rejection) + data availability (no pre-2023 chain data)
+
+### Data quality
+No data quality issues. The bhavcopy-sourced option chain data is clean and complete
+for the 2023-2026 window. The 2021-2022 gap is a data availability limitation, not
+a quality problem.
+
+One data-boundary artifact: the January 2023 expiry (2023-01-19) has a target entry
+of 2022-12-25 (Christmas, pre-data-start). Actual entry drifted to 2023-01-02 (8 days).
+This trade is included in results and flagged by the drift warning — not excluded.
+
+### Parameter adjustments post-hoc
+None. No parameters were changed after seeing results.
+The VIX gate, delta, DTE, profit target, stop multiplier, and time exit rules
+are unchanged from the committed specification.
+
+### OVERRIDE classification
+Per the criteria doc: "If still < 30 qualifying trades, result is sample-size-limited.
+Document and move on. Do NOT loosen VIX gate or change delta to increase trade count."
+
+This result is OVERRIDE — inconclusive, not failed. The Nifty monthly hypothesis
+is neither validated nor disproven. The Nifty options-selling strategy class is NOT
+exhausted by this result (OVERRIDE ≠ TIER 3 or TIER 4).
+
+### Action
+- Monthly result filed as OVERRIDE in strategy_candidates.md
+- No further iteration on Nifty monthly permitted under these criteria
+- A new hypothesis with new pre-committed criteria is required to revisit
+- If options chain backfill extends to 2021, this test can be re-run with
+  `--from 2021-01-01` under the same pre-committed criteria (no new criteria doc needed,
+  since the criteria already permitted this extension)
 
 ---
 

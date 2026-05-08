@@ -37,7 +37,8 @@ Not dead. Not deployed. Parked with honest accounting of where they stand.
 
 - Combined with a complementary Tier 2+ strategy improving portfolio-level Sharpe
 - Successful OOS confirmation on a different time period (e.g., 2019–2022)
-- Monthly Nifty test validates at Tier 1 → deploy as combined weekly+monthly book
+- Monthly Nifty OVERRIDE resolved (bhavcopy backfill to 2021) → if monthly validates
+  at Tier 1, deploy as combined weekly+monthly book
 
 ### What not to do
 
@@ -79,4 +80,49 @@ Not dead. Not deployed. Parked with honest accounting of where they stand.
 
 ---
 
-*Last updated: 2026-05-07*
+## 3. Nifty Monthly Short Strangle
+
+**Status:** OVERRIDE — Sample-size-limited. Inconclusive, not failed.
+**Validated:** 2026-05-08
+**Criteria doc:** `docs/strategy_validation/nifty_monthly_strangle_criteria.md`
+**Validation script:** `scripts/validate_nifty_monthly_strangle.py`
+
+### Results (net of all costs, 13 trades — below 30-trade minimum)
+
+| Metric | Value | Note |
+|---|---|---|
+| Trade count | 13 (2023-01 → 2026-04) | OVERRIDE threshold: < 30 |
+| Win rate | 84.6% | Suggestive, not conclusive |
+| WF return (OOS) | 6.8% | Meaningless at n=13 |
+| WF Sharpe (OOS) | 0.334 | CI: [-0.97, 15.71] — too wide |
+| WF consistency | 83% (5/6 windows) | Would satisfy T1 if sample sufficient |
+| MC P95 max drawdown | 25.0% | Would satisfy T1 (<30%) if sample sufficient |
+
+### Why OVERRIDE and not a tier verdict
+
+- 41 monthly expiries in window; VIX gate rejected 27 (66%) — most selective gate seen
+- 13 live trades < 30 minimum → OVERRIDE, not failed
+- Extended to 2021-01-01 (permitted): still 13 trades — options chain DB only covers
+  2023 onwards; no pre-2023 backfill available
+
+### Why not failed
+
+- OVERRIDE ≠ TIER 3 or TIER 4. The Nifty options-selling arc is not exhausted.
+- Observable signals on 13 trades are directionally consistent with the weekly result
+- Binding constraint is data availability + VIX gate selectivity, not strategy edge
+
+### Conditions for re-run
+
+- Backfill options_chain_cache to 2021-01-01 (2 more years of monthly data)
+- Re-run with `--from 2021-01-01` under the same pre-committed criteria (no new doc needed)
+- If that gives ≥ 30 live trades, proceed to tier verdict
+
+### What not to do
+
+- Do not loosen the VIX gate to increase trade count
+- Do not change delta target to generate more trades
+- Do not treat OVERRIDE as equivalent to a negative tier result
+
+---
+
+*Last updated: 2026-05-08*
