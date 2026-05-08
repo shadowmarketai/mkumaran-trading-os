@@ -152,3 +152,75 @@ Context: Individual engines TIER 3 on full N100 (2026-04-28). PSU-excluded
 Wyckoff TIER 3 with improved profitable-ticker rate (34.7% vs 13%). This test
 determines which engines, if any, have recoverable edge on the PSU-excluded
 universe, and whether confluence of 2-3 engines crosses into positive territory.
+
+---
+
+## Postmortem (2026-05-08, after full run — 78 tickers)
+
+**Result: ALL ENGINES TIER 3 — PSU exclusion does not rescue any engine.**
+
+### Full results vs baseline
+
+| Engine | Trades | Median PF | Baseline PF | Lift | Tier |
+|---|---|---|---|---|---|
+| wyckoff | 658 | 0.70 | 0.67 | +0.030 | TIER_3 |
+| vsa | 745 | 0.55 | 0.54 | +0.010 | TIER_3 |
+| smc | 1,260 | 0.39 | 0.42 | -0.030 | TIER_3 |
+| harmonic | 53 | 0.00 | 0.00 | — | TIER_3 (INCONCLUSIVE — only 53 trades) |
+| confluence_2 | 656 | 0.68 | 0.49 | +0.190 | TIER_3 |
+| confluence_3 | 132 | 0.00 | 0.49 | — | TIER_3 (INCONCLUSIVE — 132 trades, ~1.7/ticker) |
+
+### Key findings
+
+**PSU exclusion does not rescue any engine into positive expectancy.**
+All lifts are marginal (+0.030 best for Wyckoff; +0.190 for confluence_2).
+No engine crosses the Tier 2 floor of PF ≥ 0.80.
+
+**Best performer: Confluence-2 (0.68, +0.190 lift).** Requiring 2+ engines to
+agree improves over standalone Wyckoff (0.70) and individual engines, but still
+0.12 PF below the Tier 2 floor. This is the best result across all experiments
+so far, but insufficient.
+
+**Confluence-3 is too sparse.** Only 132 trades across 78 tickers (~1.7/ticker).
+Most tickers generate 0 confluence-3 signals over 3 years. The few that do have
+highly variable outcomes (TORNTPOWER: 1 trade PF=inf; ATGL: 2 trades PF=0.00).
+Statistical mass is insufficient for any conclusion.
+
+**SMC is the only engine that regressed** (-0.030 lift). PSU exclusion did not
+help SMC — the engine signal quality is independent of sector contamination.
+
+**Harmonic produces near-zero edge** across all tickers. 53 trades across 78
+tickers confirms harmonic pattern detection on NSE daily data is not generating
+actionable signals at any scale.
+
+**ZOMATO still unavailable** via yfinance (delisted/symbol error). Excluded from
+78-ticker universe as in prior runs.
+
+### Binding constraint
+
+The failure is in the engine signals themselves on Indian NSE daily data, not in
+universe contamination. The PSU exclusion hypothesis is fully tested and rejected:
+removing 16 government-linked tickers provides marginal lift but no engine crosses
+into positive expectancy territory.
+
+### Per criteria doc decision
+
+All engines TIER 3 → **No further iteration on any of these engines on Indian
+daily equity data without a new structural hypothesis.**
+
+Per criteria: "Engine not viable on Indian daily equity data even with PSU
+exclusion. Document. No further iteration on that engine."
+
+### Candidate structural hypotheses for future test arcs (new criteria docs required)
+
+1. **Weekly timeframe** — fewer but larger-RRR signals; less noise from 1-day bars
+2. **OI-weighted Wyckoff** — volume proxy problem on NSE (delivery vol ≠ true accumulation signal)
+3. **Options volatility edge** — Nifty strangle / BankNifty strangle already in progress
+4. **Sector concentration** — private power (TORNTPOWER, CESC consistently above PF 1.0) may
+   warrant a dedicated narrow-universe test with new pre-committed criteria
+
+### Signature
+
+Criteria committed 2026-05-08 before run.
+Postmortem added 2026-05-08 after full 78-ticker run.
+Result is definitive: PSU exclusion hypothesis rejected across all engines.
