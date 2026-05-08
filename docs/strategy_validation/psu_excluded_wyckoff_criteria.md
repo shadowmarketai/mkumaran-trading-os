@@ -177,3 +177,49 @@ Context: Pipeline TIER 3 (2026-05-08) found 16 PSU tickers with PF 0.00 and 0%
 win rate across all trades. Individual Wyckoff TIER 3 (2026-04-28) had PF 0.67 on
 full universe. PSU exclusion is the most actionable structural hypothesis from both
 findings. Decision criteria committed before script is written or run.
+
+---
+
+## Postmortem (2026-05-08, after full run)
+
+**Result: TIER 3 — PSU exclusion helps but insufficient for standalone viability.**
+
+### Key metrics
+
+| Metric | Value | Threshold | Result |
+|---|---|---|---|
+| Median PF | 0.70 | ≥ 1.2 = Tier 1, ≥ 0.8 = Tier 2 | Tier 3 ✓ |
+| Lift vs baseline (0.67) | +0.030 | — | Positive but marginal |
+| Profitable tickers | 26/75 (34.7%) | ≥ 40% = Tier 1 | Near Tier 2 boundary |
+| Total trades | 691 | ≥ 200 (not override) | OK ✓ |
+
+### Key findings
+
+PSU exclusion does improve signal quality — profitable tickers went from ~13% (full
+pipeline) to 34.7% (PSU-excluded standalone Wyckoff). The universe is cleaner.
+But median PF 0.70 is the binding constraint: below the Tier 2 floor of 0.80.
+
+Notable PSU-excluded tickers with PF > 1.0:
+- TORNTPOWER: PF 2.29, WR 50.0%, 6 trades (private power, not PSU)
+- CESC: PF 1.20, WR 33.3%, 9 trades (private power, not PSU)
+The common thread: private-sector power companies have more predictable
+technical patterns than government-linked stocks.
+
+Data failures: ZOMATO.NS and MCDOWELL-N.NS returned empty from yfinance — symbol
+mapping issue, not a strategy finding. Both excluded from the 78-ticker count.
+
+### Per criteria doc — ONE structural change next
+
+Per Tier 3 decision, ONE change may be tested with a new criteria doc. The two options:
+- Option A: MWA filter only — does regime alignment lift PF above 0.8?
+- Option B: 2-engine confluence on PSU-excluded universe (fewer but better signals)
+
+**Recommended next test: Option B (confluence).** Reasoning: 34.7% profitable-ticker
+rate indicates real underlying edge in the non-PSU universe. The drag is from the
+losing half of single-engine signals. Confluence (2+ engines agreeing) on a 78-ticker
+PSU-excluded universe should reduce signal count but increase signal quality. A new
+pre-committed criteria doc is required before running.
+
+### Signature
+
+Criteria committed 2026-05-08 before run. Postmortem added 2026-05-08 after run.
