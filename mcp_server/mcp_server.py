@@ -242,6 +242,78 @@ async def _deliver_intraday_signals(
         db.close()
 
 
+async def _nifty_strangle_loop():
+    """
+    Background task: check Nifty weekly strangle entry conditions once per day at 09:30 IST.
+
+    This is the only strategy in the platform with validated edge (Tier 2, 2026-05-07).
+    Runs at most once per trading day; sends at most one signal per weekly expiry.
+    Gated by NIFTY_STRANGLE_ENABLED setting (default True).
+    """
+    if not getattr(settings, "NIFTY_STRANGLE_ENABLED", True):
+        logger.info("Nifty strangle loop disabled (NIFTY_STRANGLE_ENABLED=false)")
+        return
+
+    from mcp_server.market_calendar import now_ist
+
+    logger.info("Nifty strangle signal loop started (daily check at 09:30 IST)")
+
+    sent_expiries: set[str] = set()  # avoid re-sending same expiry
+    last_check_date: str = ""
+
+    while True:
+        try:
+            now = now_ist()
+            today_str = now.date().isoformat()
+
+            # Check once per day, at or after 09:30 IST
+            if (
+                today_str != last_check_date
+                and now.hour > 9 or (now.hour == 9 and now.minute >= 30)
+            ):
+                last_check_date = today_str
+
+                from mcp_server.nifty_strangle_live import check_and_emit_strangle_signal
+                result = check_and_emit_strangle_signal()
+
+                if result and result.get("status") == "emitted":
+                    expiry_key = result["expiry"]
+                    if expiry_key not in sent_expiries:
+                        sent_expiries.add(expiry_key)
+                        msg = result["message"]
+                        # Personal bot
+                        from mcp_server.telegram_bot import send_telegram_message
+                        _fire_and_forget(send_telegram_message(msg, exchange="NFO", force=True))
+                        # Broadcast to subscribers with F&O segment
+                        try:
+                            from mcp_server.telegram_saas import broadcast_signal_to_users
+                            _fire_and_forget(broadcast_signal_to_users(msg, exchange="NFO"))
+                        except Exception:
+                            pass
+                        logger.info(
+                            "Strangle signal emitted: expiry=%s CE=%s PE=%s VIX=%.1f(%.0f%%)",
+                            expiry_key, result["ce_strike"], result["pe_strike"],
+                            result["vix"], result["vix_pct"] * 100,
+                        )
+                    else:
+                        logger.info("Strangle: signal for expiry %s already sent today", expiry_key)
+
+                elif result and result.get("status") == "vix_rejected":
+                    logger.info(
+                        "Strangle: VIX gate rejected — expiry=%s VIX=%.1f(%.0f%%)",
+                        result["expiry"], result["vix"], result["vix_pct"] * 100,
+                    )
+
+            # Sleep 5 minutes between checks (precise timing not needed — daily check)
+            await asyncio.sleep(300)
+
+        except asyncio.CancelledError:
+            break
+        except Exception as loop_err:
+            logger.error("Strangle signal loop error: %s", loop_err)
+            await asyncio.sleep(300)
+
+
 async def _options_signal_loop():
     """Background task: scan for pure options strategies every 10 min during F&O hours."""
     if not getattr(settings, "OPTION_SIGNALS_ENABLED", True):
@@ -908,6 +980,13 @@ async def lifespan(app: FastAPI):
     logger.info(
         "Options signal loop started (enabled=%s)",
         getattr(settings, "OPTION_SIGNALS_ENABLED", True),
+    )
+
+    # Start Nifty weekly strangle signal loop (validated Tier 2 strategy)
+    asyncio.create_task(_nifty_strangle_loop())
+    logger.info(
+        "Nifty strangle signal loop started (enabled=%s)",
+        getattr(settings, "NIFTY_STRANGLE_ENABLED", True),
     )
 
     # Start all dedicated segment agents (Options Index, Options Stock,
