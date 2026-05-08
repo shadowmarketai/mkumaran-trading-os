@@ -132,14 +132,64 @@ python scripts/validate_production_pipeline.py --min-engines 3 --workers 4
 
 ---
 
-## Postmortem template (to be completed after run)
+## Postmortem (2026-05-08, after full run)
 
-- Final tier verdict (mechanical, per criteria above)
-- Median PF, Sharpe, profitable ticker count, total trades
-- Filter retention rate (raw → broadcast signals)
-- Whether any bugs were found (PF > 10 on any ticker)
-- Confirmation that no parameters were changed after seeing results
-- Walk-forward result if Tier 1
+**Result: TIER 3 — combination does not help.**
+
+### Key metrics
+
+| Metric | Value | Threshold | Result |
+|---|---|---|---|
+| Median Profit Factor | 0.43 | < 0.8 = Tier 3 | Tier 3 ✓ |
+| Profitable tickers | 12/90 (13.3%) | < 20% = Tier 3 | Tier 3 ✓ |
+| Total trades | 744 | ≥ 200 (not override) | OK ✓ |
+| Any ticker PF > 10 | No (max 5.53, FEDERALBNK) | Bug flag | Clean ✓ |
+
+### Filter funnel
+- Raw signals (pre-filter): 2,711
+- Broadcast signals (post-filter + global position dedup): 50
+- Retention: 1.8%
+- Effective broadcast rate: ~17 signals/year (~1.4/month) to a real user
+
+### Structural findings
+
+**Sector split is real:**
+- PSU/government stocks (SBIN, POWERGRID, ONGC, NTPC, SIEMENS, BOSCHLTD, AMBUJACEM,
+  BANDHANBNK, LUPIN, AUROPHARMA, ALKEM, CONCOR, SUNPHARMA, ADANIENT): PF 0.00, WR 0%.
+  Every single trade on these tickers lost. 16 tickers with zero wins across 744 total trades.
+  Government-linked companies have policy-driven price behaviour that technical engines cannot read.
+
+- Financial, pharma, paints, IT (FEDERALBNK, BAJAJFINSV, TORNTPHARM, ASIANPAINT, HDFCBANK,
+  DRREDDY, BERGEPAINT, TVSMOTOR, TCS, BPCL, APOLLOHOSP, CIPLA): PF 1.06–5.53, WR 33–71%.
+  12 tickers above PF 1.0 — but per-ticker trade counts are 5–11, statistically thin.
+
+**Dedup problem:** The global position limit (max 5 open × 30-day cooldown) collapses
+2,711 signals to 50. Even if those 50 were profitable, the portfolio-level return would
+be negligible. The pipeline generates too few high-conviction signals for practical use.
+
+**Win rate structural floor:** Median WR 15.5% is below the breakeven for the average
+RRR in the universe. The confluence filter does not raise win rate meaningfully above
+the 23.6% seen on standalone Wyckoff.
+
+### Conclusion
+The production pipeline in its current form (SMC/Wyckoff/VSA/Harmonic confluence +
+MWA proxy + quality gate + dedup) does not have positive expectancy on Nifty 100
+daily equity signals. The combination of filters reduces loss rate slightly vs
+standalone engines but does not cross into positive territory.
+
+### Actions per criteria doc
+- No further pipeline iteration permitted under these criteria
+- No parameter changes were made after seeing results
+- The sector split finding (PSU fail, financials/pharma/IT partially viable) is
+  the most actionable output: any future hypothesis should test a filtered universe
+  (exclude PSU sector) with new pre-committed criteria
+- This test and its findings are documented as the final pipeline validation result
+
+### Future research directions (new criteria docs required for each)
+1. Filtered universe: exclude PSU/government stocks, test on remaining ~70 tickers
+2. Different signal sources: OI data, delivery percentage, FII/DII flow as entry signals
+3. Weekly timeframe: reduce signal frequency but increase per-signal size
+4. The AI debate validator (6-agent system) has still not been backtested — separate test
 
 ---
 
