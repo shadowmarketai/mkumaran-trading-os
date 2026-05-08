@@ -756,7 +756,7 @@ def run_backtest(
     )
 
     # ── Data fetch ────────────────────────────────────────────
-    if interval != "1d":
+    if interval not in ("1d", "1wk"):
         # Intraday: read from ohlcv_cache (populated by Dhan backfill)
         data = _load_from_cache(ticker, interval, days)
         if data.empty or len(data) < 50:
@@ -770,7 +770,7 @@ def run_backtest(
                 "interval": interval,
             }
     else:
-        # Daily: fetch from yfinance / live provider
+        # Daily / weekly: fetch from yfinance / live provider
         if days <= 365:
             period = "1y"
         elif days <= 730:
@@ -779,7 +779,7 @@ def run_backtest(
             period = "3y"
         else:
             period = "5y"
-        data = get_stock_data(ticker, period=period)
+        data = get_stock_data(ticker, period=period, interval=interval)
 
     if data.empty or len(data) < 50:
         return {
