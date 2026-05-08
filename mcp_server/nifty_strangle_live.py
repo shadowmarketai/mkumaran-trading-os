@@ -82,31 +82,77 @@ def _fetch_vix_nse() -> float | None:
         return None
 
 
+def _fetch_vix_dhan() -> tuple[float | None, float | None]:
+    """Fetch India VIX from Dhan historical daily data (252-day window).
+
+    Dhan security ID 13 = INDIA VIX on IDX_I segment. Only runs when Dhan
+    is logged in. Returns full 252-day window — same quality as yfinance.
+    """
+    try:
+        from mcp_server.data_provider import get_provider
+        provider = get_provider()
+        dhan = getattr(provider, "dhan", None)
+        if not dhan or not getattr(dhan, "logged_in", False):
+            return None, None
+
+        today = date.today()
+        resp = dhan.client.historical_daily_data(
+            security_id="13",           # India VIX sec ID in Dhan
+            exchange_segment="IDX_I",
+            instrument_type="INDEX",
+            from_date=(today - timedelta(days=400)).strftime("%Y-%m-%d"),
+            to_date=today.strftime("%Y-%m-%d"),
+        )
+        if not resp or not resp.get("data"):
+            return None, None
+
+        raw = resp["data"]
+        if isinstance(raw, dict) and "close" in raw:
+            closes = [float(v) for v in raw["close"] if v]
+        elif isinstance(raw, list):
+            closes = [float(r["close"]) for r in raw if r.get("close")]
+        else:
+            return None, None
+
+        if not closes:
+            return None, None
+
+        today_vix = closes[-1]
+        window = closes[-VIX_WINDOW_DAYS:] if len(closes) >= VIX_WINDOW_DAYS else closes
+        pct = sum(1 for v in window if v <= today_vix) / len(window)
+        logger.info("VIX (Dhan): %.2f | percentile: %.0f%%", today_vix, pct * 100)
+        return today_vix, pct
+
+    except Exception as exc:
+        logger.debug("Dhan VIX failed: %s", exc)
+        return None, None
+
+
 def _fetch_vix_percentile() -> tuple[float | None, float | None]:
     """Return (today_vix, percentile_0_to_1).
 
-    Primary: yfinance ^INDIAVIX (full 252-day window for percentile).
-    Fallback: NSE allIndices API for today's spot VIX only; percentile
-    is approximated from a simplified historical range (12–35 typical bounds).
-    Manual override: set NIFTY_STRANGLE_VIX env var to skip fetch entirely.
+    Cascade (best data quality first):
+      1. Manual override  — NIFTY_STRANGLE_VIX env var (emergency bypass)
+      2. yfinance         — full 252-day window, accurate percentile
+      3. Dhan             — full 252-day window via historical_daily_data (IDX_I sec 13)
+      4. NSE allIndices   — spot VIX only, percentile approximated (10-35 range)
     """
     from mcp_server.config import settings
 
-    # Manual override — allows forcing a specific VIX when APIs are down
+    # 1. Manual override
     manual_vix = getattr(settings, "NIFTY_STRANGLE_VIX", 0.0)
     if manual_vix and manual_vix > 0:
-        logger.info("VIX override: %.2f (from NIFTY_STRANGLE_VIX env)", manual_vix)
-        pct = min(1.0, max(0.0, (manual_vix - 10.0) / 30.0))  # rough 10-40 range
+        logger.info("VIX override: %.2f (NIFTY_STRANGLE_VIX env)", manual_vix)
+        pct = min(1.0, max(0.0, (manual_vix - 10.0) / 25.0))
         return manual_vix, pct
 
-    # Primary: yfinance
+    # 2. yfinance (full 252-day window)
     try:
         import yfinance as yf
         today = date.today()
-        extended_from = today - timedelta(days=400)
         df = yf.download(
             "^INDIAVIX",
-            start=extended_from.isoformat(),
+            start=(today - timedelta(days=400)).isoformat(),
             end=(today + timedelta(days=1)).isoformat(),
             interval="1d", auto_adjust=True, progress=False,
         )
@@ -119,23 +165,24 @@ def _fetch_vix_percentile() -> tuple[float | None, float | None]:
                 today_vix = closes[-1]
                 window = closes[-VIX_WINDOW_DAYS:] if len(closes) >= VIX_WINDOW_DAYS else closes
                 pct = sum(1 for v in window if v <= today_vix) / len(window)
-                logger.info("VIX (yfinance): %.2f | percentile: %.0f%%", today_vix, pct * 100)
+                logger.info("VIX (yfinance): %.2f | %.0f%%", today_vix, pct * 100)
                 return today_vix, pct
     except Exception as e:
-        logger.warning("VIX yfinance failed: %s — trying NSE fallback", e)
+        logger.warning("VIX yfinance failed: %s", e)
 
-    # Fallback: NSE live API (no historical window, approximate percentile)
+    # 3. Dhan historical (full 252-day window, requires login)
+    dhan_vix, dhan_pct = _fetch_vix_dhan()
+    if dhan_vix is not None:
+        return dhan_vix, dhan_pct
+
+    # 4. NSE spot (approximate percentile, no history)
     nse_vix = _fetch_vix_nse()
     if nse_vix is not None and nse_vix > 0:
-        # Approximate percentile: VIX 10=0%, 22=50%, 35=100% (Indian market typical range)
         pct = min(1.0, max(0.0, (nse_vix - 10.0) / 25.0))
-        logger.info(
-            "VIX (NSE fallback): %.2f | approx percentile: %.0f%% (no 252d history)",
-            nse_vix, pct * 100,
-        )
+        logger.info("VIX (NSE spot): %.2f | approx %.0f%% (no 252d window)", nse_vix, pct * 100)
         return nse_vix, pct
 
-    logger.warning("VIX fetch failed on all sources — signal skipped")
+    logger.warning("VIX: all sources failed — set NIFTY_STRANGLE_VIX env to override")
     return None, None
 
 
