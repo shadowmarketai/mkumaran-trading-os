@@ -618,15 +618,18 @@ def _simulate_trades(
 
 
 def _generate_confluence_signals(
-    data: pd.DataFrame, ticker: str, capital: float
+    data: pd.DataFrame, ticker: str, capital: float, min_engines: int = 2
 ) -> list[dict]:
     """
     Generate signals where multiple engines agree.
 
     Score each bar by how many engines produce a signal.
-    Only take entries with 2+ engines confirming.
+    Only take entries where min_engines or more confirm the direction.
+
+    Args:
+        min_engines: Minimum number of engines that must agree (default 2).
+                     Use 3 for a higher-conviction filter.
     """
-    # Collect all signals from all engines
     all_signals: dict[int, list[dict]] = {}
 
     for engine_name in ["smc", "wyckoff", "vsa", "harmonic"]:
@@ -640,7 +643,6 @@ def _generate_confluence_signals(
         except Exception as e:
             logger.warning("Confluence: %s engine failed: %s", engine_name, e)
 
-    # Filter for bars with 2+ engines agreeing on direction
     confluence_signals: list[dict] = []
     for idx, sigs in sorted(all_signals.items()):
         bull_sigs = [s for s in sigs if s["direction"] == "LONG"]
@@ -649,14 +651,13 @@ def _generate_confluence_signals(
         sources_bull = set(s["source"] for s in bull_sigs)
         sources_bear = set(s["source"] for s in bear_sigs)
 
-        if len(sources_bull) >= 2:
-            # Use the signal with highest confidence
+        if len(sources_bull) >= min_engines:
             best = max(bull_sigs, key=lambda s: s["confidence"])
             best["confidence"] = min(95, best["confidence"] + len(sources_bull) * 10)
             best["source"] = f"confluence({','.join(sorted(sources_bull))})"
             best["engines_agreed"] = len(sources_bull)
             confluence_signals.append(best)
-        elif len(sources_bear) >= 2:
+        elif len(sources_bear) >= min_engines:
             best = max(bear_sigs, key=lambda s: s["confidence"])
             best["confidence"] = min(95, best["confidence"] + len(sources_bear) * 10)
             best["source"] = f"confluence({','.join(sorted(sources_bear))})"
@@ -724,6 +725,7 @@ def run_backtest(
     capital: float = 100000,
     slippage_pct: float | None = None,  # None = auto-select by interval
     interval: str = "1d",
+    min_engines: int = 2,  # Only used when strategy="confluence"
 ) -> dict:
     """
     Run a backtest using historical data with realistic costs.
@@ -792,7 +794,7 @@ def run_backtest(
     elif strategy in ("smc", "wyckoff", "vsa", "harmonic"):
         signals = _generate_engine_signals(data, strategy)
     elif strategy == "confluence":
-        signals = _generate_confluence_signals(data, ticker, capital)
+        signals = _generate_confluence_signals(data, ticker, capital, min_engines=min_engines)
     elif strategy == "pos_5ema":
         from mcp_server.pos_five_ema import generate_signals_for_backtest
         # Normalise column names: yfinance may return Title-case on some builds
