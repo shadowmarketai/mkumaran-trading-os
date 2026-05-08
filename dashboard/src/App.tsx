@@ -20,6 +20,7 @@ import PaperTradingPage from './pages/PaperTradingPage';
 import SignalMonitorPage from './pages/SignalMonitorPage';
 import MarketMoversPage from './pages/MarketMoversPage';
 import SettingsPage from './pages/SettingsPage';
+import ResearchPage from './pages/ResearchPage';
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -30,6 +31,7 @@ function App() {
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/research/nifty-backtest" element={<ResearchPage />} />
       <Route
         path="/*"
         element={
