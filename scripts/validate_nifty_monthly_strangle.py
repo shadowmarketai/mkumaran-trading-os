@@ -280,18 +280,22 @@ def _build_vix_percentiles(vix_series: dict[date, float]) -> dict[date, float]:
 
 # ── Monthly expiry selection ────────────────────────────────────────────────
 
-def _select_monthly_expiries(all_expiry_dates: list[date]) -> list[date]:
+def _select_monthly_expiries(all_expiry_dates: list[date], max_expiry: date | None = None) -> list[date]:
     """
-    Return the last qualifying expiry of each calendar month:
+    Return the last qualifying expiry of each calendar month up to max_expiry.
       Pre-Sept 1 2025: last Thursday (weekday=3) of each month
       Post-Sept 1 2025: last Tuesday (weekday=1) of each month
 
     The "last expiry per month" approach is insufficient because bhavcopy
     contains non-standard quarterly/annual contracts that produce Wednesdays
-    or other days. This function filters by the correct day-of-week first.
+    or other days. This function filters by correct day-of-week first, then
+    caps by max_expiry to exclude far-dated quarterly/annual contracts whose
+    bars appear in the window but whose expiry is beyond the validation range.
     """
     by_month: dict[tuple[int, int], date] = {}
     for exp in sorted(all_expiry_dates):
+        if max_expiry and exp > max_expiry:
+            continue
         target_dow = 1 if exp >= EXPIRY_TRANSITION_DATE else 3  # Tuesday or Thursday
         if exp.weekday() == target_dow:
             key = (exp.year, exp.month)
@@ -1075,7 +1079,7 @@ def main() -> None:
         sys.exit(1)
 
     all_expiry_dates = sorted(options_data.keys())
-    monthly_expiries = _select_monthly_expiries(all_expiry_dates)
+    monthly_expiries = _select_monthly_expiries(all_expiry_dates, max_expiry=to_date)
 
     # ── Expiry diagnostic ──────────────────────────────────────────────
     if args.debug_expiries:
