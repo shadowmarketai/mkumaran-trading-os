@@ -131,3 +131,68 @@ Context: All daily-bar engines TIER 3 on both full and PSU-excluded Nifty 100
 (2026-04-28 through 2026-05-08). Weekly timeframe is the remaining structural
 hypothesis for equity engines. Options/strangle is the parallel primary arc.
 If weekly also TIER 3, the equity signal engine arc is closed.
+
+---
+
+## Postmortem (2026-05-08, after full 78-ticker run)
+
+**Result: BOTH ENGINES TIER 3 — weekly timeframe is WORSE than daily.**
+
+### Full results vs daily PSU-excluded baseline
+
+| Engine | Trades | Weekly PF | Daily PF (baseline) | Lift | Tier |
+|---|---|---|---|---|---|
+| Wyckoff weekly | 602 | 0.60 | 0.70 | **-0.100** | TIER_3 |
+| Confluence-2 weekly | 656 | 0.58 | 0.68 | **-0.100** | TIER_3 |
+
+### Key findings
+
+**Weekly bars produce worse results than daily across the full universe.**
+Lift is negative for both engines — switching from daily to weekly bars removed
+edge rather than adding it. The hypothesis (weekly bars reduce noise) is rejected.
+
+**POC was misleading.** The 5 POC tickers (HDFCBANK, ICICIBANK, DRREDDY,
+TORNTPOWER, FEDERALBNK) showed PF 1.21 and 1.19 on weekly bars — but these
+are quality large-caps that happen to have cleaner Wyckoff patterns. The full
+79-ticker universe includes smaller, noisier names where weekly patterns are
+weaker, pulling the median from ~1.20 down to 0.60.
+
+**Explanation for degradation:** Weekly bars have ~5× fewer data points than
+daily (156 bars vs 780 bars over 3 years). With fewer bars, pattern detection
+is noisier rather than cleaner — statistical noise dominates more, not less,
+when each bar carries 5 days of mixed information.
+
+**ZOMATO** unavailable as in all prior runs (yfinance symbol error). Excluded.
+
+### Definitive conclusion — equity engine arc closed
+
+Per criteria doc: *"If weekly also TIER 3, the equity signal engine arc is closed."*
+
+All configurations tested across this arc:
+
+| Test | Config | Median PF | Result |
+|---|---|---|---|
+| Individual engines (2026-04-28) | All 7 engines, full N100, daily | 0.00–0.67 | All TIER_3 |
+| PSU-excluded Wyckoff (2026-05-08) | Wyckoff, PSU-excl, daily | 0.70 | TIER_3 |
+| PSU-excluded all engines (2026-05-08) | 6 engines, PSU-excl, daily | 0.39–0.68 | All TIER_3 |
+| Weekly timeframe (2026-05-08) | Wyckoff + C2, PSU-excl, weekly | 0.58–0.60 | All TIER_3 |
+
+**These technical analysis pattern engines (Wyckoff, SMC, VSA, Harmonic,
+Confluence) do not have detectable edge on NSE equity data at any tested
+configuration — full universe, PSU-excluded, daily bars, or weekly bars.**
+
+### Live path forward
+
+Per pre-committed criteria: no further iteration on these engines.
+
+**Options/strangle remains the only validated live path:**
+- Nifty weekly short strangle: TIER_2 validated (Sharpe 0.556, 55 trades)
+- Deployed live with "TIER_2 — Marginal validated edge" disclaimer
+- Gate refinement test (earnings/FII) inconclusive — exact NSE data needed
+- Strategy is profitable and operating as designed
+
+### Signature
+
+Criteria committed 2026-05-08 before run.
+Postmortem added 2026-05-08 after full 78-ticker run.
+Equity engine arc closed. Options is the primary validated arc.
