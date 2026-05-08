@@ -62,11 +62,6 @@ from validate_nifty_weekly_strangle import (  # noqa: E402
     aggregate_metrics,
     check_override_conditions,
     determine_tier,
-    UNDERLYING,
-    LOT_SIZE,
-    SPAN_MARGIN,
-    VIX_LOW_PCT,
-    VIX_HIGH_PCT,
 )
 
 logging.basicConfig(
@@ -121,7 +116,6 @@ def _nse_session():
 
 
 def _fetch_earnings_batch(session, from_date: date, to_date: date) -> list[dict]:
-    import requests
     url = "https://www.nseindia.com/api/corporates-corporateActions"
     params = {
         "index":     "equities",
@@ -283,7 +277,6 @@ def load_fii_historical(from_date: date, to_date: date) -> dict[date, float] | N
 
 
 def _try_nse_fii_api(from_date: date, to_date: date) -> dict[date, float]:
-    import requests
     result: dict[date, float] = {}
     session = _nse_session()
     cur = from_date
@@ -318,7 +311,6 @@ def _try_nse_fii_api(from_date: date, to_date: date) -> dict[date, float]:
 
 
 def _try_nse_fii_archives(from_date: date, to_date: date) -> dict[date, float]:
-    import requests
     result: dict[date, float] = {}
     session = _nse_session()
     cur = from_date
