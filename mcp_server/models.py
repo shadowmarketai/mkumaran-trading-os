@@ -228,7 +228,7 @@ class OHLCVCache(Base):
     low = Column(Numeric(14, 4), nullable=False)
     close = Column(Numeric(14, 4), nullable=False)
     volume = Column(Numeric(18, 0), nullable=False)
-    source = Column(String(10), nullable=False, default="yfinance")
+    source = Column(String(30), nullable=False, default="yfinance")
     fetched_at = Column(DateTime, nullable=False, server_default=func.now())
     tenant_id = Column(String(36), nullable=True, index=True)
 

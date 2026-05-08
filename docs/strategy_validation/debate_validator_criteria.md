@@ -154,6 +154,72 @@ python scripts/validate_debate_pipeline.py --alert-only --workers 3
 
 ---
 
+## Postmortem (2026-05-08, after full run)
+
+**Result: TIER 3 — debate routing does not meaningfully improve on rule-based baseline.**
+
+### Key metrics
+
+| Metric | Value | Threshold | Result |
+|---|---|---|---|
+| Median PF | 0.485 | < 0.8 = Tier 3 | Tier 3 ✓ |
+| Lift over baseline (0.43) | +0.055 | ≥ +0.4 for Tier 1 | Tier 3 ✓ |
+| Profitable tickers | 18/90 (20.0%) | ≥ 40% for Tier 1 | Tier 3 ✓ |
+| Total trades | 650 | ≥ 100 (not override) | OK ✓ |
+
+### Routing distribution
+
+| Verdict | Count |
+|---|---|
+| ALERT | 0 |
+| WATCHLIST | 1,821 |
+| SKIP | 990 |
+| pre_skip (< 40 conf or no MWA) | 251 |
+
+**Critical finding: skill agents returned ALERT 0 times.** Every signal that passed
+the pre-confidence gate (>40) was routed to WATCHLIST. The skill-based debate system
+has no calibration that produces ALERT-level conviction on confluence signals from this
+universe. The effective result was: all signals above the pre-confidence floor were
+traded — which is weaker filtering than the rule-based quality gate (RRR ≥ 1.5, conf ≥ 55).
+
+### Why PF improved slightly (+0.055) despite ALERT=0
+
+The pre-confidence gate (threshold 40) filters out low-conviction signals before debate.
+This alone removes ~251 signals that the rule-based pipeline would have kept.
+The slight PF improvement is attributable to the pre-confidence pre-filter, not to the
+debate verdict itself.
+
+### Structural findings
+
+- Profitable tickers: 18/90 (20.0%) vs 12/90 (13.3%) baseline — marginal improvement
+- PSU sector still PF ≈ 0 (same structural failure as pipeline test)
+- The WATCHLIST-only recommendation is a skill_agents calibration issue:
+  agents are scoring all confluence signals in the 40–75 confidence zone
+  as "worth watching but not ALERT" — which is the expected conservative behaviour
+  but means the debate adds no filtering beyond the pre-confidence gate
+
+### Conclusion
+
+Skill-based debate routing produces PF 0.485 vs rule-based PF 0.43 on Nifty 100 daily
+equity signals. The lift (+0.055) is present but insufficient for Tier 2 (needs ≥ 0.8).
+The ALERT=0 finding suggests the debate system is correctly conservative but needs
+recalibration before it can function as a signal quality gate (not just a signal watch).
+
+### Actions per criteria doc
+
+- Result is TIER 3 — no further debate pipeline iteration without new criteria doc
+- Next investigation before any new run: examine why skill agents return WATCHLIST=100%
+  (threshold calibration in skill_agents.py vs. expected confluence signal confidence range)
+- PSU-excluded universe test still pending — may recover Wyckoff edge without debate routing
+
+### Future direction
+
+The pre-confidence gate alone (+0.055 lift) warrants a standalone test: does applying
+ONLY the pre-confidence filter (drop signals < 40) to the original rule-based pipeline
+produce the same or better improvement? If yes, the debate routing adds nothing.
+
+---
+
 ## Signature
 
 Criteria committed 2026-05-08 before any debate validator run.
