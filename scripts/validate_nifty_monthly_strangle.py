@@ -1144,7 +1144,7 @@ def main() -> None:
                 verbose=True,
             )
             if result is None:
-                print(f"    RESULT: None (data missing — check options_chain_cache coverage)\n")
+                print("    RESULT: None (data missing — check options_chain_cache coverage)\n")
             elif result.get("skipped"):
                 print(f"    RESULT: Skipped — {result.get('skip_reason')}\n")
             else:
