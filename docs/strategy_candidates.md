@@ -111,11 +111,13 @@ Not dead. Not deployed. Parked with honest accounting of where they stand.
 - Observable signals on 13 trades are directionally consistent with the weekly result
 - Binding constraint is data availability + VIX gate selectivity, not strategy edge
 
-### Conditions for re-run
+### Conditions for a future test
 
-- Backfill options_chain_cache to 2021-01-01 (2 more years of monthly data)
-- Re-run with `--from 2021-01-01` under the same pre-committed criteria (no new doc needed)
-- If that gives ≥ 30 live trades, proceed to tier verdict
+- Both OVERRIDE-permitted actions are exhausted. This test is closed.
+- Any future test on Nifty monthly (e.g., with 2021-2026 data if backfill becomes
+  available) requires a new pre-committed criteria document before any data is run.
+- The OVERRIDE extension clause was a one-time action within these criteria, not
+  standing permission for future reruns under this document.
 
 ### What not to do
 

@@ -219,11 +219,14 @@ exhausted by this result (OVERRIDE ≠ TIER 3 or TIER 4).
 
 ### Action
 - Monthly result filed as OVERRIDE in strategy_candidates.md
-- No further iteration on Nifty monthly permitted under these criteria
-- A new hypothesis with new pre-committed criteria is required to revisit
-- If options chain backfill extends to 2021, this test can be re-run with
-  `--from 2021-01-01` under the same pre-committed criteria (no new criteria doc needed,
-  since the criteria already permitted this extension)
+- This test is closed. Both OVERRIDE-permitted actions are exhausted:
+  (1) primary window 2023-2026 ran → 13 trades; (2) extension to 2021-01-01
+  ran → still 13 trades (options chain data not available pre-2023).
+- Any future test on Nifty monthly with a longer window requires a new
+  pre-committed criteria document. The OVERRIDE extension was a one-time
+  permitted action within this test, not standing permission for future reruns.
+  "The criteria already permitted this" is not a valid justification for any
+  further retest under this document.
 
 ---
 
