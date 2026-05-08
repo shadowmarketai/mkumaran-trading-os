@@ -242,3 +242,74 @@ with exact data confirms Tier 1.
 Criteria committed 2026-05-08 before run.
 Postmortem added 2026-05-08 after full run.
 Result: OVERRIDE (data limitation). Strangle TIER_2 baseline confirmed.
+
+---
+
+## Gate criteria amendment — exact data retest (2026-05-08)
+
+**Purpose:** Re-run the earnings and FII gate test with exact NSE data files
+once manually downloaded. This is not a new test — the gate parameters,
+strategy parameters, and tier thresholds are identical to the original criteria
+above. The only change is data source quality: exact announcement dates replace
+approximate season windows.
+
+### What is locked (unchanged)
+
+All gate parameters from the original criteria doc apply unchanged:
+- Earnings blackout: skip if any Nifty 50 constituent reports within [entry, expiry]
+- FII gate: skip if rolling 5-session FII F&O net flow < 0
+- Gate application order: earnings first, then FII, then VIX
+- Tier 1 threshold: WF Sharpe ≥ 1.0, Ann return ≥ 12%, Win rate ≥ 75%, MC P95 DD ≤ 12%, trades ≥ 30
+- No gate parameter tuning permitted after data is downloaded
+
+### What changes
+
+- **Earnings data source**: exact NSE corporate actions dates (from manual CSV)
+  replacing approximate quarterly season windows
+- **FII data source**: exact NSE F&O participant-wise daily net (from manual CSV)
+  replacing "unavailable"
+
+### Hard rule
+
+Gate parameters are committed here. Data is downloaded once. Script is run once.
+The result is accepted. No gate parameter adjustment after seeing results.
+
+If exact earnings data still produces < 20 qualifying trades, record as OVERRIDE
+and close the gate test arc. No looser gate definition without a new criteria doc.
+
+### Data files required
+
+Place in project root `data/` directory before running:
+
+**1. `data/nifty50_earnings_manual.csv`**
+- Format: `date,ticker` (one row per announcement)
+- Date format: `YYYY-MM-DD`
+- Source: NSE website
+  - Go to: nseindia.com → Market → Corporate Announcements
+  - Filter: Equity | Financial Results | From: 01-01-2023 | To: 30-04-2026
+  - Download CSV, keep only rows where symbol is in Nifty 50 list
+- Coverage required: ≥ 80% of expected quarters (override condition 2 from original criteria)
+
+**2. `data/fii_fno_historical.csv`**
+- Format: `date,fii_net_fo` (net F&O buying in crore, negative = net sold)
+- Date format: `YYYY-MM-DD`
+- Source: NSE website
+  - Go to: nseindia.com → Market Statistics → FII/DII Data → Derivatives
+  - Select date range: 01-01-2023 to 30-04-2026, download
+- Coverage required: < 10 missing sessions (override condition 3 from original criteria)
+
+### Script handles these files automatically
+
+`validate_strangle_earnings_fii.py` already checks for these files before
+attempting any API fetch. Drop the files in `data/` and re-run — no code changes.
+
+### Run command (once data files are in place)
+
+```bash
+python scripts/validate_strangle_earnings_fii.py
+```
+
+### Amendment signature
+
+Amendment committed 2026-05-08. Gate parameters locked. Awaiting data files.
+No run permitted until both data files are present and coverage verified.
