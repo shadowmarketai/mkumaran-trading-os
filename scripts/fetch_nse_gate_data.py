@@ -75,20 +75,27 @@ def fetch_earnings(from_date: date, to_date: date) -> list[dict]:
     all_events: list[dict] = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-http2"],
+        )
         ctx = browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/120.0.0.0 Safari/537.36"
-            )
+            ),
+            ignore_https_errors=True,
         )
         page = ctx.new_page()
 
         # Visit NSE homepage to establish session + cookies
         logger.info("Establishing NSE session...")
-        page.goto("https://www.nseindia.com", wait_until="networkidle", timeout=30000)
-        time.sleep(2)
+        try:
+            page.goto("https://www.nseindia.com", wait_until="domcontentloaded", timeout=30000)
+        except Exception as e:
+            logger.warning("NSE homepage load partial (%s) — continuing anyway", e)
+        time.sleep(3)
 
         # Batch in 90-day chunks to stay within API limits
         cur = from_date
@@ -177,19 +184,26 @@ def fetch_fii_fno(from_date: date, to_date: date) -> list[dict]:
     all_rows: list[dict] = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-http2"],
+        )
         ctx = browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/120.0.0.0 Safari/537.36"
-            )
+            ),
+            ignore_https_errors=True,
         )
         page = ctx.new_page()
 
         logger.info("Establishing NSE session...")
-        page.goto("https://www.nseindia.com", wait_until="networkidle", timeout=30000)
-        time.sleep(2)
+        try:
+            page.goto("https://www.nseindia.com", wait_until="domcontentloaded", timeout=30000)
+        except Exception as e:
+            logger.warning("NSE homepage load partial (%s) — continuing anyway", e)
+        time.sleep(3)
 
         cur = from_date
         while cur <= to_date:
