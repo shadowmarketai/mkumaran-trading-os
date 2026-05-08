@@ -175,3 +175,70 @@ Criteria committed 2026-05-08 before any refinement run.
 Context: Tier 2 weekly strangle deployed live with disclaimer. This test determines
 if earnings blackout + FII flow gates push it to Tier 1 (fully validated, no disclaimer).
 Strategy parameters are frozen — only gate logic changes.
+
+---
+
+## Postmortem (2026-05-08, after full run)
+
+**Result: OVERRIDE — data limitations prevent conclusive test.**
+
+### Results
+
+| Variant | Live trades | Earn-skip | WF Sharpe | WF Ann% | Tier |
+|---|---|---|---|---|---|
+| Baseline | 55 | 0 | 0.556 | 16.4% | TIER_2 |
+| Earnings-only (approx) | 16 | 129 | 16.779* | 20.7% | OVERRIDE |
+| FII-only | — | — | — | — | INCONCLUSIVE (data unavailable) |
+| Both gates | — | — | — | — | INCONCLUSIVE |
+
+*Sharpe of 16.779 is a mathematical artifact: 16 trades across 12m/3m WF windows
+yields ~1 trade per test period. Single-trade Sharpe is statistically meaningless.
+
+### Key findings
+
+**Baseline confirmed at TIER_2.** WF Sharpe 0.556, 55 trades — consistent with
+original result. Live strangle is operating as validated.
+
+**Earnings gate: OVERRIDE — data insufficient, not gate failure.**
+Approximate quarterly seasons (Apr-May, Jul-Aug, Oct-Nov, Jan-Feb) blocked 129/206
+= 63% of all expiries. This is not how the earnings gate was designed — the gate
+should skip only specific announcement weeks (~5-10% of expiries), not entire
+2-month seasons. With exact NSE announcement dates, earnings_only would have
+~50 trades and could produce a conclusive result.
+
+Override condition 1 applies: "qualifying trades < 20 — gates too aggressive."
+However, the over-filtering is due to the data approximation, not the gate concept.
+
+**FII gate: INCONCLUSIVE.** Historical NSE FII F&O data not accessible from server
+via any automated source (NSE API blocked, archives not serving). Override condition
+3 applies: "FII data missing > 10 sessions."
+
+### Why the earnings gate concept is still worth testing
+
+The approximate seasons over-filter by design. The gate as specified (exact NSE
+announcement dates) would only block weeks where specific Nifty 50 stocks report.
+The concept itself is sound — it's the data source that's the blocker.
+
+### What's needed to run a conclusive test
+
+To test the earnings gate properly:
+1. **Exact NSE earnings dates**: download NSE corporate actions CSV for
+   2023-2026 and place at `data/nifty50_earnings_manual.csv` (format: date,ticker)
+   Source: NSE website > Corporate Actions > Financial Results > download
+2. **FII F&O historical data**: download NSE participant-wise data CSV for
+   2023-2026 and place at `data/fii_fno_historical.csv` (format: date,fii_net_fo)
+   Source: NSE website > Market Data > FII/DII Activity > download
+
+With both files in place, re-run: `python scripts/validate_strangle_earnings_fii.py`
+
+### Live strangle status unchanged
+
+Baseline remains TIER_2. No change to live strangle configuration.
+The "TIER 2 — Marginal validated edge" disclaimer stays until a gate test
+with exact data confirms Tier 1.
+
+### Signature
+
+Criteria committed 2026-05-08 before run.
+Postmortem added 2026-05-08 after full run.
+Result: OVERRIDE (data limitation). Strangle TIER_2 baseline confirmed.
