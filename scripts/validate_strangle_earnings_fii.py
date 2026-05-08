@@ -164,16 +164,47 @@ def _fetch_earnings_batch(session, from_date: date, to_date: date) -> list[dict]
         return []
 
 
+def _fetch_earnings_yfinance(from_date: date, to_date: date) -> dict[date, list[str]]:
+    """
+    Fetch Nifty 50 earnings dates via yfinance as fallback.
+    yfinance earnings_dates covers ~8-12 quarters back.
+    """
+    try:
+        import yfinance as yf
+    except ImportError:
+        logger.warning("yfinance not available for earnings fallback")
+        return {}
+
+    result: dict[date, list[str]] = {}
+    for ticker in sorted(NIFTY_50):
+        try:
+            yf_ticker = ticker.replace(".", "-") + ".NS"
+            t = yf.Ticker(yf_ticker)
+            df = t.get_earnings_dates(limit=20)
+            if df is None or df.empty:
+                continue
+            for idx in df.index:
+                d = idx.date() if hasattr(idx, "date") else idx
+                if from_date <= d <= to_date:
+                    result.setdefault(d, []).append(ticker)
+        except Exception:
+            continue
+    logger.info("yfinance earnings fallback: %d event dates for Nifty 50", len(result))
+    return result
+
+
 def load_earnings_calendar(from_date: date, to_date: date) -> dict[date, list[str]]:
     """
     Returns {date: [list of Nifty 50 tickers reporting that day]}.
-    Fetches from NSE API in 90-day batches; caches to EARNINGS_CACHE.
+    Sources (in order): cache → NSE API → yfinance.
+    Cache is skipped when it contains 0 events (failed previous fetch).
     """
     if EARNINGS_CACHE.exists():
         try:
             raw = json.loads(EARNINGS_CACHE.read_text())
-            if raw.get("fetched_from") <= from_date.isoformat() and \
-               raw.get("fetched_to") >= to_date.isoformat():
+            if (raw.get("fetched_from") <= from_date.isoformat() and
+                    raw.get("fetched_to") >= to_date.isoformat() and
+                    len(raw.get("events", {})) > 0):
                 logger.info("Earnings calendar loaded from cache (%d event dates)", len(raw["events"]))
                 result: dict[date, list[str]] = {}
                 for d_str, tickers in raw["events"].items():
@@ -191,9 +222,10 @@ def load_earnings_calendar(from_date: date, to_date: date) -> dict[date, list[st
         batch_end = min(cur + timedelta(days=89), to_date)
         batch = _fetch_earnings_batch(session, cur, batch_end)
         all_events.extend(batch)
-        logger.info("  Fetched %s→%s: %d events", cur, batch_end, len(batch))
+        if batch:
+            logger.info("  Fetched %s→%s: %d events", cur, batch_end, len(batch))
         cur = batch_end + timedelta(days=1)
-        time.sleep(1.0)
+        time.sleep(0.5)
 
     result: dict[date, list[str]] = {}
     for ev in all_events:
@@ -203,13 +235,21 @@ def load_earnings_calendar(from_date: date, to_date: date) -> dict[date, list[st
         d = date.fromisoformat(ev["results_date"])
         result.setdefault(d, []).append(t)
 
-    EARNINGS_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    EARNINGS_CACHE.write_text(json.dumps({
-        "fetched_from": from_date.isoformat(),
-        "fetched_to":   to_date.isoformat(),
-        "events":       {str(k): v for k, v in result.items()},
-    }, indent=2))
-    logger.info("Earnings calendar: %d event dates cached", len(result))
+    # NSE API blocked from server — fall back to yfinance
+    if not result:
+        logger.info("NSE earnings API returned 0 events — trying yfinance fallback...")
+        result = _fetch_earnings_yfinance(from_date, to_date)
+
+    if result:
+        EARNINGS_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        EARNINGS_CACHE.write_text(json.dumps({
+            "fetched_from": from_date.isoformat(),
+            "fetched_to":   to_date.isoformat(),
+            "events":       {str(k): v for k, v in result.items()},
+        }, indent=2))
+
+    logger.info("Earnings calendar: %d event dates (%s)",
+                len(result), "cached" if result else "unavailable — gate will not filter")
     return result
 
 
@@ -607,7 +647,7 @@ def main() -> None:
     parser.add_argument("--from", dest="from_date", default="2023-01-01")
     parser.add_argument("--to",   dest="to_date",   default=None)
     parser.add_argument("--poc",          action="store_true",
-                        help="Load data normally but run only first 10 expiries per variant")
+                        help="Load data normally but run only 20 spread expiries per variant")
     parser.add_argument("--earnings-only", action="store_true",
                         help="Run baseline and earnings-only variants, skip FII")
     parser.add_argument("--fii-only",      action="store_true",
@@ -652,8 +692,12 @@ def main() -> None:
     logger.info("Found %d unique weekly expiries", len(expiry_dates))
 
     if args.poc:
-        expiry_dates = expiry_dates[:10]
-        logger.info("POC mode: using first 10 expiries")
+        # Sample 20 evenly spread expiries so we hit different VIX regimes.
+        # First 10 are often in low-VIX periods (early 2023) and all get gated.
+        n = len(expiry_dates)
+        step = max(n // 20, 1)
+        expiry_dates = expiry_dates[::step][:20]
+        logger.info("POC mode: using 20 evenly-spread expiries (from %d total)", n)
 
     # ── Load gate data ────────────────────────────────────────────────
 
