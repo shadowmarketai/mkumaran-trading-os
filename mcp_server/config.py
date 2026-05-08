@@ -198,6 +198,12 @@ class Settings:
     # Nifty weekly strangle live signal (Tier 2 validated — see nifty_strangle_live.py)
     NIFTY_STRANGLE_ENABLED: bool = os.getenv("NIFTY_STRANGLE_ENABLED", "true").lower() == "true"
 
+    # Signal gates — earnings blackout and FII directional filter for unvalidated scanners.
+    # Both are fail-open: a gate API failure never silently drops signals.
+    EARNINGS_GATE_ENABLED: bool = os.getenv("EARNINGS_GATE_ENABLED", "true").lower() == "true"
+    EARNINGS_GATE_DAYS: int = int(os.getenv("EARNINGS_GATE_DAYS", "7"))
+    FII_GATE_ENABLED: bool = os.getenv("FII_GATE_ENABLED", "true").lower() == "true"
+
     # Unvalidated signal disclaimer — prepended to all scanner signals that have
     # not passed a pre-committed backtest validation. Set to "" to disable prefix.
     UNVALIDATED_SIGNAL_DISCLAIMER: str = os.getenv(

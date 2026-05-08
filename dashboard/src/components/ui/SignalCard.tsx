@@ -3,9 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowUpRight, ArrowDownRight, Brain, CheckCircle2, XCircle,
   ShieldCheck, Loader2, AlertTriangle, ChevronDown, ChevronUp,
+  Shield, ShieldAlert, ShieldOff,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import type { Signal, PreTradeResult } from '../../types';
+import type { Signal, PreTradeResult, ValidationTier } from '../../types';
+import { getValidationTier } from '../../types';
 import { signalApi } from '../../services/api';
 import StatusBadge from './StatusBadge';
 
@@ -32,6 +34,46 @@ const STATUS_ICON: Record<string, { icon: typeof CheckCircle2; color: string }> 
 function ExchangeBadge({ exchange }: { exchange: string }) {
   const color = EXCHANGE_COLORS[exchange] || 'bg-slate-100 text-slate-500';
   return <span className={cn('text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md tracking-wider', color)}>{exchange}</span>;
+}
+
+const VALIDATION_CONFIG: Record<ValidationTier, {
+  icon: typeof Shield;
+  label: string;
+  className: string;
+  tooltip: string;
+}> = {
+  TIER_1: {
+    icon: Shield,
+    label: 'T1',
+    className: 'bg-emerald-50 text-emerald-600 border border-emerald-200',
+    tooltip: 'TIER 1 — Backtested with positive expectancy (walk-forward validated)',
+  },
+  TIER_2: {
+    icon: ShieldAlert,
+    label: 'T2',
+    className: 'bg-amber-50 text-amber-600 border border-amber-200',
+    tooltip: 'TIER 2 — Marginal backtested edge (in-sample only, use caution)',
+  },
+  UNVALIDATED: {
+    icon: ShieldOff,
+    label: 'UV',
+    className: 'bg-slate-50 text-slate-400 border border-slate-200',
+    tooltip: 'UNVALIDATED — No backtested edge confirmed. Educational reference only.',
+  },
+};
+
+function ValidationBadge({ signal }: { signal: Signal }) {
+  const tier = getValidationTier(signal);
+  const { icon: Icon, label, className, tooltip } = VALIDATION_CONFIG[tier];
+  return (
+    <span
+      title={tooltip}
+      className={cn('flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-help', className)}
+    >
+      <Icon size={9} />
+      {label}
+    </span>
+  );
 }
 
 export default function SignalCard({ signal }: { signal: Signal }) {
@@ -81,6 +123,7 @@ export default function SignalCard({ signal }: { signal: Signal }) {
           </div>
           <span className="text-base font-bold text-slate-900 font-mono tracking-tight">{signal.ticker}</span>
           <ExchangeBadge exchange={signal.exchange} />
+          <ValidationBadge signal={signal} />
           <span className="text-[9px] font-mono text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded-md">{signal.timeframe || '1D'}</span>
           <span className="text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded-md">{signal.pattern}</span>
         </div>

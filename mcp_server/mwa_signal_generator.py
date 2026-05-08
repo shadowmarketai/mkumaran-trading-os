@@ -131,6 +131,21 @@ def generate_mwa_signals(
             logger.debug("Skipping %s: ATR is zero", ticker)
             continue
 
+        # Regime gate — skip signals during panic/event spikes (VOLATILE).
+        # TRENDING_UP/DOWN/RANGING all pass; only VOLATILE is blocked.
+        regime = None
+        try:
+            from mcp_server.regime_detector import classify_from_df
+            regime = classify_from_df(df)
+            if regime.is_volatile():
+                logger.info(
+                    "Skipping %s: regime=VOLATILE (ATR=%.1f%%) — event/panic spike",
+                    ticker, regime.atr_pct,
+                )
+                continue
+        except Exception as _re:
+            logger.debug("Regime classify failed for %s (non-blocking): %s", ticker, _re)
+
         entry = float(df["close"].iloc[-1])
         bull_count, bear_count = _count_bull_bear(ticker, scanner_results)
         scanner_count = bull_count + bear_count
@@ -239,6 +254,8 @@ def generate_mwa_signals(
             "timeframe": "day",
             "pos_5ema_shadow": pos_5ema_fired,
             "pos_5ema_shadow_direction": pos_5ema_direction,
+            "regime": regime.label if regime else None,
+            "regime_adx": round(regime.adx, 1) if regime else None,
             **option_fields,  # merges option_* keys (empty dict if no enrichment)
         })
 

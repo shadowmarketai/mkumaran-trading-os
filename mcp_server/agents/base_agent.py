@@ -82,7 +82,7 @@ class BaseAgent(ABC):
         For each candidate, reads the skill's historical win rate from
         Bayesian stats and adjusts confidence up/down. Skills with high
         win rates get a boost; skills with poor track records get penalized.
-        Then applies min_confidence filter.
+        Then applies min_confidence filter and market-event gates.
         """
         adjusted: list[dict] = []
         for c in candidates:
@@ -101,6 +101,23 @@ class BaseAgent(ABC):
             c["confidence"] = max(0, min(100, conf))
             if c["confidence"] >= self.min_confidence:
                 adjusted.append(c)
+
+        # Apply market-event gates (earnings blackout + FII directional filter).
+        # Gates are fail-open — API errors never silently drop signals.
+        try:
+            from mcp_server.config import settings
+            from mcp_server.signal_gates import apply_signal_gates
+
+            if settings.EARNINGS_GATE_ENABLED or settings.FII_GATE_ENABLED:
+                adjusted = apply_signal_gates(
+                    adjusted,
+                    earnings_gate=settings.EARNINGS_GATE_ENABLED,
+                    fii_gate=settings.FII_GATE_ENABLED,
+                    earnings_days=settings.EARNINGS_GATE_DAYS,
+                )
+        except Exception as exc:
+            logger.warning("[%s] signal gates failed (fail-open): %s", self.name, exc)
+
         return adjusted
 
     def dedup_key(self, sig: dict) -> str:

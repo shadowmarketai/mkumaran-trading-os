@@ -49,6 +49,15 @@ export interface Signal {
   tier: number;
   source: string;
   status: 'OPEN' | 'WIN' | 'LOSS' | 'EXPIRED';
+  entry_regime?: string | null;
+}
+
+export type ValidationTier = 'TIER_1' | 'TIER_2' | 'UNVALIDATED';
+
+export function getValidationTier(signal: Signal): ValidationTier {
+  if (signal.source === 'nifty_strangle_t1') return 'TIER_1';
+  if (signal.source === 'nifty_strangle') return 'TIER_2';
+  return 'UNVALIDATED';
 }
 
 export interface Outcome {

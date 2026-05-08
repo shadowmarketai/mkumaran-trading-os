@@ -292,6 +292,45 @@ async def _nifty_strangle_loop():
                             _fire_and_forget(broadcast_signal_to_users(msg, exchange="NFO"))
                         except Exception:
                             pass
+                        # Persist to DB so dashboard shows TIER_2 validation badge
+                        try:
+                            from mcp_server.db import SessionLocal as _SL
+                            _db = _SL()
+                            try:
+                                credit = (result["ce_ltp"] + result["pe_ltp"]) * 75
+                                strangle_sig = Signal(
+                                    signal_date=now.date(),
+                                    ticker="NIFTY",
+                                    exchange="NFO",
+                                    asset_class="FNO",
+                                    timeframe="weekly",
+                                    direction="SHORT",
+                                    pattern=f"strangle_CE{result['ce_strike']}_PE{result['pe_strike']}",
+                                    entry_price=round(credit, 2),
+                                    stop_loss=round(credit * 2, 2),
+                                    target=round(credit * 0.5, 2),
+                                    rrr=2.0,
+                                    qty=75,
+                                    risk_amt=round(credit * 2, 2),
+                                    ai_confidence=78,
+                                    tv_confirmed=False,
+                                    mwa_score="NEUTRAL",
+                                    scanner_count=1,
+                                    tier=2,
+                                    source="nifty_strangle",
+                                    status="OPEN",
+                                    entry_regime="RANGING",
+                                )
+                                _db.add(strangle_sig)
+                                _db.commit()
+                                logger.info("Strangle signal persisted to DB (id=%d)", strangle_sig.id)
+                            except Exception as _db_err:
+                                _db.rollback()
+                                logger.warning("Strangle DB persist failed: %s", _db_err)
+                            finally:
+                                _db.close()
+                        except Exception as _db_outer:
+                            logger.warning("Strangle DB session failed: %s", _db_outer)
                         logger.info(
                             "Strangle signal emitted: expiry=%s CE=%s PE=%s VIX=%.1f(%.0f%%)",
                             expiry_key, result["ce_strike"], result["pe_strike"],
@@ -1917,6 +1956,27 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                 )
         except Exception as event_err:
             logger.debug("Event calendar filter skipped: %s", event_err)
+
+        # ── Earnings blackout + FII directional gate ──────────────────────
+        # Applied after all other filters. Fail-open: gate errors never drop
+        # signals silently. Only runs when enabled in settings.
+        try:
+            if getattr(settings, "EARNINGS_GATE_ENABLED", False) or getattr(settings, "FII_GATE_ENABLED", False):
+                from mcp_server.signal_gates import apply_signal_gates
+                pre_gate = len(mwa_signals)
+                mwa_signals = apply_signal_gates(
+                    mwa_signals,
+                    earnings_gate=getattr(settings, "EARNINGS_GATE_ENABLED", True),
+                    fii_gate=getattr(settings, "FII_GATE_ENABLED", True),
+                    earnings_days=getattr(settings, "EARNINGS_GATE_DAYS", 7),
+                )
+                if len(mwa_signals) != pre_gate:
+                    logger.info(
+                        "[FILTER] signal_gates: %d -> %d signals",
+                        pre_gate, len(mwa_signals),
+                    )
+        except Exception as _gate_err:
+            logger.debug("Signal gates failed (fail-open): %s", _gate_err)
 
         from mcp_server.market_calendar import is_market_open as _is_mkt_open
 
