@@ -164,39 +164,55 @@ def _fetch_earnings_batch(session, from_date: date, to_date: date) -> list[dict]
         return []
 
 
-def _fetch_earnings_yfinance(from_date: date, to_date: date) -> dict[date, list[str]]:
-    """
-    Fetch Nifty 50 earnings dates via yfinance as fallback.
-    yfinance earnings_dates covers ~8-12 quarters back.
-    """
-    try:
-        import yfinance as yf
-    except ImportError:
-        logger.warning("yfinance not available for earnings fallback")
-        return {}
+# NSE quarterly results seasons — approximate blackout windows.
+# Virtually all Nifty 50 companies report within these month ranges each year.
+# Used only when exact NSE corporate action dates are unavailable from the server.
+# (month_start, day_start, month_end, day_end)
+_RESULTS_SEASONS = [
+    (4, 1,  5, 31),   # Q4 FY results
+    (7, 1,  8, 31),   # Q1 results
+    (10, 1, 11, 30),  # Q2 results
+    (1, 1,  2, 28),   # Q3 results
+]
 
+
+def _approx_results_season_calendar(
+    from_date: date, to_date: date
+) -> dict[date, list[str]]:
+    """
+    Approximate earnings calendar: marks every trading day inside an NSE
+    results season window as blocked. Over-filters (entire season blocked,
+    not just days with confirmed announcements), but avoids look-ahead bias.
+    Used only when exact NSE API dates are unavailable.
+    """
     result: dict[date, list[str]] = {}
-    for ticker in sorted(NIFTY_50):
-        try:
-            yf_ticker = ticker.replace(".", "-") + ".NS"
-            t = yf.Ticker(yf_ticker)
-            df = t.get_earnings_dates(limit=20)
-            if df is None or df.empty:
-                continue
-            for idx in df.index:
-                d = idx.date() if hasattr(idx, "date") else idx
-                if from_date <= d <= to_date:
-                    result.setdefault(d, []).append(ticker)
-        except Exception:
-            continue
-    logger.info("yfinance earnings fallback: %d event dates for Nifty 50", len(result))
+    cur = from_date
+    while cur <= to_date:
+        if cur.weekday() < 5:
+            for m_start, d_start, m_end, d_end in _RESULTS_SEASONS:
+                # Handle Feb 28/29
+                if m_end == 2:
+                    import calendar as _cal
+                    d_end = _cal.monthrange(cur.year, 2)[1]
+                try:
+                    start = date(cur.year, m_start, d_start)
+                    end   = date(cur.year, m_end, d_end)
+                    if start <= cur <= end:
+                        result[cur] = ["RESULTS_SEASON_APPROX"]
+                        break
+                except ValueError:
+                    continue
+        cur += timedelta(days=1)
     return result
 
 
-def load_earnings_calendar(from_date: date, to_date: date) -> dict[date, list[str]]:
+def load_earnings_calendar(from_date: date, to_date: date) -> tuple[dict[date, list[str]], bool]:
     """
-    Returns {date: [list of Nifty 50 tickers reporting that day]}.
-    Sources (in order): cache → NSE API → yfinance.
+    Returns (calendar, is_exact).
+    is_exact=True  → NSE API data (exact announcement dates)
+    is_exact=False → approximate quarterly season windows (over-filters)
+
+    Sources (in order): cache → NSE API → approximate seasons.
     Cache is skipped when it contains 0 events (failed previous fetch).
     """
     if EARNINGS_CACHE.exists():
@@ -209,7 +225,7 @@ def load_earnings_calendar(from_date: date, to_date: date) -> dict[date, list[st
                 result: dict[date, list[str]] = {}
                 for d_str, tickers in raw["events"].items():
                     result[date.fromisoformat(d_str)] = tickers
-                return result
+                return result, raw.get("is_exact", True)
         except Exception:
             pass
 
@@ -217,15 +233,20 @@ def load_earnings_calendar(from_date: date, to_date: date) -> dict[date, list[st
     session = _nse_session()
     all_events: list[dict] = []
 
-    cur = from_date
-    while cur <= to_date:
-        batch_end = min(cur + timedelta(days=89), to_date)
-        batch = _fetch_earnings_batch(session, cur, batch_end)
-        all_events.extend(batch)
-        if batch:
-            logger.info("  Fetched %s→%s: %d events", cur, batch_end, len(batch))
-        cur = batch_end + timedelta(days=1)
-        time.sleep(0.5)
+    # Try one batch first; if it returns 0, server is likely blocked — skip remaining
+    test_end = min(from_date + timedelta(days=89), to_date)
+    test_batch = _fetch_earnings_batch(session, from_date, test_end)
+    if test_batch:
+        all_events.extend(test_batch)
+        cur = test_end + timedelta(days=1)
+        while cur <= to_date:
+            batch_end = min(cur + timedelta(days=89), to_date)
+            batch = _fetch_earnings_batch(session, cur, batch_end)
+            all_events.extend(batch)
+            cur = batch_end + timedelta(days=1)
+            time.sleep(0.5)
+    else:
+        logger.info("NSE earnings API blocked (0 from first batch) — skipping remaining batches")
 
     result: dict[date, list[str]] = {}
     for ev in all_events:
@@ -235,22 +256,23 @@ def load_earnings_calendar(from_date: date, to_date: date) -> dict[date, list[st
         d = date.fromisoformat(ev["results_date"])
         result.setdefault(d, []).append(t)
 
-    # NSE API blocked from server — fall back to yfinance
+    is_exact = bool(result)
+
     if not result:
-        logger.info("NSE earnings API returned 0 events — trying yfinance fallback...")
-        result = _fetch_earnings_yfinance(from_date, to_date)
+        logger.info("Exact earnings dates unavailable — using approximate quarterly season windows")
+        result = _approx_results_season_calendar(from_date, to_date)
 
-    if result:
-        EARNINGS_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        EARNINGS_CACHE.write_text(json.dumps({
-            "fetched_from": from_date.isoformat(),
-            "fetched_to":   to_date.isoformat(),
-            "events":       {str(k): v for k, v in result.items()},
-        }, indent=2))
+    EARNINGS_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    EARNINGS_CACHE.write_text(json.dumps({
+        "fetched_from": from_date.isoformat(),
+        "fetched_to":   to_date.isoformat(),
+        "is_exact":     is_exact,
+        "events":       {str(k): v for k, v in result.items()},
+    }, indent=2))
 
-    logger.info("Earnings calendar: %d event dates (%s)",
-                len(result), "cached" if result else "unavailable — gate will not filter")
-    return result
+    src = "exact NSE dates" if is_exact else "approximate quarterly seasons"
+    logger.info("Earnings calendar: %d event dates (%s)", len(result), src)
+    return result, is_exact
 
 
 def earnings_blocked(
@@ -355,13 +377,14 @@ def _try_nse_fii_archives(from_date: date, to_date: date) -> dict[date, float]:
     session = _nse_session()
     cur = from_date
     fetched = 0
+    consecutive_failures = 0
     while cur <= to_date:
         if cur.weekday() < 5:
             url = "https://archives.nseindia.com/content/fo/fii_stats_{}.csv".format(
                 cur.strftime("%d%m%Y")
             )
             try:
-                resp = session.get(url, timeout=15)
+                resp = session.get(url, timeout=10)
                 if resp.status_code == 200 and len(resp.text) > 100:
                     lines = resp.text.strip().split("\n")
                     for line in lines:
@@ -372,14 +395,18 @@ def _try_nse_fii_archives(from_date: date, to_date: date) -> dict[date, float]:
                                 sell = float(parts[3].replace(",", ""))
                                 result[cur] = buy - sell
                                 fetched += 1
+                                consecutive_failures = 0
                             except Exception:
                                 pass
+                else:
+                    consecutive_failures += 1
             except Exception:
-                pass
+                consecutive_failures += 1
+            # Server is blocking — stop early rather than waste minutes
+            if consecutive_failures >= 10:
+                logger.info("FII archives: 10 consecutive failures — server blocking, stopping early")
+                break
         cur += timedelta(days=1)
-        if cur.day == 1:
-            logger.info("FII archives: fetched through %s (%d sessions)", cur, fetched)
-            time.sleep(1.0)
     logger.info("NSE F&O archives returned %d sessions", len(result))
     return result
 
@@ -538,6 +565,7 @@ def write_comparison_report(
     variants: list[dict],
     fii_available: bool,
     output_path: Path,
+    earnings_exact: bool = True,
 ) -> None:
     lines = [
         "# Nifty Strangle — Earnings/FII Gate Comparison",
@@ -546,6 +574,15 @@ def write_comparison_report(
         "**Criteria doc:** docs/strategy_validation/strangle_earnings_fii_criteria.md",
         "",
     ]
+
+    if not earnings_exact:
+        lines += [
+            "> **Earnings gate using APPROXIMATE quarterly seasons** (NSE corporate "
+            "actions API blocked from server). Results season windows used: Apr-May, "
+            "Jul-Aug, Oct-Nov, Jan-Feb. This over-filters vs exact announcement dates — "
+            "earnings_only variant removes more trades than it would with exact dates.",
+            "",
+        ]
 
     if not fii_available:
         lines += [
@@ -704,7 +741,10 @@ def main() -> None:
     # Fetch earnings slightly before backtest start so expiries at the beginning
     # can check if earnings fall near start of window
     earn_from = from_date - timedelta(days=30)
-    earnings_cal = load_earnings_calendar(earn_from, to_date)
+    earnings_cal, earnings_exact = load_earnings_calendar(earn_from, to_date)
+    if not earnings_exact:
+        logger.warning("Earnings gate using APPROXIMATE quarterly seasons (NSE API unavailable). "
+                       "Gate will over-filter vs exact announcement dates.")
 
     fii_available = not args.earnings_only
     fii_series: dict[date, float] | None = None
@@ -767,7 +807,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     run_date_str = date.today().isoformat()
     md_path = output_dir / "strangle_gates_{}.md".format(run_date_str)
-    write_comparison_report(results, fii_available, md_path)
+    write_comparison_report(results, fii_available, md_path, earnings_exact=earnings_exact)
 
     # ── Console summary ───────────────────────────────────────────────
 
