@@ -268,11 +268,11 @@ async def _nifty_strangle_loop():
             now = now_ist()
             today_str = now.date().isoformat()
 
-            # Check once per day, at or after 09:30 IST
-            if (
-                today_str != last_check_date
-                and now.hour > 9 or (now.hour == 9 and now.minute >= 30)
-            ):
+            # Check once per day, at or after 09:30 IST.
+            # Parentheses are required — without them `and` binds tighter
+            # than `or` and the once-per-day guard is bypassed at exactly 09:30.
+            past_930 = now.hour > 9 or (now.hour == 9 and now.minute >= 30)
+            if today_str != last_check_date and past_930:
                 last_check_date = today_str
 
                 from mcp_server.nifty_strangle_live import check_and_emit_strangle_signal

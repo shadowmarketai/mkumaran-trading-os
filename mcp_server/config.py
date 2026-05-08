@@ -197,6 +197,9 @@ class Settings:
 
     # Nifty weekly strangle live signal (Tier 2 validated — see nifty_strangle_live.py)
     NIFTY_STRANGLE_ENABLED: bool = os.getenv("NIFTY_STRANGLE_ENABLED", "true").lower() == "true"
+    # Manual VIX override — set when yfinance/NSE APIs are down. 0.0 = use live fetch.
+    # Example: NIFTY_STRANGLE_VIX=14.5 forces VIX=14.5 (percentile approximated).
+    NIFTY_STRANGLE_VIX: float = float(os.getenv("NIFTY_STRANGLE_VIX", "0.0"))
 
     # Signal gates — earnings blackout and FII directional filter for unvalidated scanners.
     # Both are fail-open: a gate API failure never silently drops signals.

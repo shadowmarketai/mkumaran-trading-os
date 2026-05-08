@@ -57,36 +57,86 @@ CHECK_MINUTE_IST   = 30
 
 # ── VIX percentile ──────────────────────────────────────────────────────────
 
+def _fetch_vix_nse() -> float | None:
+    """Fetch India VIX from NSE directly (backup when yfinance is down)."""
+    try:
+        import requests
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Referer": "https://www.nseindia.com/",
+        })
+        session.get("https://www.nseindia.com/", timeout=8)
+        resp = session.get(
+            "https://www.nseindia.com/api/allIndices",
+            timeout=10,
+        )
+        data = resp.json()
+        for entry in data.get("data", []):
+            if entry.get("index", "").upper() in ("INDIA VIX", "INDIAVIX"):
+                return float(entry["last"])
+        return None
+    except Exception as exc:
+        logger.debug("NSE VIX fetch failed: %s", exc)
+        return None
+
+
 def _fetch_vix_percentile() -> tuple[float | None, float | None]:
-    """Return (today_vix, percentile_0_to_1) using yfinance ^INDIAVIX."""
+    """Return (today_vix, percentile_0_to_1).
+
+    Primary: yfinance ^INDIAVIX (full 252-day window for percentile).
+    Fallback: NSE allIndices API for today's spot VIX only; percentile
+    is approximated from a simplified historical range (12–35 typical bounds).
+    Manual override: set NIFTY_STRANGLE_VIX env var to skip fetch entirely.
+    """
+    from mcp_server.config import settings
+
+    # Manual override — allows forcing a specific VIX when APIs are down
+    manual_vix = getattr(settings, "NIFTY_STRANGLE_VIX", 0.0)
+    if manual_vix and manual_vix > 0:
+        logger.info("VIX override: %.2f (from NIFTY_STRANGLE_VIX env)", manual_vix)
+        pct = min(1.0, max(0.0, (manual_vix - 10.0) / 30.0))  # rough 10-40 range
+        return manual_vix, pct
+
+    # Primary: yfinance
     try:
         import yfinance as yf
         today = date.today()
-        extended_from = today - timedelta(days=400)   # 252 trading days + buffer
+        extended_from = today - timedelta(days=400)
         df = yf.download(
             "^INDIAVIX",
             start=extended_from.isoformat(),
             end=(today + timedelta(days=1)).isoformat(),
             interval="1d", auto_adjust=True, progress=False,
         )
-        if df.empty:
-            return None, None
-
-        closes: list[float] = []
-        for ts, row in df.iterrows():
-            v = row["Close"]
-            closes.append(float(v.iloc[0]) if hasattr(v, "iloc") else float(v))
-
-        if not closes:
-            return None, None
-
-        today_vix = closes[-1]
-        window = closes[-VIX_WINDOW_DAYS:] if len(closes) >= VIX_WINDOW_DAYS else closes
-        pct = sum(1 for v in window if v <= today_vix) / len(window)
-        return today_vix, pct
+        if not df.empty:
+            closes: list[float] = []
+            for _, row in df.iterrows():
+                v = row["Close"]
+                closes.append(float(v.iloc[0]) if hasattr(v, "iloc") else float(v))
+            if closes:
+                today_vix = closes[-1]
+                window = closes[-VIX_WINDOW_DAYS:] if len(closes) >= VIX_WINDOW_DAYS else closes
+                pct = sum(1 for v in window if v <= today_vix) / len(window)
+                logger.info("VIX (yfinance): %.2f | percentile: %.0f%%", today_vix, pct * 100)
+                return today_vix, pct
     except Exception as e:
-        logger.warning("VIX fetch failed: %s", e)
-        return None, None
+        logger.warning("VIX yfinance failed: %s — trying NSE fallback", e)
+
+    # Fallback: NSE live API (no historical window, approximate percentile)
+    nse_vix = _fetch_vix_nse()
+    if nse_vix is not None and nse_vix > 0:
+        # Approximate percentile: VIX 10=0%, 22=50%, 35=100% (Indian market typical range)
+        pct = min(1.0, max(0.0, (nse_vix - 10.0) / 25.0))
+        logger.info(
+            "VIX (NSE fallback): %.2f | approx percentile: %.0f%% (no 252d history)",
+            nse_vix, pct * 100,
+        )
+        return nse_vix, pct
+
+    logger.warning("VIX fetch failed on all sources — signal skipped")
+    return None, None
 
 
 # ── Expiry calendar ─────────────────────────────────────────────────────────
@@ -161,37 +211,114 @@ def _is_entry_day(today: date) -> tuple[bool, date | None]:
 
 # ── Option chain + delta-based strike selection ─────────────────────────────
 
-def _get_chain_and_spot(expiry: date) -> tuple[float | None, dict]:
-    """Return (spot, chain_dict) for NIFTY at the given expiry."""
+def _get_nifty_spot_nse() -> float | None:
+    """Get Nifty 50 index level from NSE allIndices (works outside market hours)."""
+    try:
+        import requests
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Referer": "https://www.nseindia.com/",
+        })
+        session.get("https://www.nseindia.com/", timeout=8)
+        resp = session.get("https://www.nseindia.com/api/allIndices", timeout=10)
+        for entry in resp.json().get("data", []):
+            if entry.get("index", "").upper() in ("NIFTY 50", "NIFTY50"):
+                return float(entry["last"])
+        return None
+    except Exception as exc:
+        logger.debug("NSE allIndices spot failed: %s", exc)
+        return None
+
+
+def _get_chain_nse(expiry: date) -> tuple[float | None, dict]:
+    """Fetch spot + option chain from NSE option-chain-indices API.
+
+    No broker login required. Returns (spot, chain_dict).
+    The option chain API only returns data during market hours (09:15–15:30 IST).
+    Spot is fetched from allIndices as a fallback if chain API returns empty.
+    """
+    import requests
+    expiry_str = expiry.strftime("%d-%b-%Y").upper()  # NSE format: 13-MAY-2026
     spot: float | None = None
     chain: dict = {}
 
+    try:
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Referer": "https://www.nseindia.com/",
+        })
+        session.get("https://www.nseindia.com/", timeout=8)
+
+        resp = session.get(
+            "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY",
+            timeout=12,
+        )
+        data = resp.json()
+
+        records = data.get("records", {})
+        if not records:
+            # Market likely closed — get spot from allIndices at least
+            spot = _get_nifty_spot_nse()
+            logger.info("Strangle: NSE chain empty (market closed?), spot=%.0f", spot or 0)
+            return spot, {}
+
+        spot = float(records["underlyingValue"])
+
+        for row in records.get("data", []):
+            if row.get("expiryDate", "").upper() != expiry_str:
+                continue
+            strike = float(row["strikePrice"])
+            for ot in ("CE", "PE"):
+                if ot in row:
+                    entry = row[ot]
+                    chain.setdefault(strike, {})[ot] = {
+                        "ltp": float(entry.get("lastPrice", 0)),
+                        "iv":  float(entry.get("impliedVolatility", 0)),
+                        "oi":  int(entry.get("openInterest", 0)),
+                    }
+
+        logger.info("Strangle: NSE chain — spot=%.0f, %d strikes for %s", spot, len(chain), expiry_str)
+        return spot, chain
+
+    except Exception as exc:
+        logger.warning("Strangle: NSE chain fetch failed: %s", exc)
+        # Last resort: at least return spot if chain fails
+        if not spot:
+            spot = _get_nifty_spot_nse()
+        return spot, chain
+
+
+def _get_chain_and_spot(expiry: date) -> tuple[float | None, dict]:
+    """Return (spot, chain_dict) for NIFTY at the given expiry.
+
+    Priority:
+      1. Dhan option chain (broker, most accurate live data)
+      2. NSE option-chain-indices API (no broker, fallback)
+    """
+    spot: float | None = None
+    chain: dict = {}
+
+    # ── Primary: Dhan (when logged in) ───────────────────────────────────
     try:
         from mcp_server.data_provider import get_provider
         provider = get_provider()
         dhan = getattr(provider, "dhan", None)
 
-        # Spot price
-        quote = provider.get_quote("NIFTY", exchange="NSE")
-        if quote:
-            spot = quote.get("ltp") or quote.get("last_price")
-        if not spot:
-            try:
-                nse_q = provider.nse.get_quote("NIFTY")
-                spot = (nse_q or {}).get("ltp")
-            except Exception:
-                pass
-
-        if not spot:
-            logger.warning("Strangle: could not get Nifty spot price")
-            return None, {}
-
-        # Option chain via Dhan IDX_I
-        expiry_str = expiry.isoformat()
         if dhan and getattr(dhan, "logged_in", False):
+            # Spot price via broker
+            quote = provider.get_quote("NIFTY", exchange="NSE")
+            if quote:
+                spot = quote.get("ltp") or quote.get("last_price")
+
+            # Option chain via Dhan IDX_I
+            expiry_str = expiry.isoformat()
             scrip_cache = getattr(dhan, "_scrip_cache", {})
             idx_sec_id = scrip_cache.get("NSE:NIFTY", "")
-            if idx_sec_id:
+            if idx_sec_id and spot:
                 try:
                     resp = dhan.client.option_chain(
                         under_security_id=idx_sec_id,
@@ -211,14 +338,17 @@ def _get_chain_and_spot(expiry: date) -> tuple[float | None, dict]:
                                 "iv":  float(row.get("iv", row.get("impliedVolatility", 0))),
                                 "oi":  int(row.get("oi", row.get("openInterest", 0))),
                             }
-                    logger.info("Strangle: chain loaded — %d strikes", len(chain))
-                except Exception as e:
-                    logger.warning("Strangle: Dhan chain failed: %s", e)
-
+                    if chain:
+                        logger.info("Strangle: Dhan chain — %d strikes", len(chain))
+                        return spot, chain
+                except Exception as dhan_err:
+                    logger.warning("Strangle: Dhan chain failed: %s", dhan_err)
     except Exception as e:
-        logger.warning("Strangle: chain/spot fetch error: %s", e)
+        logger.debug("Strangle: broker path failed: %s", e)
 
-    return spot, chain
+    # ── Fallback: NSE public API (no login required) ──────────────────────
+    logger.info("Strangle: using NSE chain fallback (no broker connection)")
+    return _get_chain_nse(expiry)
 
 
 def _find_delta_strike(
