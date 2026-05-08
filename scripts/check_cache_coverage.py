@@ -1,5 +1,6 @@
 """Quick diagnostic: what's in options_chain_cache?"""
-import os, sys
+import os
+import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from mcp_server.db import SessionLocal
 from sqlalchemy import text

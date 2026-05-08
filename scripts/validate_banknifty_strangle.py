@@ -32,12 +32,13 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import random
 import statistics
 import sys
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -938,7 +939,7 @@ def write_markdown_report(
         "# BankNifty Short Strangle Validation Report",
         f"\n**Run date:** {date.today()}",
         f"**Data span:** {agg.get('data_span', 'unknown')}",
-        f"**Criteria doc:** docs/strategy_validation/banknifty_strangle_criteria.md",
+        "**Criteria doc:** docs/strategy_validation/banknifty_strangle_criteria.md",
         "",
         "---",
         "",

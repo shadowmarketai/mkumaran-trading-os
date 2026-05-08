@@ -30,7 +30,6 @@ import os
 import random
 import statistics
 import sys
-from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -357,8 +356,6 @@ def walk_forward_pair(
 
     start_date = dates[0]
     end_date   = dates[-1]
-    date_to_idx = {d: i for i, d in enumerate(dates)}
-
     windows: list[dict] = []
     months_elapsed = 0
 
