@@ -212,6 +212,8 @@ async def _deliver_intraday_signals(
                     f"Signal ID: INT-{db_signal.id}\n"
                     f"\u26a0\ufe0f Close by 15:15 IST to avoid carry"
                 )
+                disclaimer = getattr(settings, "UNVALIDATED_SIGNAL_DISCLAIMER", "")
+                msg = disclaimer + msg
                 _fire_and_forget(send_telegram_message(
                     msg, exchange=sig["exchange"], force=True
                 ))
@@ -358,7 +360,9 @@ async def _options_signal_loop():
                     if dedup_key in sent_today:
                         continue
                     sent_today.add(dedup_key)
-                    msg = format_option_signal_card(sig)
+                    raw_msg = format_option_signal_card(sig)
+                    disclaimer = getattr(settings, "UNVALIDATED_SIGNAL_DISCLAIMER", "")
+                    msg = disclaimer + raw_msg
                     _fire_and_forget(send_telegram_message(msg, force=True))
                     # Broadcast to subscribers
                     try:
@@ -2362,7 +2366,9 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                         )
                     except Exception as opt_msg_err:  # noqa: BLE001
                         logger.debug("Option message block skipped: %s", opt_msg_err)
-            _fire_and_forget(send_telegram_message(msg, exchange=sig["exchange"], force=True))
+            disclaimer = getattr(settings, "UNVALIDATED_SIGNAL_DISCLAIMER", "")
+            broadcast_msg = disclaimer + msg
+            _fire_and_forget(send_telegram_message(broadcast_msg, exchange=sig["exchange"], force=True))
 
             # Broadcast to SaaS subscribers opted into this segment
             # (NSE Equity / F&O / Commodity / Forex). Non-blocking; silent on
@@ -2371,7 +2377,7 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                 try:
                     from mcp_server.telegram_saas import broadcast_signal_to_users
                     _fire_and_forget(
-                        broadcast_signal_to_users(msg, exchange=sig["exchange"])
+                        broadcast_signal_to_users(broadcast_msg, exchange=sig["exchange"])
                     )
                 except Exception as broadcast_err:
                     logger.debug(

@@ -148,7 +148,9 @@ class BaseAgent(ABC):
                 continue
 
             try:
-                msg = self.format_card(sig)
+                from mcp_server.config import settings
+                disclaimer = getattr(settings, "UNVALIDATED_SIGNAL_DISCLAIMER", "")
+                msg = disclaimer + self.format_card(sig)
                 await send_telegram_message(msg, exchange=self.segment, force=True)
 
                 # Broadcast to subscribers

@@ -195,6 +195,16 @@ class Settings:
     STITCH_CLIENT_ID: str = os.getenv("STITCH_CLIENT_ID", "")
     STITCH_REGION: str = os.getenv("STITCH_REGION", "us")  # "us" or "eu"
 
+    # Nifty weekly strangle live signal (Tier 2 validated — see nifty_strangle_live.py)
+    NIFTY_STRANGLE_ENABLED: bool = os.getenv("NIFTY_STRANGLE_ENABLED", "true").lower() == "true"
+
+    # Unvalidated signal disclaimer — prepended to all scanner signals that have
+    # not passed a pre-committed backtest validation. Set to "" to disable prefix.
+    UNVALIDATED_SIGNAL_DISCLAIMER: str = os.getenv(
+        "UNVALIDATED_SIGNAL_DISCLAIMER",
+        "⚠️ Unvalidated scanner signal — no backtested edge confirmed. Educational reference only. Not financial advice.\n\n",
+    )
+
     # Options Enrichment (attach concrete option contracts to FNO futures signals)
     OPTION_SIGNALS_ENABLED: bool = os.getenv("OPTION_SIGNALS_ENABLED", "true").lower() == "true"
     OPTION_IV_DEBIT_MAX: float = float(os.getenv("OPTION_IV_DEBIT_MAX", "40"))
