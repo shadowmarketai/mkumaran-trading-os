@@ -131,6 +131,11 @@ def run_ticker(ticker: str, days: int, reports_dir: Path, resume: bool, suffix: 
             slippage_pct=DEFAULT_SLIPPAGE_PCT,
         )
         result["ticker"] = ticker
+        # run_backtest returns metrics directly — add status so aggregation can filter
+        if "error" not in result:
+            result["status"] = "ok"
+        else:
+            result["status"] = "data_unavailable"
 
     except Exception as exc:
         import traceback as _tb
