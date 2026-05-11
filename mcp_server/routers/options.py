@@ -802,7 +802,8 @@ async def api_quick_strangle(
                         under_security_id=int(sec_id),
                         under_exchange_segment=seg,
                     )
-                    expiries = expiry_resp.get("data", []) if isinstance(expiry_resp, dict) else []
+                    _inner = expiry_resp.get("data", {}) if isinstance(expiry_resp, dict) else {}
+                    expiries = (_inner.get("data", []) if isinstance(_inner, dict) else _inner) or []
                     if expiries:
                         min_date = (date.today() + timedelta(days=1)).isoformat()
                         valid = [e for e in sorted(str(e) for e in expiries) if str(e) >= min_date]
@@ -812,7 +813,8 @@ async def api_quick_strangle(
                             under_exchange_segment=seg,
                             expiry=expiry,
                         )
-                        raw_data = chain_resp.get("data", []) if isinstance(chain_resp, dict) else []
+                        _cinner = chain_resp.get("data", {}) if isinstance(chain_resp, dict) else {}
+                        raw_data = (_cinner.get("data", []) if isinstance(_cinner, dict) else _cinner) or []
                         chain = _parse_dhan_chain_rows(raw_data)
                         if chain:
                             chain_source = f"dhan_live ({expiry}, {seg})"
@@ -1080,14 +1082,17 @@ async def options_scan_diagnostic() -> dict:
                                 under_security_id=int(_sec),
                                 under_exchange_segment=_seg,
                             )
-                            _expiries = _er.get("data", []) if isinstance(_er, dict) else []
+                            # dhanhq wraps response: {"status":..., "data": <api_body>}
+                            # api_body: {"status":..., "data": ["2026-05-15", ...]}
+                            _outer = _er if isinstance(_er, dict) else {}
+                            _api_body = _outer.get("data", {})
+                            _expiries = (_api_body.get("data", []) if isinstance(_api_body, dict) else _api_body) or []
                             probe[f"expiry_list_{_seg}"] = {
-                                "status":    _er.get("status") if isinstance(_er, dict) else type(_er).__name__,
-                                "remarks":   _er.get("remarks"),
-                                "message":   _er.get("message") or _er.get("errorMessage"),
-                                "data_keys": list(_er.keys()) if isinstance(_er, dict) else None,
-                                "count":     len(_expiries),
-                                "first":     str(_expiries[0]) if _expiries else None,
+                                "outer_status": _outer.get("status"),
+                                "api_status":   _api_body.get("status") if isinstance(_api_body, dict) else None,
+                                "remarks":      _outer.get("remarks"),
+                                "count":        len(_expiries) if isinstance(_expiries, list) else type(_expiries).__name__,
+                                "first":        str(_expiries[0]) if isinstance(_expiries, list) and _expiries else None,
                             }
                         except Exception as _ee:
                             import traceback as _tb

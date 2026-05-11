@@ -96,7 +96,10 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                             under_security_id=int(sec_id),
                             under_exchange_segment=seg,
                         )
-                        expiries = exp_resp.get("data", []) if isinstance(exp_resp, dict) else []
+                        # dhanhq wraps: {"status":..., "data": <api_body>}
+                        # api_body for expiry_list: {"status":..., "data": ["2026-05-15", ...]}
+                        _inner = exp_resp.get("data", {}) if isinstance(exp_resp, dict) else {}
+                        expiries = (_inner.get("data", []) if isinstance(_inner, dict) else _inner) or []
                         valid = sorted(str(e) for e in expiries if str(e) >= today_str)
                         if not valid:
                             continue
@@ -106,7 +109,8 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                             under_exchange_segment=seg,
                             expiry=expiry_str,
                         )
-                        raw = chain_resp.get("data", []) if isinstance(chain_resp, dict) else []
+                        _cinner = chain_resp.get("data", {}) if isinstance(chain_resp, dict) else {}
+                        raw = (_cinner.get("data", []) if isinstance(_cinner, dict) else _cinner) or []
                         if isinstance(raw, list) and raw:
                             parsed: dict = {}
                             for row in raw:

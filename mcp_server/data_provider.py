@@ -1376,8 +1376,10 @@ class DhanSource:
                 under_security_id=int(sec_id),
                 under_exchange_segment=dhan_segment,
             )
-            if resp and resp.get("data"):
-                return [str(d) for d in resp["data"]]
+            _inner = resp.get("data", {}) if isinstance(resp, dict) else {}
+            _raw = (_inner.get("data", []) if isinstance(_inner, dict) else _inner) or []
+            if _raw:
+                return [str(d) for d in _raw]
         except Exception as e:
             logger.debug("Dhan expiry_list failed for %s:%s: %s", exchange, symbol, e)
         return []
@@ -1400,11 +1402,13 @@ class DhanSource:
                 under_exchange_segment=dhan_segment,
                 expiry=expiry,
             )
-            if not resp or not resp.get("data"):
+            _inner = resp.get("data", {}) if isinstance(resp, dict) else {}
+            rows = (_inner.get("data", []) if isinstance(_inner, dict) else _inner) or []
+            if not rows:
                 return {}
 
             chain: dict[float, dict] = {}
-            for row in resp["data"]:
+            for row in rows:
                 strike = float(row.get("strikePrice", 0))
                 if strike <= 0:
                     continue

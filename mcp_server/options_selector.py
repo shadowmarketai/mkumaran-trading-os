@@ -726,7 +726,8 @@ def get_options_chain(instrument: str) -> dict:
                         under_security_id=int(sec_id),
                         under_exchange_segment=seg,
                     )
-                    expiries = exp_resp.get("data", []) if isinstance(exp_resp, dict) else []
+                    _inner = exp_resp.get("data", {}) if isinstance(exp_resp, dict) else {}
+                    expiries = (_inner.get("data", []) if isinstance(_inner, dict) else _inner) or []
                     valid = sorted(str(e) for e in expiries if str(e) >= today_str)
                     if not valid:
                         continue
@@ -736,7 +737,8 @@ def get_options_chain(instrument: str) -> dict:
                         under_exchange_segment=seg,
                         expiry=expiry,
                     )
-                    raw = chain_resp.get("data", []) if isinstance(chain_resp, dict) else []
+                    _cinner = chain_resp.get("data", {}) if isinstance(chain_resp, dict) else {}
+                    raw = (_cinner.get("data", []) if isinstance(_cinner, dict) else _cinner) or []
                     chain = _parse_dhan_chain_rows(raw)
                     if chain:
                         logger.debug("get_options_chain %s via dhan (%s, %s)", inst, seg, expiry)

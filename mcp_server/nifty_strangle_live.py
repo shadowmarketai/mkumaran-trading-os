@@ -210,7 +210,9 @@ def _next_weekly_expiry(from_date: date) -> date | None:
                     under_security_id=int(idx_sec_id),
                     under_exchange_segment="IDX_I",
                 )
-                expiry_list = [str(e) for e in (resp.get("data", []) or [])]
+                _inner = resp.get("data", {}) if isinstance(resp, dict) else {}
+                _raw_exp = (_inner.get("data", []) if isinstance(_inner, dict) else _inner) or []
+                expiry_list = [str(e) for e in _raw_exp]
                 today_str = from_date.isoformat()
                 valid = sorted(e for e in expiry_list if e >= today_str)
                 if valid:
@@ -372,7 +374,8 @@ def _get_chain_and_spot(expiry: date) -> tuple[float | None, dict]:
                         under_exchange_segment="IDX_I",
                         expiry=expiry_str,
                     )
-                    raw = resp.get("data", [])
+                    _cinner = resp.get("data", {}) if isinstance(resp, dict) else {}
+                    raw = (_cinner.get("data", []) if isinstance(_cinner, dict) else _cinner) or []
                     if isinstance(raw, list):
                         for row in raw:
                             strike = float(row.get("strikePrice", 0))
