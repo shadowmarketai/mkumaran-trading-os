@@ -171,6 +171,28 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
             except Exception:
                 pass
 
+        # Fallback to NSE public API (indices only — no login required)
+        # Uses the same path as nifty_strangle_live._get_chain_nse()
+        if not chain and symbol in INDEX_UNIVERSE:
+            try:
+                from mcp_server.nifty_strangle_live import _get_chain_nse
+                from datetime import timedelta
+                # Find next expiry via calendar arithmetic
+                from datetime import date as _date
+                d = _date.today()
+                for _ in range(14):
+                    if d.weekday() == 1:  # Tuesday (post-Sept 2025 weekly expiry)
+                        break
+                    d += timedelta(days=1)
+                nse_spot, nse_chain = _get_chain_nse(d)
+                if nse_chain and nse_spot:
+                    chain = nse_chain
+                    spot = nse_spot
+                    expiry_str = d.isoformat()
+                    logger.info("Options chain for %s via NSE fallback: %d strikes", symbol, len(chain))
+            except Exception as nse_err:
+                logger.debug("NSE chain fallback failed for %s: %s", symbol, nse_err)
+
         if not chain:
             return None
 
@@ -488,46 +510,11 @@ def strategy_oi_wall(data: dict, **_kw: Any) -> dict[str, Any] | None:
 def _get_vix_data() -> dict[str, float] | None:
     """Fetch India VIX current value + % change.
 
-    Priority: Dhan (fastest, already logged in) → NSE quote → yfinance.
+    Priority: yfinance → NSE quote.
+    (Dhan sec_id "13" on IDX_I returns Nifty 50 spot, not VIX — do not use.)
     """
     try:
-        from mcp_server.data_provider import get_provider
-        provider = get_provider()
-
-        # Try Dhan first — already authenticated, no browser session needed
-        try:
-            dhan = provider.dhan
-            if dhan and dhan.logged_in:
-                import datetime as _dt
-                today = _dt.date.today().isoformat()
-                week_ago = (_dt.date.today() - _dt.timedelta(days=5)).isoformat()
-                resp = dhan.client.historical_daily_data(
-                    security_id="13",
-                    exchange_segment="IDX_I",
-                    instrument_type="INDEX",
-                    from_date=week_ago,
-                    to_date=today,
-                )
-                closes = resp.get("data", {}).get("close", [])
-                if closes and len(closes) >= 2:
-                    vix = float(closes[-1])
-                    prev = float(closes[-2])
-                    pct = (vix - prev) / prev * 100 if prev else 0
-                    return {"vix": vix, "pct_change": round(pct, 2)}
-        except Exception:
-            pass
-
-        # Try NSE India source for VIX
-        try:
-            quote = provider.nse.get_quote("INDIA VIX")
-            if quote and quote.get("ltp"):
-                return {
-                    "vix": float(quote["ltp"]),
-                    "pct_change": float(quote.get("pct_change", 0)),
-                }
-        except Exception:
-            pass
-        # Fallback: yfinance ^INDIAVIX
+        # yfinance first — fastest and most reliable for ^INDIAVIX
         try:
             import yfinance as yf
             data = yf.download("^INDIAVIX", period="2d", progress=False)
@@ -537,7 +524,21 @@ def _get_vix_data() -> dict[str, float] | None:
                 prev_val = data["Close"].iloc[-2] if len(data) > 1 else vix_val
                 prev = float(prev_val.iloc[0]) if hasattr(prev_val, "iloc") else float(prev_val)
                 pct = ((vix - prev) / prev * 100) if prev else 0
-                return {"vix": vix, "pct_change": pct}
+                if 8 <= vix <= 60:  # sanity check — VIX outside this range is bad data
+                    return {"vix": vix, "pct_change": round(pct, 2)}
+        except Exception:
+            pass
+
+        from mcp_server.data_provider import get_provider
+        provider = get_provider()
+        # Try NSE India source for VIX
+        try:
+            quote = provider.nse.get_quote("INDIA VIX")
+            if quote and quote.get("ltp"):
+                return {
+                    "vix": float(quote["ltp"]),
+                    "pct_change": float(quote.get("pct_change", 0)),
+                }
         except Exception:
             pass
     except Exception:

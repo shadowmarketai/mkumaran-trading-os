@@ -1059,7 +1059,13 @@ async def options_scan_diagnostic() -> dict:
             }
         else:
             result["chain_data"] = None
-            result["chain_error"] = "NIFTY chain returned None — Dhan not logged in or chain empty"
+            result["chain_error"] = (
+                "NIFTY chain returned None. "
+                "Dhan logged_in={} — check server logs for Dhan expiry_list/option_chain errors. "
+                "NSE fallback also attempted for index symbols.".format(
+                    result.get("dhan_status", {}).get("logged_in", "unknown")
+                )
+            )
     except Exception as e:
         data = None
         result["chain_error"] = str(e)
