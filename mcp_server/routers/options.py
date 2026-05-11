@@ -1077,9 +1077,12 @@ async def options_scan_diagnostic() -> dict:
                             )
                             _expiries = _er.get("data", []) if isinstance(_er, dict) else []
                             probe[f"expiry_list_{_seg}"] = {
-                                "status": _er.get("status") if isinstance(_er, dict) else type(_er).__name__,
-                                "count": len(_expiries),
-                                "first": str(_expiries[0]) if _expiries else None,
+                                "status":    _er.get("status") if isinstance(_er, dict) else type(_er).__name__,
+                                "remarks":   _er.get("remarks"),
+                                "message":   _er.get("message") or _er.get("errorMessage"),
+                                "data_keys": list(_er.keys()) if isinstance(_er, dict) else None,
+                                "count":     len(_expiries),
+                                "first":     str(_expiries[0]) if _expiries else None,
                             }
                         except Exception as _ee:
                             probe[f"expiry_list_{_seg}"] = {"error": str(_ee)}
