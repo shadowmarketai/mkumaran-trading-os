@@ -992,3 +992,126 @@ async def strangle_diagnostic() -> dict:
     }
 
     return result
+
+
+# ── Options scan diagnostic ───────────────────────────────────────────────
+
+
+@router.get("/options/scan-diagnostic")
+async def options_scan_diagnostic() -> dict:
+    """
+    Run a live options scan diagnostic for NIFTY and return step-by-step
+    results: chain data, IV, PCR, and which strategies fired (if any).
+
+    Call this during market hours to debug why no options signals are emitting.
+    Safe to call anytime — read-only, no signals sent or persisted.
+    """
+    result: dict = {
+        "market_open": False,
+        "chain_data": None,
+        "strategy_results": {},
+        "signals_generated": [],
+        "summary": "",
+    }
+
+    try:
+        from mcp_server.market_calendar import is_market_open as _mkt_open, now_ist
+        result["market_open"] = _mkt_open("NSE")
+        result["server_time_ist"] = now_ist().strftime("%H:%M:%S IST %A")
+    except Exception as e:
+        result["time_error"] = str(e)
+
+    # Check OPTION_SIGNALS_ENABLED
+    from mcp_server.config import settings as _s
+    result["option_signals_enabled"] = getattr(_s, "OPTION_SIGNALS_ENABLED", True)
+
+    # Fetch VIX
+    try:
+        from mcp_server.options_signal_engine import _get_vix_data
+        vix_data = _get_vix_data()
+        result["vix"] = vix_data
+    except Exception as e:
+        vix_data = None
+        result["vix_error"] = str(e)
+
+    # Fetch NIFTY chain data
+    try:
+        from mcp_server.options_signal_engine import _get_chain_and_data
+        data = _get_chain_and_data("NIFTY")
+        if data:
+            result["chain_data"] = {
+                "spot":           data.get("spot"),
+                "atm_strike":     data.get("atm_strike"),
+                "atm_iv":         data.get("atm_iv"),
+                "atm_ce_ltp":     data.get("atm_ce_ltp"),
+                "atm_pe_ltp":     data.get("atm_pe_ltp"),
+                "pcr":            data.get("pcr"),
+                "max_pain":       data.get("max_pain"),
+                "days_to_expiry": data.get("days_to_expiry"),
+                "is_expiry_day":  data.get("is_expiry_day"),
+                "expiry":         data.get("expiry"),
+                "chain_strikes":  len(data.get("chain", {})),
+                "iv_source":      "chain" if (data.get("atm_iv", 0) > 0
+                                              and not (vix_data and
+                                              abs(data.get("atm_iv", 0) -
+                                                  vix_data.get("vix", 0)) < 0.1))
+                                  else "vix_proxy",
+            }
+        else:
+            result["chain_data"] = None
+            result["chain_error"] = "NIFTY chain returned None — Dhan not logged in or chain empty"
+    except Exception as e:
+        data = None
+        result["chain_error"] = str(e)
+
+    # Run each strategy individually
+    if data:
+        try:
+            from mcp_server.options_signal_engine import ALL_STRATEGIES
+            for fn in ALL_STRATEGIES:
+                name = fn.__name__
+                try:
+                    sig = fn(data, vix_data=vix_data)
+                    result["strategy_results"][name] = {
+                        "fired": sig is not None,
+                        "signal": {k: v for k, v in sig.items()
+                                   if k != "chain"} if sig else None,
+                    }
+                    if sig:
+                        result["signals_generated"].append({
+                            "strategy": name,
+                            "direction": sig.get("direction"),
+                            "rationale": sig.get("rationale", "")[:100],
+                        })
+                except Exception as strat_err:
+                    result["strategy_results"][name] = {
+                        "fired": False,
+                        "error": str(strat_err),
+                    }
+        except Exception as e:
+            result["strategies_error"] = str(e)
+
+    # Summary
+    if not result["option_signals_enabled"]:
+        result["summary"] = "BLOCKED: OPTION_SIGNALS_ENABLED=false in settings"
+    elif not result["market_open"]:
+        result["summary"] = "Market closed — scan loop is sleeping. Run again during 09:15–15:15 IST on a weekday."
+    elif not result["chain_data"]:
+        result["summary"] = "BLOCKED: Could not fetch NIFTY chain data. Check Dhan login."
+    elif result["chain_data"].get("atm_iv", 0) <= 0:
+        result["summary"] = "WARNING: IV=0 even after VIX proxy — strategies requiring IV will return None"
+    elif not result["signals_generated"]:
+        result["summary"] = (
+            "Chain fetched OK but no strategies fired. "
+            "Check atm_iv ({:.1f}), PCR ({:.2f}), distance from max pain ({:.0f} vs {:.0f}).".format(
+                result["chain_data"].get("atm_iv", 0),
+                result["chain_data"].get("pcr", 0),
+                result["chain_data"].get("spot", 0),
+                result["chain_data"].get("max_pain", 0),
+            )
+        )
+    else:
+        result["summary"] = f"{len(result['signals_generated'])} signal(s) would fire: " + \
+            ", ".join(s["strategy"] for s in result["signals_generated"])
+
+    return result
