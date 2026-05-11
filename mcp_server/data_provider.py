@@ -1373,7 +1373,7 @@ class DhanSource:
         dhan_segment = self.EXCHANGE_MAP.get(exchange, "NSE_EQ")
         try:
             resp = self.client.expiry_list(
-                under_security_id=sec_id,
+                under_security_id=int(sec_id),
                 under_exchange_segment=dhan_segment,
             )
             if resp and resp.get("data"):
@@ -1396,7 +1396,7 @@ class DhanSource:
         dhan_segment = self.EXCHANGE_MAP.get(exchange, "NSE_EQ")
         try:
             resp = self.client.option_chain(
-                under_security_id=sec_id,
+                under_security_id=int(sec_id),
                 under_exchange_segment=dhan_segment,
                 expiry=expiry,
             )

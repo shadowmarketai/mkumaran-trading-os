@@ -207,7 +207,7 @@ def _next_weekly_expiry(from_date: date) -> date | None:
             idx_sec_id = scrip_cache.get("NSE:NIFTY", "")
             if idx_sec_id:
                 resp = dhan.client.expiry_list(
-                    under_security_id=idx_sec_id,
+                    under_security_id=int(idx_sec_id),
                     under_exchange_segment="IDX_I",
                 )
                 expiry_list = [str(e) for e in (resp.get("data", []) or [])]
@@ -368,7 +368,7 @@ def _get_chain_and_spot(expiry: date) -> tuple[float | None, dict]:
             if idx_sec_id and spot:
                 try:
                     resp = dhan.client.option_chain(
-                        under_security_id=idx_sec_id,
+                        under_security_id=int(idx_sec_id),
                         under_exchange_segment="IDX_I",
                         expiry=expiry_str,
                     )

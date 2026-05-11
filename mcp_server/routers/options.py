@@ -799,7 +799,7 @@ async def api_quick_strangle(
             if sec_id:
                 for seg in ("IDX_I", "NSE_FNO", "NSE_EQ"):
                     expiry_resp = dhan.client.expiry_list(
-                        under_security_id=sec_id,
+                        under_security_id=int(sec_id),
                         under_exchange_segment=seg,
                     )
                     expiries = expiry_resp.get("data", []) if isinstance(expiry_resp, dict) else []
@@ -808,7 +808,7 @@ async def api_quick_strangle(
                         valid = [e for e in sorted(str(e) for e in expiries) if str(e) >= min_date]
                         expiry = valid[0] if valid else str(expiries[0])
                         chain_resp = dhan.client.option_chain(
-                            under_security_id=sec_id,
+                            under_security_id=int(sec_id),
                             under_exchange_segment=seg,
                             expiry=expiry,
                         )
@@ -1072,7 +1072,7 @@ async def options_scan_diagnostic() -> dict:
                     for _seg in ("IDX_I", "NSE_FNO"):
                         try:
                             _er = _dhan.client.expiry_list(
-                                under_security_id=_sec,
+                                under_security_id=int(_sec),
                                 under_exchange_segment=_seg,
                             )
                             _expiries = _er.get("data", []) if isinstance(_er, dict) else []
@@ -1088,8 +1088,8 @@ async def options_scan_diagnostic() -> dict:
                     _cache = getattr(_dhan, "_scrip_cache", {})
                     probe["scrip_cache_nse_nifty"] = _cache.get("NSE:NIFTY", "NOT FOUND")
                     probe["scrip_cache_nifty_keys"] = [
-                        k for k in list(_cache.keys())[:200] if "NIFTY" in k.upper()
-                    ][:10]
+                        k for k in _cache if "NIFTY" in k.upper()
+                    ][:20]
                     probe["scrip_cache_size"] = len(_cache)
                 except Exception:
                     pass

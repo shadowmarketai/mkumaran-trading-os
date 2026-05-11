@@ -723,7 +723,7 @@ def get_options_chain(instrument: str) -> dict:
             for seg in segs:
                 try:
                     exp_resp = dhan.client.expiry_list(
-                        under_security_id=sec_id,
+                        under_security_id=int(sec_id),
                         under_exchange_segment=seg,
                     )
                     expiries = exp_resp.get("data", []) if isinstance(exp_resp, dict) else []
@@ -732,7 +732,7 @@ def get_options_chain(instrument: str) -> dict:
                         continue
                     expiry = valid[0]
                     chain_resp = dhan.client.option_chain(
-                        under_security_id=sec_id,
+                        under_security_id=int(sec_id),
                         under_exchange_segment=seg,
                         expiry=expiry,
                     )

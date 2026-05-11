@@ -93,7 +93,7 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                 for seg in segments:
                     try:
                         exp_resp = dhan.client.expiry_list(
-                            under_security_id=sec_id,
+                            under_security_id=int(sec_id),
                             under_exchange_segment=seg,
                         )
                         expiries = exp_resp.get("data", []) if isinstance(exp_resp, dict) else []
@@ -102,7 +102,7 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                             continue
                         expiry_str = valid[0]
                         chain_resp = dhan.client.option_chain(
-                            under_security_id=sec_id,
+                            under_security_id=int(sec_id),
                             under_exchange_segment=seg,
                             expiry=expiry_str,
                         )
