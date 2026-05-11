@@ -41,12 +41,8 @@ WORKDIR /app
 COPY --from=deps /usr/lib/libta_lib* /usr/lib/
 COPY --from=deps /usr/include/ta-lib /usr/include/ta-lib
 
-# Install runtime system deps: curl/wget for healthcheck + Chromium libs for Playwright
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl wget \
-    libglib2.0-0 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
-    libcups2 libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 \
-    libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
+# Install runtime system deps (curl/wget for healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends curl wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed Python packages from deps stage

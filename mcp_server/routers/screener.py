@@ -15,8 +15,6 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import pandas as pd
-import yfinance as yf
 from fastapi import APIRouter
 
 router = APIRouter(prefix="/api/screener", tags=["screener"])
@@ -59,7 +57,7 @@ def _load_tickers() -> list[str]:
     return raw["symbols"]
 
 
-def _rsi(closes: pd.Series, period: int = RSI_PERIOD) -> float:
+def _rsi(closes: object, period: int = RSI_PERIOD) -> float:
     delta    = closes.diff()
     gain     = delta.clip(lower=0)
     loss     = -delta.clip(upper=0)
@@ -68,11 +66,13 @@ def _rsi(closes: pd.Series, period: int = RSI_PERIOD) -> float:
     rs  = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
     v   = rsi.iloc[-1]
-    return float(v) if pd.notna(v) else float("nan")
+    import math
+    return float(v) if not math.isnan(float(v)) else float("nan")
 
 
 def _fetch_pe(yf_sym: str) -> float | None:
     try:
+        import yfinance as yf
         info = yf.Ticker(yf_sym).info
         pe = info.get("trailingPE") or info.get("forwardPE")
         return round(float(pe), 1) if pe else None
@@ -81,6 +81,9 @@ def _fetch_pe(yf_sym: str) -> float | None:
 
 
 def _run_scan_sync() -> list[dict]:
+    import pandas as pd  # lazy — not needed at module import time
+    import yfinance as yf
+
     tickers    = _load_tickers()
     yf_symbols = [t + ".NS" for t in tickers]
 
