@@ -1083,6 +1083,16 @@ async def options_scan_diagnostic() -> dict:
                             }
                         except Exception as _ee:
                             probe[f"expiry_list_{_seg}"] = {"error": str(_ee)}
+                # Show what the scrip cache actually has for NIFTY
+                try:
+                    _cache = getattr(_dhan, "_scrip_cache", {})
+                    probe["scrip_cache_nse_nifty"] = _cache.get("NSE:NIFTY", "NOT FOUND")
+                    probe["scrip_cache_nifty_keys"] = [
+                        k for k in list(_cache.keys())[:200] if "NIFTY" in k.upper()
+                    ][:10]
+                    probe["scrip_cache_size"] = len(_cache)
+                except Exception:
+                    pass
                 result["dhan_probe"] = probe
             except Exception as _pe:
                 result["dhan_probe"] = {"error": str(_pe)}
