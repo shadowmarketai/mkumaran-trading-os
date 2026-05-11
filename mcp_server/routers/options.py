@@ -1059,13 +1059,34 @@ async def options_scan_diagnostic() -> dict:
             }
         else:
             result["chain_data"] = None
-            result["chain_error"] = (
-                "NIFTY chain returned None. "
-                "Dhan logged_in={} — check server logs for Dhan expiry_list/option_chain errors. "
-                "NSE fallback also attempted for index symbols.".format(
-                    result.get("dhan_status", {}).get("logged_in", "unknown")
-                )
-            )
+            # Direct Dhan probe — bypass _get_chain_and_data and show raw API response
+            try:
+                from mcp_server.data_provider import get_provider as _gp
+                from mcp_server.options_selector import _IDX_SEC_IDS as _ids
+                _dhan = _gp().dhan
+                _logged = bool(_dhan and getattr(_dhan, "logged_in", False))
+                probe: dict = {"dhan_logged_in": _logged}
+                if _logged:
+                    _sec = _ids.get("NIFTY", "13")
+                    probe["nifty_sec_id"] = _sec
+                    for _seg in ("IDX_I", "NSE_FNO"):
+                        try:
+                            _er = _dhan.client.expiry_list(
+                                under_security_id=_sec,
+                                under_exchange_segment=_seg,
+                            )
+                            _expiries = _er.get("data", []) if isinstance(_er, dict) else []
+                            probe[f"expiry_list_{_seg}"] = {
+                                "status": _er.get("status") if isinstance(_er, dict) else type(_er).__name__,
+                                "count": len(_expiries),
+                                "first": str(_expiries[0]) if _expiries else None,
+                            }
+                        except Exception as _ee:
+                            probe[f"expiry_list_{_seg}"] = {"error": str(_ee)}
+                result["dhan_probe"] = probe
+            except Exception as _pe:
+                result["dhan_probe"] = {"error": str(_pe)}
+            result["chain_error"] = "NIFTY chain returned None — see dhan_probe for raw API responses"
     except Exception as e:
         data = None
         result["chain_error"] = str(e)
