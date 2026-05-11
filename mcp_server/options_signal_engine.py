@@ -169,12 +169,22 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
         # Max pain: strike where total option buyers lose the most
         max_pain_strike = _calc_max_pain(chain, spot)
 
-        # ATM IV from chain
+        # ATM IV from chain — fall back to India VIX when chain returns 0
+        # (Dhan IDX_I chain often returns iv=0 outside active market session)
         atm_strike = min(chain.keys(), key=lambda s: abs(s - spot))
         atm_data = chain.get(atm_strike, {})
         atm_iv = (
             atm_data.get("CE", {}).get("iv", 0) + atm_data.get("PE", {}).get("iv", 0)
         ) / 2
+        if atm_iv <= 0:
+            # Use India VIX as proxy (VIX ≈ annualised 30-day Nifty IV)
+            try:
+                vix_val = _get_vix_data()
+                if vix_val and vix_val.get("vix", 0) > 0:
+                    atm_iv = vix_val["vix"]
+                    logger.debug("IV proxy from VIX for %s: %.1f", symbol, atm_iv)
+            except Exception:
+                pass
 
         # ATM premium
         atm_ce_ltp = atm_data.get("CE", {}).get("ltp", 0)

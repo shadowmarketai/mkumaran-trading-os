@@ -409,6 +409,47 @@ async def _options_signal_loop():
                         _fire_and_forget(broadcast_signal_to_users(msg, exchange="NFO"))
                     except Exception:
                         pass
+
+                    # Persist to DB so dashboard shows signal with UNVALIDATED badge
+                    try:
+                        from mcp_server.db import SessionLocal as _SL
+                        _db = _SL()
+                        try:
+                            strike = sig.get("strike", 0)
+                            premium = sig.get("premium_collected") or sig.get("premium_paid") or 0
+                            _opt_sig = Signal(
+                                signal_date=date.today(),
+                                ticker=sig["symbol"],
+                                exchange="NFO",
+                                asset_class="FNO",
+                                timeframe="intraday",
+                                direction=sig.get("direction", "NEUTRAL"),
+                                pattern=sig.get("strategy", sig.get("pattern", "OPTIONS")),
+                                entry_price=round(float(strike or premium), 2),
+                                stop_loss=round(float(sig.get("sl_premium", premium * 1.5 if premium else 0)), 2),
+                                target=round(float(sig.get("target_premium", premium * 0.3 if premium else 0)), 2),
+                                rrr=1.5,
+                                qty=sig.get("lots", 1) * 50,
+                                risk_amt=round(float(sig.get("sl_premium", premium * 1.5 if premium else 0)), 2),
+                                ai_confidence=50,
+                                tv_confirmed=False,
+                                mwa_score="NEUTRAL",
+                                scanner_count=1,
+                                tier=0,
+                                source="options_scan",
+                                status="OPEN",
+                                entry_regime="UNKNOWN",
+                            )
+                            _db.add(_opt_sig)
+                            _db.commit()
+                        except Exception as _db_err:
+                            _db.rollback()
+                            logger.debug("Options signal DB persist failed: %s", _db_err)
+                        finally:
+                            _db.close()
+                    except Exception:
+                        pass
+
                     logger.info(
                         "[OPTIONS] signal: %s %s %s",
                         sig["symbol"], sig["strategy"], sig.get("rationale", "")[:80],
