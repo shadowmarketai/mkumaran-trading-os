@@ -84,6 +84,7 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
         # Stocks use NSE_EQ for security_id, NSE_FNO for chain
         chain: dict = {}
         expiry_str: str = ""
+        expiry_list: list = []
         dhan = provider.dhan
         if dhan and dhan.logged_in:
             # Dhan uses different exchange segments:
@@ -485,10 +486,37 @@ def strategy_oi_wall(data: dict, **_kw: Any) -> dict[str, Any] | None:
 
 
 def _get_vix_data() -> dict[str, float] | None:
-    """Fetch India VIX current value + % change."""
+    """Fetch India VIX current value + % change.
+
+    Priority: Dhan (fastest, already logged in) → NSE quote → yfinance.
+    """
     try:
         from mcp_server.data_provider import get_provider
         provider = get_provider()
+
+        # Try Dhan first — already authenticated, no browser session needed
+        try:
+            dhan = provider.dhan
+            if dhan and dhan.logged_in:
+                import datetime as _dt
+                today = _dt.date.today().isoformat()
+                week_ago = (_dt.date.today() - _dt.timedelta(days=5)).isoformat()
+                resp = dhan.client.historical_daily_data(
+                    security_id="13",
+                    exchange_segment="IDX_I",
+                    instrument_type="INDEX",
+                    from_date=week_ago,
+                    to_date=today,
+                )
+                closes = resp.get("data", {}).get("close", [])
+                if closes and len(closes) >= 2:
+                    vix = float(closes[-1])
+                    prev = float(closes[-2])
+                    pct = (vix - prev) / prev * 100 if prev else 0
+                    return {"vix": vix, "pct_change": round(pct, 2)}
+        except Exception:
+            pass
+
         # Try NSE India source for VIX
         try:
             quote = provider.nse.get_quote("INDIA VIX")
