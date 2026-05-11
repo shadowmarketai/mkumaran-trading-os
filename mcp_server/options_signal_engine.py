@@ -73,6 +73,12 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
             logger.debug("Options: no spot price for %s", symbol)
             return None
 
+        # Hardcoded Dhan IDX_I security IDs for major indices.
+        # Scrip cache is populated only after instruments download; these IDs
+        # are static and allow chain fetch even when cache is empty.
+        _IDX_SEC_IDS = {"NIFTY": "13", "BANKNIFTY": "25", "FINNIFTY": "27",
+                        "MIDCPNIFTY": "442"}
+
         # Option chain from Dhan
         # Indices use IDX_I segment for security_id, NSE_FNO for chain
         # Stocks use NSE_EQ for security_id, NSE_FNO for chain
@@ -86,14 +92,18 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
             # But the option chain itself is always on NSE_FNO
             if is_index:
                 # Direct Dhan API call with IDX_I segment
+                # Fall back to hardcoded sec ID when scrip cache is empty
                 try:
-                    idx_sec_id = dhan._scrip_cache.get(f"NSE:{symbol}", "")
+                    idx_sec_id = (dhan._scrip_cache.get(f"NSE:{symbol}", "")
+                                  or _IDX_SEC_IDS.get(symbol, ""))
                     if idx_sec_id:
                         exp_resp = dhan.client.expiry_list(
                             under_security_id=idx_sec_id,
                             under_exchange_segment="IDX_I",
                         )
                         expiry_list = [str(e) for e in (exp_resp.get("data", []) or [])]
+                    else:
+                        expiry_list = []
                 except Exception as idx_err:
                     logger.debug("Index expiry_list for %s failed: %s", symbol, idx_err)
                     expiry_list = []
@@ -107,7 +117,8 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                 # For option chain: use IDX_I for indices, NSE_EQ for stocks
                 if is_index:
                     try:
-                        idx_sec_id = dhan._scrip_cache.get(f"NSE:{symbol}", "")
+                        idx_sec_id = (dhan._scrip_cache.get(f"NSE:{symbol}", "")
+                                      or _IDX_SEC_IDS.get(symbol, ""))
                         if idx_sec_id:
                             chain = dhan.client.option_chain(
                                 under_security_id=idx_sec_id,
@@ -133,7 +144,8 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                                         "iv": float(row.get("iv", row.get("impliedVolatility", 0))),
                                     }
                                 chain = parsed
-                                logger.info("Options chain for %s via Dhan IDX_I: %d strikes", symbol, len(chain))
+                                logger.info("Options chain for %s via Dhan IDX_I: %d strikes",
+                                            symbol, len(chain))
                     except Exception as idx_chain_err:
                         logger.debug("Index chain for %s failed: %s", symbol, idx_chain_err)
                 else:
