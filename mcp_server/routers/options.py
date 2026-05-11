@@ -1065,7 +1065,12 @@ async def options_scan_diagnostic() -> dict:
                 from mcp_server.options_selector import _IDX_SEC_IDS as _ids
                 _dhan = _gp().dhan
                 _logged = bool(_dhan and getattr(_dhan, "logged_in", False))
-                probe: dict = {"dhan_logged_in": _logged}
+                try:
+                    import dhanhq as _dhq
+                    probe_dhq_ver = getattr(_dhq, "__version__", "unknown")
+                except Exception:
+                    probe_dhq_ver = "import_failed"
+                probe: dict = {"dhan_logged_in": _logged, "dhanhq_version": probe_dhq_ver}
                 if _logged:
                     _sec = _ids.get("NIFTY", "13")
                     probe["nifty_sec_id"] = _sec
@@ -1085,7 +1090,12 @@ async def options_scan_diagnostic() -> dict:
                                 "first":     str(_expiries[0]) if _expiries else None,
                             }
                         except Exception as _ee:
-                            probe[f"expiry_list_{_seg}"] = {"error": str(_ee)}
+                            import traceback as _tb
+                            probe[f"expiry_list_{_seg}"] = {
+                                "error": str(_ee),
+                                "exc_type": type(_ee).__name__,
+                                "traceback": _tb.format_exc()[-500:],
+                            }
                 # Show what the scrip cache actually has for NIFTY
                 try:
                     _cache = getattr(_dhan, "_scrip_cache", {})
