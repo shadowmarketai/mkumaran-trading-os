@@ -881,3 +881,114 @@ async def api_quick_strangle(
         "position": pos.as_dict(),
         "regime": regime.as_dict(),
     }
+
+
+# ── Strangle diagnostic ────────────────────────────────────────────────────
+
+
+@router.get("/strangle/diagnostic")
+async def strangle_diagnostic() -> dict:
+    """
+    Run every gate check for the Nifty weekly strangle and return which
+    step passes or fails. Useful for debugging why no signals are emitting.
+
+    Does NOT persist or send any signal. Read-only diagnostic only.
+    """
+    from datetime import date as _date
+    result: dict = {}
+
+    # Gate 1: entry day check
+    try:
+        from mcp_server.nifty_strangle_live import _is_entry_day
+        today = _date.today()
+        is_entry, expiry = _is_entry_day(today)
+        result["entry_day"] = {
+            "pass": is_entry,
+            "today": str(today),
+            "weekday": today.strftime("%A"),
+            "next_expiry": str(expiry) if expiry else None,
+            "note": "Strangle only fires on Wednesday (5 DTE before Tuesday expiry)"
+                    if not is_entry else "Today is an entry day",
+        }
+        if not is_entry:
+            # Find next entry day for info
+            from datetime import timedelta
+            d = today + timedelta(days=1)
+            for _ in range(10):
+                e, exp = _is_entry_day(d)
+                if e:
+                    result["entry_day"]["next_entry_day"] = str(d)
+                    result["entry_day"]["next_entry_expiry"] = str(exp)
+                    break
+                d += timedelta(days=1)
+    except Exception as e:
+        result["entry_day"] = {"pass": False, "error": str(e)}
+
+    # Gate 2: VIX fetch + percentile
+    try:
+        from mcp_server.nifty_strangle_live import (
+            _fetch_vix_percentile, VIX_LOW_PCT, VIX_HIGH_PCT,
+        )
+        vix, vix_pct = _fetch_vix_percentile()
+        in_range = (vix_pct is not None and VIX_LOW_PCT <= vix_pct <= VIX_HIGH_PCT)
+        result["vix_gate"] = {
+            "pass": in_range,
+            "vix": round(vix, 2) if vix else None,
+            "percentile": round(vix_pct * 100, 1) if vix_pct else None,
+            "required": f"{int(VIX_LOW_PCT*100)}th–{int(VIX_HIGH_PCT*100)}th percentile",
+            "note": ("VIX fetch failed — all sources down" if vix is None
+                     else f"VIX {vix:.1f} at {vix_pct*100:.0f}th pct — "
+                     + ("IN RANGE" if in_range else "OUT OF RANGE (gate rejected)")),
+        }
+    except Exception as e:
+        result["vix_gate"] = {"pass": False, "error": str(e)}
+
+    # Gate 3: broker / Dhan status
+    try:
+        from mcp_server.data_provider import get_provider
+        provider = get_provider()
+        dhan = getattr(provider, "dhan", None)
+        dhan_ok = bool(dhan and getattr(dhan, "logged_in", False))
+        result["dhan_status"] = {
+            "pass": dhan_ok,
+            "logged_in": dhan_ok,
+            "note": "Dhan logged in — chain will use live IDX_I data" if dhan_ok
+                    else "Dhan NOT logged in — falling back to NSE public API (may be blocked)",
+        }
+    except Exception as e:
+        result["dhan_status"] = {"pass": False, "error": str(e)}
+
+    # Gate 4: option chain availability (only if entry day to avoid NSE rate-limit)
+    if result.get("entry_day", {}).get("pass") and result.get("vix_gate", {}).get("pass"):
+        try:
+            expiry = _date.fromisoformat(result["entry_day"]["next_expiry"]
+                                         or result["entry_day"].get("next_expiry", ""))
+            from mcp_server.nifty_strangle_live import _get_chain_and_spot
+            spot, chain = _get_chain_and_spot(expiry)
+            result["chain"] = {
+                "pass": bool(chain),
+                "spot": spot,
+                "strikes_available": len(chain),
+                "note": f"Chain OK — {len(chain)} strikes" if chain
+                        else "Chain EMPTY — NSE API may be blocked or market closed",
+            }
+        except Exception as e:
+            result["chain"] = {"pass": False, "error": str(e)}
+    else:
+        result["chain"] = {
+            "pass": None,
+            "note": "Skipped — entry day or VIX gate did not pass",
+        }
+
+    # Summary
+    gates = ["entry_day", "vix_gate", "dhan_status"]
+    all_pass = all(result.get(g, {}).get("pass") for g in gates)
+    result["summary"] = {
+        "would_emit": all_pass and result.get("chain", {}).get("pass", False),
+        "blocking_gate": next(
+            (g for g in gates if not result.get(g, {}).get("pass")),
+            "chain" if not result.get("chain", {}).get("pass") else None,
+        ),
+    }
+
+    return result
