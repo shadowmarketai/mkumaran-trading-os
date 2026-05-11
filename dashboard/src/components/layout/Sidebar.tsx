@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Target, Eye, FlaskConical, Cpu, Activity,
   Brain, Newspaper, Rocket, Calculator, LineChart, FileText, Shield,
-  BarChart3, X, ChevronLeft, ChevronRight, Wifi, WifiOff, Settings,
+  BarChart3, X, ChevronLeft, ChevronRight, Wifi, WifiOff, Settings, Zap,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../../lib/utils';
@@ -21,6 +21,7 @@ const navItems: NavItem[] = [
   { to: '/backtesting', label: 'Backtesting', icon: <FlaskConical size={18} />, group: 'analysis' },
   { to: '/engines', label: 'Pattern Engines', icon: <Cpu size={18} />, group: 'analysis' },
   { to: '/wallstreet', label: 'Wall Street AI', icon: <Brain size={18} />, group: 'analysis' },
+  { to: '/screener', label: 'Screener', icon: <Zap size={18} />, group: 'intel' },
   { to: '/news', label: 'News & Macro', icon: <Newspaper size={18} />, group: 'intel' },
   { to: '/momentum', label: 'Momentum', icon: <Rocket size={18} />, group: 'intel' },
   { to: '/options', label: 'Options Greeks', icon: <Calculator size={18} />, group: 'options' },

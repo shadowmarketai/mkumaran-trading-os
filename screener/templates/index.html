@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nifty 500 Screener — Shadow Market</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .pulse-dot { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .row-enter { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+    .progress-bar { animation: scanProgress 5s linear; }
+    @keyframes scanProgress { from{width:0%} to{width:100%} }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-200 min-h-screen">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-10">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-sm font-bold">S</div>
+        <div>
+          <div class="font-semibold text-white text-sm">Shadow Market</div>
+          <div class="text-xs text-slate-400">Nifty 500 Screener</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <!-- Market status -->
+        <div id="market-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border">
+          <span id="market-dot" class="w-2 h-2 rounded-full"></span>
+          <span id="market-label">Checking...</span>
+        </div>
+
+        <!-- Manual scan button -->
+        <button id="scan-btn"
+          onclick="triggerScan()"
+          class="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+          Scan Now
+        </button>
+      </div>
+    </div>
+
+    <!-- Scan progress bar -->
+    <div id="progress-bar" class="h-0.5 bg-indigo-500 hidden" style="width:0%"></div>
+  </header>
+
+  <!-- Main -->
+  <main class="max-w-6xl mx-auto px-4 py-6">
+
+    <!-- Stats row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="text-xs text-slate-500 mb-1">Matches Found</div>
+        <div id="stat-count" class="text-2xl font-bold text-white mono">—</div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="text-xs text-slate-500 mb-1">Last Scan</div>
+        <div id="stat-last" class="text-sm font-semibold text-white mono">—</div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="text-xs text-slate-500 mb-1">Next Scan In</div>
+        <div id="stat-next" class="text-2xl font-bold text-white mono">—</div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="text-xs text-slate-500 mb-1">Universe</div>
+        <div class="text-2xl font-bold text-white mono">500</div>
+      </div>
+    </div>
+
+    <!-- Filter pills -->
+    <div class="flex gap-2 mb-4 flex-wrap">
+      <span class="px-3 py-1 text-xs rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+        Volume &gt; 2× 20d avg
+      </span>
+      <span class="px-3 py-1 text-xs rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400">
+        RSI(14) &gt; 50
+      </span>
+      <span class="px-3 py-1 text-xs rounded-full bg-slate-800 border border-slate-700 text-slate-400">
+        Ranked by Volume Ratio
+      </span>
+      <span class="px-3 py-1 text-xs rounded-full bg-slate-800 border border-slate-700 text-slate-400">
+        Top 20 shown
+      </span>
+    </div>
+
+    <!-- Market closed overlay -->
+    <div id="closed-banner" class="hidden mb-6 bg-amber-500/10 border border-amber-500/30 rounded-xl p-5 flex items-start gap-3">
+      <svg class="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+      </svg>
+      <div>
+        <div class="text-amber-400 font-semibold text-sm">Market Closed</div>
+        <div class="text-amber-300/70 text-xs mt-1">
+          NSE equity market trades Monday–Friday, 09:15–15:30 IST.<br/>
+          The screener will auto-start when market opens.
+          <span id="stale-note" class="hidden"> Showing results from last scan.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scanning indicator -->
+    <div id="scanning-indicator" class="hidden mb-4 flex items-center gap-2 text-sm text-indigo-400">
+      <span class="pulse-dot w-2 h-2 rounded-full bg-indigo-400"></span>
+      Scanning 500 tickers — this takes ~20 seconds...
+    </div>
+
+    <!-- Results table -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-800">
+            <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-10">#</th>
+            <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Ticker</th>
+            <th class="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Price (₹)</th>
+            <th class="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Vol Ratio
+              <span class="text-slate-600 font-normal normal-case">vs 20d avg</span>
+            </th>
+            <th class="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">RSI(14)</th>
+            <th class="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">P/E</th>
+          </tr>
+        </thead>
+        <tbody id="results-body">
+          <tr>
+            <td colspan="6" class="px-4 py-12 text-center text-slate-600 text-sm" id="empty-state">
+              Waiting for first scan...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Footer -->
+    <div class="mt-4 text-xs text-slate-600 text-center">
+      Data via yfinance · Refreshes every 5 min during market hours · NSE equities only
+    </div>
+  </main>
+
+  <script>
+    let lastResultCount = 0;
+
+    function formatNext(secs) {
+      if (secs == null || secs < 0) return '—';
+      const m = Math.floor(secs / 60);
+      const s = secs % 60;
+      return m > 0 ? `${m}m ${s.toString().padStart(2,'0')}s` : `${s}s`;
+    }
+
+    function volRatioClass(r) {
+      if (r >= 5) return 'text-emerald-400 font-bold';
+      if (r >= 3) return 'text-emerald-400';
+      return 'text-emerald-300/80';
+    }
+
+    function rsiClass(r) {
+      if (r >= 70) return 'text-rose-400';
+      if (r >= 60) return 'text-amber-400';
+      return 'text-blue-400';
+    }
+
+    function rsiBar(r) {
+      const pct = Math.min(r, 100);
+      const col = r >= 70 ? '#f87171' : r >= 60 ? '#fbbf24' : '#60a5fa';
+      return `<div class="flex items-center gap-2 justify-end">
+        <div class="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+          <div style="width:${pct}%;background:${col}" class="h-full rounded-full"></div>
+        </div>
+        <span class="${rsiClass(r)} mono">${r.toFixed(1)}</span>
+      </div>`;
+    }
+
+    function renderTable(results) {
+      const body = document.getElementById('results-body');
+      if (!results || results.length === 0) {
+        body.innerHTML = `<tr><td colspan="6" class="px-4 py-12 text-center text-slate-600 text-sm">
+          No stocks matched the filters in this scan.</td></tr>`;
+        return;
+      }
+
+      const rows = results.map((r, i) => {
+        const isNew = i >= lastResultCount;
+        const pe = r.pe != null ? r.pe.toFixed(1) : '<span class="text-slate-600">—</span>';
+        const rankBg = i === 0 ? 'bg-indigo-500/10' : '';
+        return `<tr class="border-b border-slate-800/60 hover:bg-slate-800/40 transition-colors ${rankBg} ${isNew ? 'row-enter' : ''}">
+          <td class="px-4 py-3 text-slate-600 mono text-xs">${i + 1}</td>
+          <td class="px-4 py-3">
+            <div class="font-semibold text-white">${r.ticker}</div>
+            <div class="text-xs text-slate-500 mono">NSE</div>
+          </td>
+          <td class="px-4 py-3 text-right mono font-medium text-white">₹${r.price.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+          <td class="px-4 py-3 text-right">
+            <span class="mono ${volRatioClass(r.vol_ratio)}">${r.vol_ratio.toFixed(2)}×</span>
+          </td>
+          <td class="px-4 py-3">${rsiBar(r.rsi)}</td>
+          <td class="px-4 py-3 text-right mono text-slate-300">${pe}</td>
+        </tr>`;
+      }).join('');
+
+      body.innerHTML = rows;
+      lastResultCount = results.length;
+    }
+
+    function setMarketStatus(open) {
+      const badge = document.getElementById('market-badge');
+      const dot   = document.getElementById('market-dot');
+      const label = document.getElementById('market-label');
+      const banner = document.getElementById('closed-banner');
+
+      if (open) {
+        badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border border-emerald-500/40 bg-emerald-500/10';
+        dot.className   = 'w-2 h-2 rounded-full bg-emerald-400 pulse-dot';
+        label.textContent = 'Market Open';
+        label.className = 'text-emerald-400';
+        banner.classList.add('hidden');
+      } else {
+        badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border border-slate-700 bg-slate-800/50';
+        dot.className   = 'w-2 h-2 rounded-full bg-slate-500';
+        label.textContent = 'Market Closed';
+        label.className = 'text-slate-400';
+        banner.classList.remove('hidden');
+      }
+    }
+
+    async function fetchResults() {
+      try {
+        const res  = await fetch('/api/results');
+        const data = await res.json();
+
+        setMarketStatus(data.market_open);
+
+        document.getElementById('stat-count').textContent = data.results.length || '—';
+        document.getElementById('stat-last').textContent  = data.last_scan || '—';
+        document.getElementById('stat-next').textContent  = data.scanning ? 'Scanning...' : formatNext(data.next_scan);
+
+        const scanInd = document.getElementById('scanning-indicator');
+        const scanBtn = document.getElementById('scan-btn');
+        if (data.scanning) {
+          scanInd.classList.remove('hidden');
+          scanBtn.disabled = true;
+        } else {
+          scanInd.classList.add('hidden');
+          scanBtn.disabled = !data.market_open;
+        }
+
+        // Show stale note if market closed but we have results
+        if (!data.market_open && data.results.length > 0) {
+          document.getElementById('stale-note').classList.remove('hidden');
+        }
+
+        renderTable(data.results);
+      } catch (e) {
+        console.error('Fetch error:', e);
+      }
+    }
+
+    async function triggerScan() {
+      const btn = document.getElementById('scan-btn');
+      btn.disabled = true;
+      try {
+        const res  = await fetch('/api/scan', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'market_closed') {
+          alert('Market is closed. Screener only runs during NSE hours (09:15–15:30 IST).');
+          btn.disabled = false;
+        }
+      } catch (e) {
+        btn.disabled = false;
+      }
+      setTimeout(fetchResults, 1000);
+    }
+
+    // Poll every 5 seconds for status updates (results only refresh every 5 min)
+    fetchResults();
+    setInterval(fetchResults, 5000);
+  </script>
+</body>
+</html>

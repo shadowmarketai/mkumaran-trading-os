@@ -1077,6 +1077,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Options seller Greeks refresh loop startup skipped: %s", e)
 
+    # Start Nifty 500 screener background scanner (every 5 min, market hours only)
+    try:
+        _router_screener.start_scheduler()
+        logger.info("Nifty 500 screener scheduler started")
+    except Exception as e:
+        logger.warning("Screener scheduler startup skipped: %s", e)
+
     # Start broker reconciler loop (every 60s during market hours).
     # Compares live broker position book to active_trades in Postgres.
     # Alerts on GHOST / PHANTOM / QTY_DRIFT. Never raises — logs only.
@@ -1232,6 +1239,7 @@ from mcp_server.routers import health as _router_health  # noqa: E402
 from mcp_server.routers import market_data as _router_market_data  # noqa: E402
 from mcp_server.routers import options as _router_options  # noqa: E402
 from mcp_server.routers import scanners as _router_scanners  # noqa: E402
+from mcp_server.routers import screener as _router_screener  # noqa: E402
 from mcp_server.routers import selfdev as _router_selfdev  # noqa: E402
 from mcp_server.routers import signals as _router_signals  # noqa: E402
 from mcp_server.routers import trades as _router_trades  # noqa: E402
@@ -1247,6 +1255,7 @@ app.include_router(_router_health.router)
 app.include_router(_router_market_data.router)
 app.include_router(_router_options.router)
 app.include_router(_router_scanners.router)
+app.include_router(_router_screener.router)
 app.include_router(_router_selfdev.router)
 app.include_router(_router_signals.router)
 app.include_router(_router_trades.router)

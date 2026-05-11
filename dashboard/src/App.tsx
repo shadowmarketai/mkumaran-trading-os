@@ -22,6 +22,7 @@ import MarketMoversPage from './pages/MarketMoversPage';
 import SettingsPage from './pages/SettingsPage';
 import ResearchPage from './pages/ResearchPage';
 import OptionsResearchPage from './pages/OptionsResearchPage';
+import ScreenerPage from './pages/ScreenerPage';
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -58,6 +59,7 @@ function App() {
                     <Route path="/payoff" element={<PayoffPage />} />
                     <Route path="/paper" element={<PaperTradingPage />} />
                     <Route path="/monitor" element={<SignalMonitorPage />} />
+                    <Route path="/screener" element={<ScreenerPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                   </Routes>
                 </main>
