@@ -361,13 +361,15 @@ def _metrics(trades: list[dict], start: date, end: date) -> dict:
     sharpe = (mean_r / std_r) * math.sqrt(252 / 10) if std_r > 0 else 0.0  # annualize per 10-day trade
 
     # Drawdown on cumulative P&L sequence
+    # Reference capital = max concurrent positions × position size
+    ref_capital = float(MAX_CONCURRENT * POSITION_INR)
     cum = 0.0
     peak = 0.0
     max_dd = 0.0
     for t in sorted(trades, key=lambda x: x["exit_date"]):
         cum  += t["net_pnl"]
         peak  = max(peak, cum)
-        max_dd = max(max_dd, (peak - cum) / max(peak, 1))
+        max_dd = max(max_dd, (peak - cum) / ref_capital)
 
     exit_reasons = {}
     for t in trades:
