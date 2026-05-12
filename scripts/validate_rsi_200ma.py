@@ -72,7 +72,8 @@ def _load_symbols() -> list[str]:
     if not p.exists():
         p = Path(__file__).parent.parent / "data" / "nifty500.json"
     with open(p) as f:
-        return json.load(f)["symbols"]
+        syms = json.load(f)["symbols"]
+    return [s for s in syms if "DUMMY" not in s.upper()]
 
 
 def _load_all_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str, dict[date, float]]:
