@@ -95,7 +95,10 @@ def _load_prices(session, symbol: str, start: date, end: date) -> dict[date, flo
         ORDER BY bar_date
     """), {"sym": symbol, "s": start.isoformat(), "e": end.isoformat()}).fetchall()
     if rows:
-        return {r.bar_date: float(r.close) for r in rows}
+        return {
+            (r.bar_date.date() if hasattr(r.bar_date, "date") else r.bar_date): float(r.close)
+            for r in rows
+        }
 
     # yfinance fallback
     try:
@@ -518,7 +521,7 @@ def main() -> None:
 
         # Pre-compute regime filter for every date
         logger.info("Pre-computing regime filter (rolling %d-day coint + Nifty slope)...",
-                    args.coint_p)
+                    REGIME_COINT_DAYS)
         regime = _precompute_regime(
             dates, prices_a, prices_b, nifty,
             REGIME_COINT_DAYS, args.coint_p,

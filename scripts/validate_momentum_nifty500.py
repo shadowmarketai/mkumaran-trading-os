@@ -85,7 +85,10 @@ def _load_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str, 
                 {"s": sym, "s0": start_str, "e": end_str},
             ).fetchall()
             if rows:
-                prices[sym] = {r.bar_date: float(r.close) for r in rows}
+                prices[sym] = {
+                    (r.bar_date.date() if hasattr(r.bar_date, "date") else r.bar_date): float(r.close)
+                    for r in rows
+                }
 
     in_db = len(prices)
     missing = [s for s in symbols if s not in prices or len(prices[s]) < 100]
