@@ -216,6 +216,8 @@ def main() -> None:
     parser.add_argument("--to", dest="end", default=str(date.today()))
     parser.add_argument("--top-pct", type=int, default=TOP_QUINTILE_PCT)
     parser.add_argument("--portfolio-size", type=float, default=PORTFOLIO_SIZE_INR)
+    parser.add_argument("--skip-days", type=int, default=0,
+                        help="Calendar days to skip for 1-month skip variant (use 30)")
     args = parser.parse_args()
 
     start = date.fromisoformat(args.start)
@@ -274,12 +276,15 @@ def main() -> None:
         next_rebal = rebal_dates[i + 1]
 
         # ── Step 1: Rank eligible stocks ──────────────────────────────────
-        lookback_date = date.fromordinal(rebal_date.toordinal() - LOOKBACK_TRADING_DAYS)
+        # 1-month skip: rank on price[t - skip_days] / price[t - skip_days - lookback]
+        # skip_days=0 → standard trailing return to today
+        rank_date    = date.fromordinal(rebal_date.toordinal() - args.skip_days)
+        lookback_date = date.fromordinal(rank_date.toordinal() - LOOKBACK_TRADING_DAYS)
 
         scores: dict[str, float] = {}
         for sym, pd_data in prices.items():
             sym_dates = _sorted_dates(pd_data)
-            p_now = _get_price_at(pd_data, sym_dates, rebal_date, tolerance_days=5)
+            p_now = _get_price_at(pd_data, sym_dates, rank_date, tolerance_days=5 + args.skip_days // 5)
             p_old = _get_price_at(pd_data, sym_dates, lookback_date, tolerance_days=10)
             if p_now and p_old and p_old > 0:
                 scores[sym] = p_now / p_old - 1
@@ -426,7 +431,8 @@ def main() -> None:
     sep = "=" * 72
     print()
     print(sep)
-    print(f"NIFTY 500 12-MONTH MOMENTUM BACKTEST  |  {args.start} → {end}")
+    skip_label = f" | {args.skip_days}-day skip" if args.skip_days else ""
+    print(f"NIFTY 500 12-MONTH MOMENTUM BACKTEST{skip_label}  |  {args.start} → {end}")
     print(sep)
     print(f"{'Months simulated':<35}: {n_months}")
     print(f"{'Avg eligible stocks/month':<35}: {sum(r['n_eligible'] for r in monthly_records) / n_months:.0f}")
