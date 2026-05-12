@@ -77,17 +77,22 @@ Two independent scan loops run in parallel: a **daily-swing MWA loop** (default 
 
 ## Current phase
 
-**Strategy decision point (2026-04-29).** Three weekends of options-selling validation complete. All options-selling hypotheses closed with clean verdicts. Operator must now choose next strategic path: pairs trading (Path B) or B2B SaaS pivot (Path C).
+**Path A — Deepen options (2026-05-12).** All strategy arcs closed. Only validated strategy is Nifty weekly short strangle (TIER_2). Now expanding options scan and letting 7 live strategies accumulate forward-test data.
 
-**Validation completed this session (2026-04-29):**
-- BankNifty weekly strangle: TIER 4 without gate, OVERRIDE with gate (36 trades, 13.9% WF return — promising but below 50-trade threshold) ✅
-- BankNifty monthly strangle: TIER 4 without gate (2.2% WF return), OVERRIDE with gate (10 trades) ✅
-- Pre-committed criteria docs committed before results: `banknifty_strangle_criteria.md` + `banknifty_monthly_criteria.md` ✅
-- Key finding preserved: VIX gate is load-bearing (19.5pp delta between gated/ungated weekly runs) ✅
+**Strategy scorecard (all arcs closed):**
+- Nifty 100 equity — all 6 engines daily + weekly: ALL TIER_3 ✅ closed
+- BankNifty / Nifty strangle: TIER_4 / OVERRIDE ✅ closed
+- **Nifty weekly short strangle (VIX-gated): TIER_2 — LIVE** (emits Wednesday)
+- Pairs trading — sector-based (10 pairs): OVERRIDE ✅ closed
+- Pairs trading — screener-based (6 pairs, top Nifty 50 coint): OVERRIDE ✅ **FINAL — pairs chapter closed**
+- Options scan (7 strategies, live since 2026-05-12): forward-testing in progress
 
-**Validation scripts committed:** `scripts/validate_banknifty_strangle.py` (weekly + monthly via `--expiry-type` flag), `scripts/backfill_nse_banknifty_options.py` (962K rows in DB).
-
-**Infrastructure built and ready for next hypothesis:** backtester, walk-forward, Monte Carlo, bootstrap Sharpe CI, regime breakdown — all reusable.
+**2026-05-12 session deliverables:**
+- Fixed Dhan option chain (int cast + double-nesting) — NIFTY chain now working ✅
+- Nifty 500 screener integrated into dashboard ✅
+- Nifty 50 cointegration screener (1225 pairs) built and run ✅
+- ohlcv_cache.source server_default migration added ✅
+- Options signal forward tracker script built ✅
 
 ---
 
@@ -96,11 +101,12 @@ Two independent scan loops run in parallel: a **daily-swing MWA loop** (default 
 Ordered by priority.
 
 - [ ] **CRITICAL** — Rotate prod DB password (exposed in chat 2026-04-25). Update Coolify env + restart.
-- [ ] **DECISION NOW** — Choose next strategic path: Path B (NSE equity pairs trading) or Path C (B2B SaaS infrastructure licensing). Options-selling chapter is closed per 2026-04-29 findings.
-- [ ] **IF PATH B** — Write pre-committed pairs criteria doc → build cointegration pairs scanner → pairs backtester. Equity data already in ohlcv_cache.
-- [ ] **IF PATH C** — Define target customer (SEBI RIA / prop firm / family office) → define MVP feature set → pricing + outreach.
+- [ ] **Path A** — Let options scan run 2–3 weeks → run `track_options_signals.py` → identify which of 7 strategies have edge → backtest the winners.
+- [ ] **Path A** — Verify BANKNIFTY chain works (same Dhan fix as NIFTY) by running scan-diagnostic during market hours.
+- [ ] **Path A** — Wednesday 2026-05-14: check strangle diagnostic — if VIX drops below 80th pct, strangle auto-emits.
 - [ ] **LOW** — Tax export module needs real Outcome rows to validate.
-- [x] ~~Options seller: paper trade 30 days~~ — options-selling hypothesis closed; strategy needs revision before live use.
+- [x] ~~Pairs trading~~ — HYPOTHESIS DISPROVEN (final). Both attempts closed.
+- [x] ~~Options seller: paper trade 30 days~~ — options-selling hypothesis closed.
 
 ---
 
