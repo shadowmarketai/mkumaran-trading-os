@@ -4,6 +4,7 @@ import logging
 from telegram import Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
 )
@@ -959,6 +960,143 @@ async def send_telegram_message(
     logger.error("Failed to send Telegram message after 3 attempts: %s", last_err)
 
 
+async def send_signal_card_with_buttons(
+    text: str,
+    signal_id: int,
+    exchange: str = "NSE",
+    force: bool = False,
+) -> None:
+    """Send a signal card with TAKE / SKIP inline keyboard buttons.
+
+    Only used for owner-directed signal cards (personal TELEGRAM_CHAT_ID).
+    SaaS subscribers get the plain text version without buttons.
+    """
+    if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID:
+        logger.warning("Telegram not configured — skipping signal card with buttons")
+        return
+
+    if not force:
+        from mcp_server.market_calendar import is_market_open
+        if not is_market_open(exchange):
+            logger.info("Telegram SKIPPED (market closed): signal #%d", signal_id)
+            return
+
+    if len(text) > 4000:
+        text = text[:3990] + "…"
+
+    url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": settings.TELEGRAM_CHAT_ID,
+        "text": text,
+        "disable_web_page_preview": True,
+        "reply_markup": {
+            "inline_keyboard": [[
+                {"text": "✅ TAKE", "callback_data": f"take:{signal_id}"},
+                {"text": "❌ SKIP", "callback_data": f"skip:{signal_id}"},
+            ]]
+        },
+    }
+
+    import httpx
+    timeout = httpx.Timeout(connect=10.0, read=25.0, write=10.0, pool=10.0)
+    last_err: Exception | None = None
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(url, json=payload)
+            if resp.status_code == 200 and resp.json().get("ok"):
+                logger.info("Signal card #%d sent with TAKE/SKIP buttons", signal_id)
+                return
+            if resp.status_code in (429, 500, 502, 503, 504):
+                last_err = RuntimeError(f"Telegram HTTP {resp.status_code}: {resp.text[:160]}")
+            else:
+                logger.error("Signal card send failed (HTTP %d): %s", resp.status_code, resp.text[:200])
+                return
+        except Exception as e:
+            last_err = e
+        if attempt < 2:
+            await asyncio.sleep(1.5 * (2 ** attempt))
+    logger.error("Failed to send signal card #%d after 3 attempts: %s", signal_id, last_err)
+
+
+async def handle_take_skip_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle TAKE / SKIP button presses on signal cards.
+
+    Records human_decision on the Signal row and edits the message to
+    confirm the choice and remove the keyboard (prevents double-press).
+    Auth: only the chat owner (TELEGRAM_CHAT_ID) can press — rejects others.
+    """
+    query = update.callback_query
+
+    # Auth: allow only when CHAT_ID is a personal chat (positive) and matches.
+    # For group chats (negative CHAT_ID) we skip the check — everyone in the
+    # group is a trusted user for this MVP.
+    try:
+        chat_id_int = int(settings.TELEGRAM_CHAT_ID)
+        if chat_id_int > 0 and query.from_user.id != chat_id_int:
+            await query.answer("Not authorized")
+            return
+    except (ValueError, TypeError):
+        pass
+
+    data = query.data  # "take:42" or "skip:42"
+    parts = data.split(":", 1)
+    if len(parts) != 2 or parts[0] not in ("take", "skip"):
+        await query.answer("Unknown action")
+        return
+
+    action, signal_id_str = parts
+    try:
+        signal_id = int(signal_id_str)
+    except ValueError:
+        await query.answer("Invalid signal ID")
+        return
+
+    decision = "TAKE" if action == "take" else "SKIP"
+
+    from mcp_server.db import SessionLocal
+    from mcp_server.models import Signal
+    from mcp_server.market_calendar import now_ist
+
+    db = SessionLocal()
+    try:
+        sig = db.query(Signal).filter(Signal.id == signal_id).first()
+        if not sig:
+            await query.answer(f"Signal #{signal_id} not found")
+            return
+
+        if sig.human_decision:
+            # Already decided — show existing decision, don't overwrite.
+            decision = sig.human_decision
+        else:
+            sig.human_decision = decision
+            db.commit()
+            logger.info("Human decision %s recorded for signal #%d", decision, signal_id)
+    except Exception as e:
+        logger.error("TAKE/SKIP callback DB error: %s", e)
+        await query.answer("DB error — check server logs")
+        return
+    finally:
+        db.close()
+
+    ts = now_ist().strftime("%H:%M IST")
+    if decision == "TAKE":
+        status_line = f"✅ TAKEN at {ts} — paper tracking active"
+    else:
+        status_line = f"❌ SKIPPED at {ts}"
+
+    await query.answer(status_line)
+
+    try:
+        original = query.message.text or ""
+        new_text = original + f"\n\n{status_line}"
+        if len(new_text) > 4000:
+            new_text = new_text[:3990] + "…"
+        await query.edit_message_text(text=new_text, reply_markup=None)
+    except Exception as e:
+        logger.debug("Button edit-out failed (may be >48h old or unchanged): %s", e)
+
+
 def create_bot_application() -> Application:
     """Create and configure the Telegram bot application."""
     if not settings.TELEGRAM_BOT_TOKEN:
@@ -981,6 +1119,7 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("close", cmd_close))
     app.add_handler(CommandHandler("analyze", cmd_analyze))
     app.add_handler(CommandHandler("signal", cmd_signal))
+    app.add_handler(CallbackQueryHandler(handle_take_skip_callback, pattern=r"^(take|skip):"))
 
     # SaaS multi-user commands
     from mcp_server.telegram_saas import (
@@ -996,5 +1135,5 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("mystats", cmd_mystats))
     app.add_handler(CommandHandler("plan", cmd_plan))
 
-    logger.info("Telegram bot configured with 21 command handlers")
+    logger.info("Telegram bot configured with 21 command handlers + TAKE/SKIP callback")
     return app

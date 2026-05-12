@@ -2478,7 +2478,11 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                         logger.debug("Option message block skipped: %s", opt_msg_err)
             disclaimer = getattr(settings, "UNVALIDATED_SIGNAL_DISCLAIMER", "")
             broadcast_msg = disclaimer + msg
-            _fire_and_forget(send_telegram_message(broadcast_msg, exchange=sig["exchange"], force=True))
+            # Owner card gets TAKE/SKIP buttons; SaaS subscribers get plain text below.
+            from mcp_server.telegram_bot import send_signal_card_with_buttons
+            _fire_and_forget(send_signal_card_with_buttons(
+                broadcast_msg, db_signal.id, exchange=sig["exchange"], force=True
+            ))
 
             # Broadcast to SaaS subscribers opted into this segment
             # (NSE Equity / F&O / Commodity / Forex). Non-blocking; silent on

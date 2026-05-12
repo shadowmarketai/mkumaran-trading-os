@@ -79,6 +79,7 @@ class Signal(Base):
     source = Column(String(20))
     timeframe = Column(String(10), default="1D")
     status = Column(String(20), default="OPEN")
+    human_decision = Column(String(10), nullable=True)  # TAKE / SKIP / null
 
     # ── Entry context (captured at signal creation for RCA + ML) ──
     entry_rsi = Column(Numeric(6, 2), nullable=True)
