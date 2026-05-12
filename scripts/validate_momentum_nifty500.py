@@ -476,7 +476,7 @@ def main() -> None:
         "",
         "## Summary Metrics",
         "",
-        f"| Metric | Portfolio | EW Universe | Nifty 50 |",
+        "| Metric | Portfolio | EW Universe | Nifty 50 |",
         "|---|---|---|---|",
         f"| Total Return | {total_portfolio_ret*100:.1f}% | {total_bench_ret*100:.1f}% | {total_n50_ret*100:.1f}% |",
         f"| CAGR | {portfolio_cagr*100:.1f}% | {bench_cagr*100:.1f}% | {n50_cagr*100:.1f}% |",
