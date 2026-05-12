@@ -706,16 +706,33 @@ def main() -> None:
     from_date = date.fromisoformat(args.from_date)
     to_date   = date.fromisoformat(args.to_date) if args.to_date else date.today()
 
-    # Load pairs universe
+    # Load pairs universe — or build ad-hoc pair from --pair arg
     universe_path = Path("data/pairs_universe.csv")
     pairs: list[dict] = []
-    with universe_path.open() as f:
-        for row in csv.DictReader(f):
-            if args.pair:
-                syms = set(args.pair.upper().split(","))
-                if not {row["leg_a_symbol"], row["leg_b_symbol"]} == syms:
-                    continue
-            pairs.append(row)
+
+    if args.pair and "," in args.pair:
+        syms = [s.strip().upper() for s in args.pair.split(",")]
+        if len(syms) == 2:
+            a, b = syms
+            # Check if it's already in the universe CSV
+            with universe_path.open() as f:
+                for row in csv.DictReader(f):
+                    if {row["leg_a_symbol"], row["leg_b_symbol"]} == {a, b}:
+                        pairs.append(row)
+                        break
+            # If not in CSV, create an ad-hoc entry
+            if not pairs:
+                pairs.append({
+                    "pair_id": "adhoc",
+                    "leg_a_symbol": a,
+                    "leg_b_symbol": b,
+                    "sector": "adhoc",
+                    "structural_rationale": f"Ad-hoc pair from --pair {a},{b}",
+                })
+    else:
+        with universe_path.open() as f:
+            for row in csv.DictReader(f):
+                pairs.append(row)
 
     if not pairs:
         logger.error("No pairs matched. Check --pair argument or pairs_universe.csv.")
