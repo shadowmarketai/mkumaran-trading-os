@@ -200,6 +200,26 @@ SCANNERS = {
         "scan_clause": "( {57960} ( latest close > 5 days ago close and latest close > latest ema( close , 20 ) and latest volume > latest sma( volume , 20 ) ) )",
     },
 
+    # ── BB BREAKOUT (Dharanidharan PC 5-layer confluence) ───
+    # SuperTrend + RSI + Pivot + Bollinger Band — all 4 must fire
+
+    "bb_breakout_bull": {
+        "no": 157, "slug": "python:scan_bb_breakout_bull",
+        "type": "BULL", "weight": 4.0, "layer": "Breakout", "source": "Python",
+        "desc": "BB Breakout Bullish: SuperTrend(7,3) bull + RSI>70 + Close>R1 pivot + Close>Upper BB(20,2). All 4 must fire.",
+        "pairs_with": ["supertrend_buy", "volume_spike", "breakout_200dma"],
+        "status": "ACTIVE",
+        "segments": ["NSE", "BSE"],
+    },
+    "bb_breakout_bear": {
+        "no": 158, "slug": "python:scan_bb_breakout_bear",
+        "type": "BEAR", "weight": 4.0, "layer": "Breakout", "source": "Python",
+        "desc": "BB Breakout Bearish: SuperTrend(7,3) bear + RSI<30 + Close<S1 pivot + Close<Lower BB(20,2). All 4 must fire.",
+        "pairs_with": ["downswing", "volume_spike"],
+        "status": "ACTIVE",
+        "segments": ["NSE", "BSE"],
+    },
+
     # ── LAYER 4 — RSI DIVERGENCE LADDER (6 scanners) ────────
 
     "bullish_divergence": {
@@ -1812,15 +1832,33 @@ class MWAScanner:
             return segment in cfg.get("segments", [])
 
         try:
-            from mcp_server.technical_scanners import scan_supertrend
+            from mcp_server.technical_scanners import (
+                scan_supertrend,
+                scan_bb_breakout_bull,
+                scan_bb_breakout_bear,
+            )
             if stock_data and _should_run("supertrend_buy"):
                 st_result = scan_supertrend(stock_data)
                 results["supertrend_buy"] = st_result.get("stocks", [])
             else:
                 results["supertrend_buy"] = []
+
+            # BB Breakout — 5-layer confluence (highest weight scanner: 4.0)
+            if stock_data and _should_run("bb_breakout_bull"):
+                results["bb_breakout_bull"] = scan_bb_breakout_bull(stock_data).get("stocks", [])
+            else:
+                results["bb_breakout_bull"] = []
+
+            if stock_data and _should_run("bb_breakout_bear"):
+                results["bb_breakout_bear"] = scan_bb_breakout_bear(stock_data).get("stocks", [])
+            else:
+                results["bb_breakout_bear"] = []
+
         except ImportError:
-            logger.warning("technical_scanners.scan_supertrend not available")
+            logger.warning("technical_scanners not available")
             results["supertrend_buy"] = []
+            results["bb_breakout_bull"] = []
+            results["bb_breakout_bear"] = []
 
         # Intraday momentum scanner (catches top gainers/losers)
         if stock_data:

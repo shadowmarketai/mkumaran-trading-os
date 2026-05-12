@@ -234,6 +234,185 @@ def scan_52week_high(stock_data: dict[str, pd.DataFrame]) -> dict:
     }
 
 
+def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """Wilder's RSI on a price series."""
+    delta = series.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(alpha=1 / period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / period, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, float("inf"))
+    return 100 - 100 / (1 + rs)
+
+
+def compute_bollinger_bands(
+    series: pd.Series, period: int = 20, num_std: float = 2.0
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Returns (upper, middle, lower) Bollinger Bands."""
+    middle = series.rolling(window=period).mean()
+    std = series.rolling(window=period).std()
+    return middle + num_std * std, middle, middle - num_std * std
+
+
+def compute_pivot_points(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Standard daily pivot points computed from the PREVIOUS day's H/L/C.
+    Returns df with columns: pivot, r1, r2, s1, s2 (today's values).
+    """
+    prev_high  = df["high"].shift(1)
+    prev_low   = df["low"].shift(1)
+    prev_close = df["close"].shift(1)
+    pivot = (prev_high + prev_low + prev_close) / 3
+    r1 = 2 * pivot - prev_low
+    s1 = 2 * pivot - prev_high
+    r2 = pivot + (prev_high - prev_low)
+    s2 = pivot - (prev_high - prev_low)
+    result = df.copy()
+    result["pivot"] = pivot
+    result["r1"] = r1
+    result["r2"] = r2
+    result["s1"] = s1
+    result["s2"] = s2
+    return result
+
+
+def scan_bb_breakout_bull(
+    stock_data: dict[str, pd.DataFrame],
+    st_period: int = 7,
+    st_mult: float = 3.0,
+    rsi_period: int = 14,
+    rsi_threshold: float = 70.0,
+    bb_period: int = 20,
+    bb_std: float = 2.0,
+) -> dict:
+    """
+    BB Breakout — Bullish (all 4 must fire on today's daily close):
+    1. Close > SuperTrend (direction = +1)
+    2. RSI(14) > 70
+    3. Close > R1 daily pivot (previous day's resistance broken)
+    4. Close > Upper Bollinger Band(20, 2)
+    """
+    hits: list[str] = []
+
+    for ticker, df in stock_data.items():
+        if df is None or len(df) < max(bb_period, 252) + 5:
+            continue
+        try:
+            # Normalise column names
+            df = df.copy()
+            df.columns = [c.lower() for c in df.columns]
+            if "close" not in df.columns:
+                continue
+
+            close = df["close"]
+            high  = df["high"]  if "high"  in df.columns else close
+            low   = df["low"]   if "low"   in df.columns else close
+
+            # Condition 1: SuperTrend direction = +1
+            st_df = compute_supertrend(
+                df.rename(columns={"close": "close", "high": "high", "low": "low"}),
+                period=st_period, multiplier=st_mult,
+            )
+            if st_df["st_direction"].iloc[-1] != 1:
+                continue
+
+            # Condition 2: RSI > rsi_threshold
+            rsi = compute_rsi(close, rsi_period)
+            if rsi.iloc[-1] <= rsi_threshold:
+                continue
+
+            # Condition 3: Close > R1 pivot
+            tmp = pd.DataFrame({"close": close, "high": high, "low": low})
+            piv = compute_pivot_points(tmp)
+            if close.iloc[-1] <= piv["r1"].iloc[-1]:
+                continue
+
+            # Condition 4: Close > Upper BB
+            upper_bb, _, _ = compute_bollinger_bands(close, bb_period, bb_std)
+            if close.iloc[-1] <= upper_bb.iloc[-1]:
+                continue
+
+            hits.append(ticker)
+        except Exception as e:
+            logger.debug("BB breakout bull check failed for %s: %s", ticker, e)
+
+    logger.info("[BB_BREAKOUT_BULL] %d stocks passed all 4 conditions", len(hits))
+    return {
+        "name": "BB Breakout Bullish",
+        "group": "G_BB_BREAKOUT",
+        "direction": "BULL",
+        "weight": 4.0,
+        "stocks": hits,
+        "count": len(hits),
+    }
+
+
+def scan_bb_breakout_bear(
+    stock_data: dict[str, pd.DataFrame],
+    st_period: int = 7,
+    st_mult: float = 3.0,
+    rsi_period: int = 14,
+    rsi_threshold: float = 30.0,
+    bb_period: int = 20,
+    bb_std: float = 2.0,
+) -> dict:
+    """
+    BB Breakout — Bearish (all 4 must fire on today's daily close):
+    1. Close < SuperTrend (direction = -1)
+    2. RSI(14) < 30
+    3. Close < S1 daily pivot (support broken)
+    4. Close < Lower Bollinger Band(20, 2)
+    """
+    hits: list[str] = []
+
+    for ticker, df in stock_data.items():
+        if df is None or len(df) < max(bb_period, 252) + 5:
+            continue
+        try:
+            df = df.copy()
+            df.columns = [c.lower() for c in df.columns]
+            if "close" not in df.columns:
+                continue
+
+            close = df["close"]
+            high  = df["high"]  if "high"  in df.columns else close
+            low   = df["low"]   if "low"   in df.columns else close
+
+            st_df = compute_supertrend(
+                df.rename(columns={"close": "close", "high": "high", "low": "low"}),
+                period=st_period, multiplier=st_mult,
+            )
+            if st_df["st_direction"].iloc[-1] != -1:
+                continue
+
+            rsi = compute_rsi(close, rsi_period)
+            if rsi.iloc[-1] >= rsi_threshold:
+                continue
+
+            tmp = pd.DataFrame({"close": close, "high": high, "low": low})
+            piv = compute_pivot_points(tmp)
+            if close.iloc[-1] >= piv["s1"].iloc[-1]:
+                continue
+
+            _, _, lower_bb = compute_bollinger_bands(close, bb_period, bb_std)
+            if close.iloc[-1] >= lower_bb.iloc[-1]:
+                continue
+
+            hits.append(ticker)
+        except Exception as e:
+            logger.debug("BB breakout bear check failed for %s: %s", ticker, e)
+
+    logger.info("[BB_BREAKOUT_BEAR] %d stocks passed all 4 conditions", len(hits))
+    return {
+        "name": "BB Breakout Bearish",
+        "group": "G_BB_BREAKOUT",
+        "direction": "BEAR",
+        "weight": 4.0,
+        "stocks": hits,
+        "count": len(hits),
+    }
+
+
 def run_all_technical_scanners(
     stock_data: dict[str, pd.DataFrame],
     nifty_df: pd.DataFrame | None = None,
@@ -248,6 +427,8 @@ def run_all_technical_scanners(
     results["17_supertrend"] = scan_supertrend(stock_data)
     results["18_macd"] = scan_macd_crossover(stock_data)
     results["19_52week_high"] = scan_52week_high(stock_data)
+    results["bb_breakout_bull"] = scan_bb_breakout_bull(stock_data)
+    results["bb_breakout_bear"] = scan_bb_breakout_bear(stock_data)
 
     logger.info("Technical scanners complete: %d scanners run", len(results))
     return results
