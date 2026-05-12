@@ -30,7 +30,7 @@ logging.basicConfig(
 logger = logging.getLogger("sector_rotation")
 
 SECTORS = {
-    "Bank":    "^CNXBANK",
+    "Bank":    "^NSEBANK",              # Nifty Bank (^CNXBANK 404s on yfinance)
     "IT":      "^CNXIT",
     "Pharma":  "^CNXPHARMA",
     "Auto":    "^CNXAUTO",
@@ -38,7 +38,7 @@ SECTORS = {
     "Metal":   "^CNXMETAL",
     "Realty":  "^CNXREALTY",
     "Energy":  "^CNXENERGY",
-    "Finance": "^CNXFINANCE",
+    "Finance": "NIFTY_FIN_SERVICE.NS",  # Nifty Financial Services
     "Infra":   "^CNXINFRA",
 }
 
