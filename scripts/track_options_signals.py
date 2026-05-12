@@ -201,7 +201,6 @@ def main() -> None:
     total = len(results)
     hit = sum(1 for r in results if r["outcome"] == "HIT_TARGET")
     stop = sum(1 for r in results if r["outcome"] == "HIT_STOP")
-    opn = sum(1 for r in results if r["outcome"] in ("OPEN", "EXPIRED"))
     print("-" * 70)
     print(f"{'TOTAL':<35} {total:>7}  {hit:>6}  {stop:>6}  {hit/total*100:.0f}%" if total else "No data")
     print()
@@ -213,7 +212,7 @@ def main() -> None:
         f"# Options Signal Forward Track — {date.today()}",
         f"Period: {since} → {date.today()} | Look-forward: {args.days} days",
         "",
-        f"| Date | Ticker | Pattern | Direction | Outcome |",
+        "| Date | Ticker | Pattern | Direction | Outcome |",
         "|---|---|---|---|---|",
     ]
     for r in results:
