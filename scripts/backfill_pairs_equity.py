@@ -112,9 +112,9 @@ def _upsert_rows(session, rows: list[dict]) -> int:
     from sqlalchemy import text
     sql = text("""
         INSERT INTO ohlcv_cache
-          (ticker, exchange, interval, bar_date, open, high, low, close, volume, fetched_at)
+          (ticker, exchange, interval, bar_date, open, high, low, close, volume, source, fetched_at)
         VALUES
-          (:ticker, :exchange, :interval, :bar_date, :open, :high, :low, :close, :volume, NOW())
+          (:ticker, :exchange, :interval, :bar_date, :open, :high, :low, :close, :volume, 'yfinance', NOW())
         ON CONFLICT (ticker, interval, bar_date) DO UPDATE
           SET close    = EXCLUDED.close,
               open     = EXCLUDED.open,
@@ -122,6 +122,7 @@ def _upsert_rows(session, rows: list[dict]) -> int:
               low      = EXCLUDED.low,
               volume   = EXCLUDED.volume,
               exchange = EXCLUDED.exchange,
+              source   = EXCLUDED.source,
               fetched_at = NOW()
     """)
     session.execute(sql, rows)
