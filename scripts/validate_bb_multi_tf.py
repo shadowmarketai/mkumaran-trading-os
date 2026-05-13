@@ -74,7 +74,7 @@ TF_CFG = {
              "eod_close": True,  "min_bars": 40, "costs": INTRADAY},
     "15m": {"yf_interval": "15m", "yf_period": "55d",   "is_intraday": True,
              "eod_close": True,  "min_bars": 40, "costs": INTRADAY},
-    "1h":  {"yf_interval": "60m", "yf_start": "2023-01-01", "is_intraday": True,
+    "1h":  {"yf_interval": "60m", "yf_period": "700d", "is_intraday": True,
              "eod_close": False, "min_bars": 50, "costs": INTRADAY},
     "1d":  {"yf_interval": "1d",  "yf_start": "2020-01-01", "is_intraday": False,
              "eod_close": False, "min_bars": 252, "costs": DELIVERY},
@@ -627,7 +627,8 @@ def main() -> None:
             # Use all available data (only ~55 days)
             start_date = None
         elif tf == "1h":
-            start_date = date(2023, 6, 1)
+            # yf_period="700d" → data starts ~700 days ago; use None to backtest all of it
+            start_date = None
         elif tf in ("1d", "1w"):
             start_date = date(2021, 1, 1)
         else:
