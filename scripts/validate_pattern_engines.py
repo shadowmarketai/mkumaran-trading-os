@@ -61,8 +61,17 @@ STAMP     = 0.00015
 SLIPPAGE  = 0.0005
 
 # ── Tier gates ────────────────────────────────────────────────────────────────
-TIER1_TRADES = 30;  TIER1_CAGR = 0.20; TIER1_SHARPE = 0.80; TIER1_MAXDD = 0.30; TIER1_WR = 0.50
-TIER2_TRADES = 15;  TIER2_CAGR = 0.10; TIER2_SHARPE = 0.50; TIER2_MAXDD = 0.40; TIER2_WR = 0.40
+TIER1_TRADES = 30
+TIER1_CAGR   = 0.20
+TIER1_SHARPE = 0.80
+TIER1_MAXDD  = 0.30
+TIER1_WR     = 0.50
+
+TIER2_TRADES = 15
+TIER2_CAGR   = 0.10
+TIER2_SHARPE = 0.50
+TIER2_MAXDD  = 0.40
+TIER2_WR     = 0.40
 
 
 def _trade_cost() -> float:
@@ -156,7 +165,9 @@ def _metrics(trades: list[dict]) -> dict:
     tpy      = 252 / max(avg_hold, 1)
     sharpe   = (mean_r / std_r) * math.sqrt(tpy) if std_r > 0 else 0.0
 
-    cum = 1.0; peak = 1.0; max_dd = 0.0
+    cum = 1.0
+    peak = 1.0
+    max_dd = 0.0
     for r in scaled:
         cum  *= (1 + r)
         peak  = max(peak, cum)

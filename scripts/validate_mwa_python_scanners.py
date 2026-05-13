@@ -58,14 +58,27 @@ STAMP     = 0.00015
 SLIPPAGE  = 0.0005
 
 # ── Tier gates ────────────────────────────────────────────────────────────────
-TIER1_TRADES = 30;  TIER1_CAGR = 0.20; TIER1_SHARPE = 0.80; TIER1_MAXDD = 0.30; TIER1_WR = 0.50
-TIER2_TRADES = 15;  TIER2_CAGR = 0.10; TIER2_SHARPE = 0.50; TIER2_MAXDD = 0.40; TIER2_WR = 0.40
+TIER1_TRADES = 30
+TIER1_CAGR   = 0.20
+TIER1_SHARPE = 0.80
+TIER1_MAXDD  = 0.30
+TIER1_WR     = 0.50
+
+TIER2_TRADES = 15
+TIER2_CAGR   = 0.10
+TIER2_SHARPE = 0.50
+TIER2_MAXDD  = 0.40
+TIER2_WR     = 0.40
 
 # ── Strategy exit parameters ──────────────────────────────────────────────────
-ST_HARD_STOP   = 0.07; ST_MAX_HOLD   = 20
-MACD_HARD_STOP = 0.07; MACD_MAX_HOLD = 20
-EMA_HARD_STOP  = 0.07; EMA_MAX_HOLD  = 20
-W52_HARD_STOP  = 0.10; W52_MAX_HOLD  = 40
+ST_HARD_STOP   = 0.07
+ST_MAX_HOLD    = 20
+MACD_HARD_STOP = 0.07
+MACD_MAX_HOLD  = 20
+EMA_HARD_STOP  = 0.07
+EMA_MAX_HOLD   = 20
+W52_HARD_STOP  = 0.10
+W52_MAX_HOLD   = 40
 
 
 def _trade_cost() -> float:
@@ -175,7 +188,9 @@ def _metrics(trades: list[dict]) -> dict:
     tpy      = 252 / max(avg_hold, 1)
     sharpe   = (mean_r / std_r) * math.sqrt(tpy) if std_r > 0 else 0.0
 
-    cum = 1.0; peak = 1.0; max_dd = 0.0
+    cum = 1.0
+    peak = 1.0
+    max_dd = 0.0
     for r in scaled:
         cum  *= (1 + r)
         peak  = max(peak, cum)
@@ -282,8 +297,10 @@ def _gen_macd(
     for i in range(1, len(df)):
         dt    = idx[i]
         close = float(closes[i])
-        m_cur = ml[i]; s_cur = sl[i]
-        m_prv = ml[i - 1]; s_prv = sl[i - 1]
+        m_cur = ml[i]
+        s_cur = sl[i]
+        m_prv = ml[i - 1]
+        s_prv = sl[i - 1]
 
         valid     = not (pd.isna(m_cur) or pd.isna(s_cur))
         valid_prv = not (pd.isna(m_prv) or pd.isna(s_prv))
@@ -333,8 +350,10 @@ def _gen_ema(
     for i in range(1, len(df)):
         dt    = idx[i]
         close = float(closes[i])
-        e9    = ema9[i];   e21  = ema21[i]
-        e9p   = ema9[i-1]; e21p = ema21[i-1]
+        e9    = ema9[i]
+        e21   = ema21[i]
+        e9p   = ema9[i - 1]
+        e21p  = ema21[i - 1]
 
         valid     = not (pd.isna(e9)  or pd.isna(e21))
         valid_prv = not (pd.isna(e9p) or pd.isna(e21p))
@@ -564,7 +583,7 @@ def main() -> None:
                 "max_dd": round(m["max_dd"] * 100, 2),
                 "win_rate": round(m["win_rate"] * 100, 2),
                 "verdict": v,
-                "notes": f"Standalone indicator. OVERRIDE expected — confluence input to composite MWA score.",
+                "notes": "Standalone indicator. OVERRIDE expected — confluence input to composite MWA score.",
             })
     except Exception as e:
         logger.warning("Sheets logging skipped: %s", e)
