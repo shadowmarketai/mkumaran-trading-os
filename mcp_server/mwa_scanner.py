@@ -214,7 +214,7 @@ SCANNERS = {
     "bb_breakout_bear": {
         "no": 158, "slug": "python:scan_bb_breakout_bear",
         "type": "BEAR", "weight": 4.0, "layer": "Breakout", "source": "Python",
-        "desc": "BB Breakout Bearish: SuperTrend(7,3) bear + RSI<30 + Close<S1 pivot + Close<Lower BB(20,2). All 4 must fire.",
+        "desc": "BB Breakout Bearish: ST(7,3) bear + RSI<30 + Close<S1 + Close<Lower BB. REGIME INDICATOR only — backtest OVERRIDE in bull markets. High firing count = avoid new longs.",
         "pairs_with": ["downswing", "volume_spike"],
         "status": "ACTIVE",
         "segments": ["NSE", "BSE"],
