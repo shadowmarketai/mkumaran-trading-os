@@ -135,11 +135,21 @@ def main() -> None:
     parser.add_argument("--to",           dest="end",         default=str(date.today()))
     parser.add_argument("--top-sectors",  type=int,           default=TOP_SECTORS)
     parser.add_argument("--lookback",     type=int,           default=LOOKBACK)
+    parser.add_argument("--exclude",      nargs="+",          default=[],
+                        help="Sector names to exclude e.g. --exclude Bank Finance")
     args = parser.parse_args()
 
     start = date.fromisoformat(args.start)
     end   = date.fromisoformat(args.end)
     data_start = date(start.year - 1, start.month, 1)
+
+    # Filter sectors based on --exclude list
+    active_sectors = {k: v for k, v in SECTORS.items() if k not in args.exclude}
+    if args.exclude:
+        logger.info("Excluded sectors: %s | Running with %d sectors: %s",
+                    args.exclude, len(active_sectors), list(active_sectors))
+    global SECTORS
+    SECTORS = active_sectors
 
     prices = _load_prices(SECTORS, data_start.isoformat(), end.isoformat())
     if len(prices) < 3:
