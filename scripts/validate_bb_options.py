@@ -438,18 +438,37 @@ def _metrics(trades: list[dict], years: float) -> dict:
             "avg_ret_pct": mean_r * 100, "avg_hold": avg_hold, "exit_reasons": reasons}
 
 
-def _verdict(m: dict) -> str:
+def _equity_verdict(m: dict) -> str:
+    """Equity criteria: WinRate >= 50% Tier1 / 40% Tier2."""
     if not m:
         return "OVERRIDE"
-    TIER1 = {"trades": 30, "cagr": 0.20, "sharpe": 0.8, "maxdd": 0.30, "winrate": 0.50}
-    TIER2 = {"trades": 15, "cagr": 0.10, "sharpe": 0.5, "maxdd": 0.40, "winrate": 0.40}
-    if all([m["n_trades"] >= TIER1["trades"], m["cagr"] >= TIER1["cagr"],
-            m["sharpe"] >= TIER1["sharpe"], m["max_dd"] <= TIER1["maxdd"],
-            m["win_rate"] >= TIER1["winrate"]]):
+    T1 = {"trades": 30, "cagr": 0.20, "sharpe": 0.8, "maxdd": 0.30, "winrate": 0.50}
+    T2 = {"trades": 15, "cagr": 0.10, "sharpe": 0.5, "maxdd": 0.40, "winrate": 0.40}
+    if all([m["n_trades"] >= T1["trades"], m["cagr"] >= T1["cagr"],
+            m["sharpe"] >= T1["sharpe"], m["max_dd"] <= T1["maxdd"],
+            m["win_rate"] >= T1["winrate"]]):
         return "TIER_1"
-    if all([m["n_trades"] >= TIER2["trades"], m["cagr"] >= TIER2["cagr"],
-            m["sharpe"] >= TIER2["sharpe"], m["max_dd"] <= TIER2["maxdd"],
-            m["win_rate"] >= TIER2["winrate"]]):
+    if all([m["n_trades"] >= T2["trades"], m["cagr"] >= T2["cagr"],
+            m["sharpe"] >= T2["sharpe"], m["max_dd"] <= T2["maxdd"],
+            m["win_rate"] >= T2["winrate"]]):
+        return "TIER_2"
+    return "OVERRIDE"
+
+
+def _options_verdict(m: dict) -> str:
+    """Options criteria: WinRate >= 25% Tier1 / 20% Tier2 (power law payoff).
+    See docs/strategy_validation/bb_breakout_options_criteria.md"""
+    if not m:
+        return "OVERRIDE"
+    T1 = {"trades": 30, "cagr": 0.30, "sharpe": 0.8, "maxdd": 0.25, "winrate": 0.25}
+    T2 = {"trades": 15, "cagr": 0.15, "sharpe": 0.5, "maxdd": 0.40, "winrate": 0.20}
+    if all([m["n_trades"] >= T1["trades"], m["cagr"] >= T1["cagr"],
+            m["sharpe"] >= T1["sharpe"], m["max_dd"] <= T1["maxdd"],
+            m["win_rate"] >= T1["winrate"]]):
+        return "TIER_1"
+    if all([m["n_trades"] >= T2["trades"], m["cagr"] >= T2["cagr"],
+            m["sharpe"] >= T2["sharpe"], m["max_dd"] <= T2["maxdd"],
+            m["win_rate"] >= T2["winrate"]]):
         return "TIER_2"
     return "OVERRIDE"
 
@@ -492,8 +511,8 @@ def main() -> None:
 
     eq_m  = _metrics(eq_trades, years)
     opt_m = _metrics(opt_trades, years)
-    eq_v  = _verdict(eq_m)
-    opt_v = _verdict(opt_m)
+    eq_v  = _equity_verdict(eq_m)
+    opt_v = _options_verdict(opt_m)
 
     sep = "=" * 68
     print()
