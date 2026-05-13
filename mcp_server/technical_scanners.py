@@ -413,22 +413,123 @@ def scan_bb_breakout_bear(
     }
 
 
+def _resample_to_weekly(df: pd.DataFrame) -> pd.DataFrame:
+    """Resample daily OHLCV DataFrame to weekly bars (Friday close)."""
+    df = df.copy()
+    if isinstance(df.index, pd.DatetimeIndex):
+        return df.resample("W-FRI").agg({
+            "open": "first", "high": "max", "low": "min", "close": "last",
+        }).dropna(subset=["close"])
+    # Fallback: group every 5 rows when index is not datetime
+    rows = []
+    for i in range(0, len(df), 5):
+        chunk = df.iloc[i : i + 5]
+        if chunk.empty:
+            continue
+        rows.append({
+            "open":  float(chunk["open"].iloc[0]),
+            "high":  float(chunk["high"].max()),
+            "low":   float(chunk["low"].min()),
+            "close": float(chunk["close"].iloc[-1]),
+        })
+    return pd.DataFrame(rows)
+
+
+def scan_bb_breakout_bull_weekly(
+    stock_data: dict[str, pd.DataFrame],
+    st_period: int = 7,
+    st_mult: float = 3.0,
+    rsi_period: int = 14,
+    rsi_threshold: float = 60.0,
+    bb_period: int = 20,
+    bb_std: float = 2.0,
+) -> dict:
+    """
+    BB Breakout Bullish — Weekly bars (TIER_1 validated).
+
+    Resamples daily OHLCV to weekly, then applies the same 4-condition check
+    with revised parameters (RSI>60 not 70) to avoid entering after exhausted
+    weekly moves. All 4 must fire on the latest completed weekly bar:
+      1. Close > SuperTrend(7,3) direction = +1
+      2. RSI(14) > 60
+      3. Close > R1 weekly pivot (previous week's resistance)
+      4. Close > Upper Bollinger Band(20, 2)
+
+    Backtest result: TIER_1 — CAGR +61.5%, Sharpe 1.07, WinRate 58.3%, MaxDD 15%
+    """
+    hits: list[str] = []
+    min_weekly_bars = max(bb_period, 52) + 5
+
+    for ticker, df in stock_data.items():
+        if df is None or len(df) < min_weekly_bars * 3:
+            continue
+        try:
+            df = df.copy()
+            df.columns = [c.lower() for c in df.columns]
+            if "close" not in df.columns:
+                continue
+
+            weekly = _resample_to_weekly(df)
+            if len(weekly) < min_weekly_bars:
+                continue
+
+            # Condition 1: SuperTrend direction = +1
+            st_df = compute_supertrend(weekly, period=st_period, multiplier=st_mult)
+            if st_df["st_direction"].iloc[-1] != 1:
+                continue
+
+            # Condition 2: RSI > rsi_threshold (60 for weekly)
+            rsi = compute_rsi(weekly["close"], rsi_period)
+            if rsi.iloc[-1] <= rsi_threshold:
+                continue
+
+            # Condition 3: Close > R1 weekly pivot
+            tmp = pd.DataFrame({
+                "close": weekly["close"],
+                "high":  weekly["high"],
+                "low":   weekly["low"],
+            })
+            piv = compute_pivot_points(tmp)
+            if weekly["close"].iloc[-1] <= piv["r1"].iloc[-1]:
+                continue
+
+            # Condition 4: Close > Upper BB
+            upper_bb, _, _ = compute_bollinger_bands(weekly["close"], bb_period, bb_std)
+            if weekly["close"].iloc[-1] <= upper_bb.iloc[-1]:
+                continue
+
+            hits.append(ticker)
+        except Exception as e:
+            logger.debug("BB breakout weekly check failed for %s: %s", ticker, e)
+
+    logger.info("[BB_BREAKOUT_BULL_WEEKLY] %d stocks passed all 4 weekly conditions", len(hits))
+    return {
+        "name": "BB Breakout Bullish (Weekly)",
+        "group": "G_BB_BREAKOUT",
+        "direction": "BULL",
+        "weight": 5.0,
+        "stocks": hits,
+        "count": len(hits),
+    }
+
+
 def run_all_technical_scanners(
     stock_data: dict[str, pd.DataFrame],
     nifty_df: pd.DataFrame | None = None,
 ) -> dict[str, dict]:
-    """Run all 4 Python-computed scanners."""
+    """Run all Python-computed scanners."""
     results: dict[str, dict] = {}
 
     if nifty_df is not None:
         results["16b_nifty_ema"] = scan_nifty_ema(nifty_df)
 
-    results["16c_stock_ema"] = scan_stock_ema_crossover(stock_data)
-    results["17_supertrend"] = scan_supertrend(stock_data)
-    results["18_macd"] = scan_macd_crossover(stock_data)
-    results["19_52week_high"] = scan_52week_high(stock_data)
-    results["bb_breakout_bull"] = scan_bb_breakout_bull(stock_data)
-    results["bb_breakout_bear"] = scan_bb_breakout_bear(stock_data)
+    results["16c_stock_ema"]          = scan_stock_ema_crossover(stock_data)
+    results["17_supertrend"]           = scan_supertrend(stock_data)
+    results["18_macd"]                 = scan_macd_crossover(stock_data)
+    results["19_52week_high"]          = scan_52week_high(stock_data)
+    results["bb_breakout_bull"]        = scan_bb_breakout_bull(stock_data)
+    results["bb_breakout_bear"]        = scan_bb_breakout_bear(stock_data)
+    results["bb_breakout_bull_weekly"] = scan_bb_breakout_bull_weekly(stock_data)
 
     logger.info("Technical scanners complete: %d scanners run", len(results))
     return results

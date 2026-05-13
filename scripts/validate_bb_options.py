@@ -42,14 +42,17 @@ ST_MULT      = 3.0
 RSI_PERIOD   = 14
 BB_PERIOD    = 20
 BB_STD       = 2.0
-HARD_STOP    = 0.05
-MAX_HOLD     = 20         # trading days
-MAX_CONC     = 5
-POSITION_INR = 100_000.0  # ₹1L in option premium per trade
-MIN_DAYS     = 252
-RISK_FREE    = 0.065      # 6.5% RBI repo rate
-OPTION_DAYS  = 21         # monthly expiry ~ 21 trading days
-DEFAULT_IV   = 0.25       # 25% annualized IV for NSE equity options
+HARD_STOP       = 0.05
+MAX_HOLD        = 20          # trading days
+MAX_CONC        = 5           # equity: 5 concurrent
+OPT_MAX_CONC    = 3           # options: 3 concurrent (tighter risk control)
+POSITION_INR    = 100_000.0   # equity: ₹1L per trade
+OPT_POSITION    = 20_000.0    # options: ₹20k premium per trade (defined risk)
+OPT_RSI_MIN     = 80.0        # options: only high-conviction signals (RSI>80)
+MIN_DAYS        = 252
+RISK_FREE       = 0.065       # 6.5% RBI repo rate
+OPTION_DAYS     = 21          # monthly expiry ~ 21 trading days
+DEFAULT_IV      = 0.25        # 25% annualized IV for NSE equity options
 
 # Equity costs (baseline comparison)
 EQ_COSTS = {"brokerage": 20.0, "stt_sell": 0.001, "exchange": 0.0000345,
@@ -350,10 +353,9 @@ def _run_options(prices: dict[str, dict], indicators: dict[str, list[dict]],
 
             if ex:
                 exit_premium = _bs_call(S, K, T_left, RISK_FREE, iv)
-                # P&L per share * shares_bought
                 pnl_per_share = exit_premium - pos["entry_premium"]
                 total_pnl     = pnl_per_share * pos["shares"] - _opt_cost(pos["premium_paid"])
-                ret_pct       = total_pnl / POSITION_INR * 100
+                ret_pct       = total_pnl / OPT_POSITION * 100
                 closed.append({"sym": sym, "entry_date": pos["entry_day"],
                                "exit_date": today, "ret_pct": round(ret_pct, 2),
                                "net_pnl": round(total_pnl, 2), "exit_reason": ex,
@@ -365,7 +367,7 @@ def _run_options(prices: dict[str, dict], indicators: dict[str, list[dict]],
                 still_open.append(pos)
         open_pos = still_open
 
-        slots  = MAX_CONC - len(open_pos)
+        slots  = OPT_MAX_CONC - len(open_pos)   # 3 concurrent max for options
         if slots <= 0:
             continue
         already = {p["sym"] for p in open_pos}
@@ -378,27 +380,28 @@ def _run_options(prices: dict[str, dict], indicators: dict[str, list[dict]],
             bar = ind[idx]
             r1  = bar.get("r1", float("nan"))
             ub  = bar.get("upper_bb", float("nan"))
-            if not (bar["st_dir"] == 1 and bar["rsi"] > 70
+            # Options: RSI>80 (high-conviction only) vs RSI>70 for equity
+            if not (bar["st_dir"] == 1 and bar["rsi"] > OPT_RSI_MIN
                     and not math.isnan(r1) and bar["c"] > r1
                     and not math.isnan(ub) and bar["c"] > ub):
                 continue
             S = bar["c"]
-            K = S                         # ATM: strike = current stock price
+            K = S                          # ATM: strike = current stock price
             T = OPTION_DAYS / 252.0
             premium = _bs_call(S, K, T, RISK_FREE, iv)
             if premium <= 0:
                 continue
-            shares = POSITION_INR / premium   # shares exposure for ₹1L premium
+            shares = OPT_POSITION / premium    # shares exposure for ₹20k premium
             delta  = _bs_delta(S, K, T, RISK_FREE, iv)
             open_pos.append({
                 "sym": sym, "entry_day": today,
                 "entry_stock_px": S, "strike": K,
                 "entry_premium": premium, "shares": shares,
-                "premium_paid": POSITION_INR,
+                "premium_paid": OPT_POSITION,
                 "entry_delta": delta,
                 "entry_rsi": bar["rsi"], "days_held": 0,
             })
-            if len(open_pos) >= MAX_CONC:
+            if len(open_pos) >= OPT_MAX_CONC:
                 break
     return closed
 
@@ -417,7 +420,8 @@ def _metrics(trades: list[dict], years: float) -> dict:
     std_r    = math.sqrt(sum((r - mean_r) ** 2 for r in returns) / max(n - 1, 1))
     avg_hold = sum(t.get("days_held", 0) if "days_held" in t else 0 for t in trades) / n
     sharpe   = (mean_r / std_r) * math.sqrt(252 / max(avg_hold, 1)) if std_r > 0 else 0.0
-    ref      = float(MAX_CONC * POSITION_INR)
+    is_opt = any("entry_premium" in t for t in trades)
+    ref    = float((OPT_MAX_CONC * OPT_POSITION) if is_opt else (MAX_CONC * POSITION_INR))
     cum = peak = max_dd = 0.0
     for t in sorted(trades, key=lambda x: x["exit_date"]):
         cum  += t["net_pnl"]
@@ -492,7 +496,7 @@ def main() -> None:
     print()
     print(sep)
     print(f"BB BREAKOUT — EQUITY vs OPTIONS  |  {args.start} → {end}")
-    print(f"Options: ATM Call | IV={args.iv*100:.0f}% | {OPTION_DAYS}-day expiry | ₹1L premium/trade")
+    print(f"Options: ATM Call | IV={args.iv*100:.0f}% | {OPTION_DAYS}-day expiry | ₹{OPT_POSITION:,.0f} premium | RSI>{OPT_RSI_MIN:.0f} | {OPT_MAX_CONC} concurrent")
     print(sep)
 
     def _row(label: str, m: dict, v: str) -> None:
@@ -540,8 +544,10 @@ def main() -> None:
     if opt_m and eq_m:
         leverage = opt_m["avg_ret_pct"] / eq_m["avg_ret_pct"] if eq_m["avg_ret_pct"] != 0 else 0
         print(f"  Options avg return is {leverage:.1f}x equity return per trade.")
-        print(f"  Options position = ₹1L in PREMIUM (controls ₹{100_000/0.25/100:.0f}+ of stock)")
-        print(f"  Theta decay ≈ {args.iv*100:.0f}% IV / sqrt(252) ≈ {args.iv/math.sqrt(252)*100:.2f}% per day on premium")
+        print(f"  Options: ₹{OPT_POSITION:,.0f} premium/trade | {OPT_MAX_CONC} concurrent max | RSI>{OPT_RSI_MIN:.0f} filter")
+        approx_stock = OPT_POSITION / (args.iv / math.sqrt(252/OPTION_DAYS)) / 0.4
+        print(f"  ₹{OPT_POSITION:,.0f} premium controls ≈ ₹{approx_stock:,.0f} of stock exposure")
+        print(f"  Theta decay ≈ {args.iv/math.sqrt(252)*100:.2f}% per day on premium (hurts slow-moving trades)")
     print()
     print("ASSUMPTIONS:")
     print(f"  IV={args.iv*100:.0f}% fixed (real IV varies 15-40% for NSE stocks)")

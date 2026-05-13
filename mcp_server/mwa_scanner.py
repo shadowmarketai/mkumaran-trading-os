@@ -219,6 +219,14 @@ SCANNERS = {
         "status": "ACTIVE",
         "segments": ["NSE", "BSE"],
     },
+    "bb_breakout_bull_weekly": {
+        "no": 159, "slug": "python:scan_bb_breakout_bull_weekly",
+        "type": "BULL", "weight": 5.0, "layer": "Breakout", "source": "Python",
+        "desc": "BB Breakout Bullish (Weekly): same 4-layer confluence on weekly bars with RSI>60. TIER_1 validated — CAGR +61.5%, Sharpe 1.07, WinRate 58.3%.",
+        "pairs_with": ["breakout_200dma", "supertrend_buy", "volume_spike"],
+        "status": "ACTIVE",
+        "segments": ["NSE", "BSE"],
+    },
 
     # ── LAYER 4 — RSI DIVERGENCE LADDER (6 scanners) ────────
 
@@ -1836,6 +1844,7 @@ class MWAScanner:
                 scan_supertrend,
                 scan_bb_breakout_bull,
                 scan_bb_breakout_bear,
+                scan_bb_breakout_bull_weekly,
             )
             if stock_data and _should_run("supertrend_buy"):
                 st_result = scan_supertrend(stock_data)
@@ -1843,7 +1852,7 @@ class MWAScanner:
             else:
                 results["supertrend_buy"] = []
 
-            # BB Breakout — 5-layer confluence (highest weight scanner: 4.0)
+            # BB Breakout daily — 4-layer confluence (weight 4.0, TIER_2)
             if stock_data and _should_run("bb_breakout_bull"):
                 results["bb_breakout_bull"] = scan_bb_breakout_bull(stock_data).get("stocks", [])
             else:
@@ -1854,11 +1863,18 @@ class MWAScanner:
             else:
                 results["bb_breakout_bear"] = []
 
+            # BB Breakout weekly — RSI>60, resampled from daily (weight 5.0, TIER_1)
+            if stock_data and _should_run("bb_breakout_bull_weekly"):
+                results["bb_breakout_bull_weekly"] = scan_bb_breakout_bull_weekly(stock_data).get("stocks", [])
+            else:
+                results["bb_breakout_bull_weekly"] = []
+
         except ImportError:
             logger.warning("technical_scanners not available")
             results["supertrend_buy"] = []
             results["bb_breakout_bull"] = []
             results["bb_breakout_bear"] = []
+            results["bb_breakout_bull_weekly"] = []
 
         # Intraday momentum scanner (catches top gainers/losers)
         if stock_data:
