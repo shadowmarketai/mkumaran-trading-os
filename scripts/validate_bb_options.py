@@ -86,6 +86,11 @@ def _bs_delta(S: float, K: float, T: float, r: float, sigma: float) -> float:
     return _norm_cdf(d1)
 
 
+def _bs_put(S: float, K: float, T: float, r: float, sigma: float) -> float:
+    """European put option price via put-call parity."""
+    return _bs_call(S, K, T, r, sigma) - S + K * math.exp(-r * T)
+
+
 # ── Data loading ──────────────────────────────────────────────────────────────
 
 def _load_symbols() -> list[str]:
@@ -184,11 +189,13 @@ def _compute_indicators(ohlcv: list[dict]) -> list[dict]:
             rsi[i + 1] = 100 - 100 / (1 + ag / al) if al > 0 else 100.0
 
     upper_bb = [float("nan")] * n
+    lower_bb = [float("nan")] * n
     for i in range(BB_PERIOD - 1, n):
         w    = closes[i - BB_PERIOD + 1 : i + 1]
         mean = sum(w) / BB_PERIOD
         std  = math.sqrt(sum((x - mean) ** 2 for x in w) / BB_PERIOD)
         upper_bb[i] = mean + BB_STD * std
+        lower_bb[i] = mean - BB_STD * std
 
     st_dir  = [0] * n
     st_line = [0.0] * n
@@ -213,17 +220,21 @@ def _compute_indicators(ohlcv: list[dict]) -> list[dict]:
             st_dir[i]  = -1
 
     r1_vals = [float("nan")] * n
+    s1_vals = [float("nan")] * n
     for i in range(1, n):
         ph, pl, pc = highs[i-1], lows[i-1], closes[i-1]
-        pivot   = (ph + pl + pc) / 3
+        pivot      = (ph + pl + pc) / 3
         r1_vals[i] = 2 * pivot - pl
+        s1_vals[i] = 2 * pivot - ph
 
     result = [dict(b) for b in ohlcv]
     for i, bar in enumerate(result):
         bar["rsi"]      = rsi[i]
         bar["upper_bb"] = upper_bb[i]
+        bar["lower_bb"] = lower_bb[i]
         bar["st_dir"]   = st_dir[i]
         bar["r1"]       = r1_vals[i]
+        bar["s1"]       = s1_vals[i]
     return result
 
 
@@ -406,6 +417,158 @@ def _run_options(prices: dict[str, dict], indicators: dict[str, list[dict]],
     return closed
 
 
+def _run_equity_bear(prices: dict, indicators: dict, date_to_idx: dict,
+                     all_dates: list, start: date) -> list[dict]:
+    """Paper short: sell stock when bearish BB Breakout fires. Simulates F&O futures short."""
+    open_pos: list[dict] = []
+    closed: list[dict] = []
+
+    for today in all_dates:
+        if today < start:
+            continue
+        still_open: list[dict] = []
+        for pos in open_pos:
+            sym = pos["sym"]
+            idx = date_to_idx.get(sym, {}).get(today)
+            if idx is None:
+                pos["days_held"] += 1
+                still_open.append(pos)
+                continue
+            bar  = indicators[sym][idx]
+            held = pos["days_held"] + 1
+            # Short profits when price falls; hard stop if price rises +5%
+            stop = pos["entry_px"] * (1 + HARD_STOP)
+            ex   = None
+            px   = bar["c"]
+            if bar["c"] >= stop:
+                ex, px = "hard_stop", stop
+            elif bar["st_dir"] == 1:   # ST flipped bullish → cover short
+                ex = "st_flip"
+            elif held >= MAX_HOLD:
+                ex = "time"
+            if ex:
+                # Short P&L: profit when price falls below entry
+                pnl = (pos["entry_px"] - px) / pos["entry_px"] * POSITION_INR - _eq_cost(POSITION_INR)
+                closed.append({"sym": sym, "entry_date": pos["entry_day"],
+                               "exit_date": today, "ret_pct": round(pnl / POSITION_INR * 100, 2),
+                               "net_pnl": round(pnl, 2), "exit_reason": ex,
+                               "entry_rsi": pos["entry_rsi"], "days_held": held})
+            else:
+                pos["days_held"] = held
+                still_open.append(pos)
+        open_pos = still_open
+
+        slots  = MAX_CONC - len(open_pos)
+        if slots <= 0:
+            continue
+        already = {p["sym"] for p in open_pos}
+        for sym, ind in indicators.items():
+            if sym in already:
+                continue
+            idx = date_to_idx.get(sym, {}).get(today)
+            if idx is None or idx < BB_PERIOD + ST_PERIOD:
+                continue
+            bar = ind[idx]
+            s1  = bar.get("s1", float("nan"))
+            lb  = bar.get("lower_bb", float("nan"))
+            if (bar["st_dir"] == -1 and bar["rsi"] < 30
+                    and not math.isnan(s1) and bar["c"] < s1
+                    and not math.isnan(lb) and bar["c"] < lb):
+                open_pos.append({"sym": sym, "entry_day": today,
+                                 "entry_px": bar["c"], "entry_rsi": bar["rsi"], "days_held": 0})
+                if len(open_pos) >= MAX_CONC:
+                    break
+    return closed
+
+
+def _run_puts(prices: dict, indicators: dict, date_to_idx: dict,
+              all_dates: list, start: date, iv: float) -> list[dict]:
+    """Bearish BB Breakout: buy ATM put when bearish signal fires (RSI<20 for conviction)."""
+    open_pos: list[dict] = []
+    closed: list[dict] = []
+
+    for today in all_dates:
+        if today < start:
+            continue
+        still_open: list[dict] = []
+        for pos in open_pos:
+            sym       = pos["sym"]
+            idx       = date_to_idx.get(sym, {}).get(today)
+            if idx is None:
+                pos["days_held"] += 1
+                still_open.append(pos)
+                continue
+            bar       = indicators[sym][idx]
+            S         = bar["c"]
+            K         = pos["strike"]
+            days_held = pos["days_held"] + 1
+            days_left = max(0, OPTION_DAYS - days_held)
+            T_left    = days_left / 252.0
+
+            # Exit when underlying RISES +5% (adverse for put holder)
+            stop = pos["entry_stock_px"] * (1 + HARD_STOP)
+            ex   = None
+            if S >= stop:
+                ex = "hard_stop"
+            elif bar["st_dir"] == 1:   # ST turned bullish → exit put
+                ex = "st_flip"
+            elif days_held >= MAX_HOLD:
+                ex = "time"
+            elif days_left == 0:
+                ex = "expiry"
+
+            if ex:
+                exit_premium  = _bs_put(S, K, T_left, RISK_FREE, iv)
+                pnl_per_share = exit_premium - pos["entry_premium"]
+                total_pnl     = pnl_per_share * pos["shares"] - _opt_cost(pos["premium_paid"])
+                ret_pct       = total_pnl / OPT_POSITION * 100
+                closed.append({"sym": sym, "entry_date": pos["entry_day"],
+                               "exit_date": today, "ret_pct": round(ret_pct, 2),
+                               "net_pnl": round(total_pnl, 2), "exit_reason": ex,
+                               "entry_rsi": pos["entry_rsi"], "days_held": days_held,
+                               "entry_premium": round(pos["entry_premium"], 2)})
+            else:
+                pos["days_held"] = days_held
+                still_open.append(pos)
+        open_pos = still_open
+
+        slots  = OPT_MAX_CONC - len(open_pos)
+        if slots <= 0:
+            continue
+        already = {p["sym"] for p in open_pos}
+        for sym, ind in indicators.items():
+            if sym in already:
+                continue
+            idx = date_to_idx.get(sym, {}).get(today)
+            if idx is None or idx < BB_PERIOD + ST_PERIOD:
+                continue
+            bar = ind[idx]
+            s1  = bar.get("s1", float("nan"))
+            lb  = bar.get("lower_bb", float("nan"))
+            # RSI<20 for puts (higher conviction than scanner's RSI<30)
+            if not (bar["st_dir"] == -1 and bar["rsi"] < 20
+                    and not math.isnan(s1) and bar["c"] < s1
+                    and not math.isnan(lb) and bar["c"] < lb):
+                continue
+            S = bar["c"]
+            K = S
+            T = OPTION_DAYS / 252.0
+            premium = _bs_put(S, K, T, RISK_FREE, iv)
+            if premium <= 0:
+                continue
+            shares = OPT_POSITION / premium
+            open_pos.append({
+                "sym": sym, "entry_day": today,
+                "entry_stock_px": S, "strike": K,
+                "entry_premium": premium, "shares": shares,
+                "premium_paid": OPT_POSITION,
+                "entry_rsi": bar["rsi"], "days_held": 0,
+            })
+            if len(open_pos) >= OPT_MAX_CONC:
+                break
+    return closed
+
+
 # ── Metrics ───────────────────────────────────────────────────────────────────
 
 def _metrics(trades: list[dict], years: float) -> dict:
@@ -504,100 +667,90 @@ def main() -> None:
     all_dates = sorted({d for pd_data in prices.values() for d in pd_data
                         if start <= d <= end})
 
-    logger.info("Running equity baseline...")
-    eq_trades  = _run_equity(prices, indicators, date_to_idx, all_dates, start)
-    logger.info("Running options simulation (IV=%.0f%%)...", args.iv * 100)
-    opt_trades = _run_options(prices, indicators, date_to_idx, all_dates, start, args.iv)
+    logger.info("Running 4 strategies: equity bull, call options, equity bear, put options...")
+    eq_bull_trades  = _run_equity(prices, indicators, date_to_idx, all_dates, start)
+    call_trades     = _run_options(prices, indicators, date_to_idx, all_dates, start, args.iv)
+    eq_bear_trades  = _run_equity_bear(prices, indicators, date_to_idx, all_dates, start)
+    put_trades      = _run_puts(prices, indicators, date_to_idx, all_dates, start, args.iv)
 
-    eq_m  = _metrics(eq_trades, years)
-    opt_m = _metrics(opt_trades, years)
-    eq_v  = _equity_verdict(eq_m)
-    opt_v = _options_verdict(opt_m)
+    eq_bull_m = _metrics(eq_bull_trades, years)
+    call_m    = _metrics(call_trades, years)
+    eq_bear_m = _metrics(eq_bear_trades, years)
+    put_m     = _metrics(put_trades, years)
 
-    sep = "=" * 68
+    eq_bull_v = _equity_verdict(eq_bull_m)
+    call_v    = _options_verdict(call_m)
+    eq_bear_v = _equity_verdict(eq_bear_m)
+    put_v     = _options_verdict(put_m)
+
+    sep = "=" * 76
     print()
     print(sep)
-    print(f"BB BREAKOUT — EQUITY vs OPTIONS  |  {args.start} → {end}")
-    print(f"Options: ATM Call | IV={args.iv*100:.0f}% | {OPTION_DAYS}-day expiry | ₹{OPT_POSITION:,.0f} premium | RSI>{OPT_RSI_MIN:.0f} | {OPT_MAX_CONC} concurrent")
+    print(f"BB BREAKOUT — FULL OPTIONS ANALYSIS  |  {args.start} → {end}")
+    print(f"IV={args.iv*100:.0f}% | ATM options | {OPTION_DAYS}-day expiry | ₹{OPT_POSITION:,.0f} premium | {OPT_MAX_CONC} concurrent")
     print(sep)
 
     def _row(label: str, m: dict, v: str) -> None:
         if not m:
-            print(f"\n{label}: No trades")
+            print(f"\n  {label}: No trades generated")
             return
-        print(f"\n{label}  [{v}]")
-        print(f"  Trades     : {m['n_trades']}")
-        print(f"  Win rate   : {m['win_rate']*100:.1f}%")
-        print(f"  Avg return : {m['avg_ret_pct']:+.2f}%  per trade")
-        print(f"  Total P&L  : ₹{m['total_pnl']:,.0f}")
-        print(f"  CAGR       : {m['cagr']*100:+.1f}%")
-        print(f"  Sharpe     : {m['sharpe']:.2f}")
-        print(f"  Max DD     : {m['max_dd']*100:.1f}%")
         exits = ", ".join(f"{k}:{c}" for k, c in sorted(m["exit_reasons"].items()))
-        print(f"  Exits      : {exits}")
+        print(f"\n  {label}  [{v}]")
+        print(f"    Trades  : {m['n_trades']}  |  Win rate: {m['win_rate']*100:.1f}%"
+              f"  |  Avg ret: {m['avg_ret_pct']:+.2f}%/trade")
+        print(f"    CAGR    : {m['cagr']*100:+.1f}%  |  Sharpe: {m['sharpe']:.2f}"
+              f"  |  MaxDD: {m['max_dd']*100:.1f}%")
+        print(f"    Exits   : {exits}")
 
-    _row("EQUITY  (buy stock)", eq_m, eq_v)
-    _row(f"OPTIONS (buy ATM call, IV {args.iv*100:.0f}%)", opt_m, opt_v)
+    print("\n── BULLISH SIGNALS ─────────────────────────────────────────────────────")
+    _row("Equity Long  (buy stock, RSI>70)",    eq_bull_m, eq_bull_v)
+    _row(f"ATM Call     (buy call, RSI>{OPT_RSI_MIN:.0f})", call_m, call_v)
+
+    print("\n── BEARISH SIGNALS ─────────────────────────────────────────────────────")
+    _row("Equity Short (paper short, RSI<30)",  eq_bear_m, eq_bear_v)
+    _row("ATM Put      (buy put, RSI<20)",       put_m,     put_v)
 
     print()
     print(sep)
-    print("SIDE-BY-SIDE COMPARISON")
+    print("COMPARISON TABLE")
     print(sep)
-    print(f"{'Metric':<20} {'Equity':>12} {'Options':>12}  Winner")
-    print("-" * 68)
-
-    def cmp(label: str, eq_val, opt_val, higher_better: bool = True) -> None:
-        winner = "Options ✅" if ((opt_val > eq_val) == higher_better) else "Equity ✅"
-        if abs(opt_val - eq_val) < 0.001:
-            winner = "Tie"
-        print(f"{label:<20} {eq_val:>12.2f} {opt_val:>12.2f}  {winner}")
-
-    if eq_m and opt_m:
-        cmp("Trades",       eq_m["n_trades"],          opt_m["n_trades"],      True)
-        cmp("Win rate %",   eq_m["win_rate"] * 100,    opt_m["win_rate"] * 100, True)
-        cmp("Avg ret/trade",eq_m["avg_ret_pct"],       opt_m["avg_ret_pct"],   True)
-        cmp("CAGR %",       eq_m["cagr"] * 100,        opt_m["cagr"] * 100,    True)
-        cmp("Sharpe",       eq_m["sharpe"],             opt_m["sharpe"],        True)
-        cmp("Max DD % (peak)",eq_m["max_dd"] * 100,      opt_m["max_dd"] * 100, False)
-
+    print(f"{'Strategy':<28} {'Trades':>7} {'WinRate':>8} {'CAGR':>8} {'Sharpe':>7} {'MaxDD':>7}  Verdict")
+    print("-" * 76)
+    rows = [
+        ("Equity Long  (RSI>70)",    eq_bull_m, eq_bull_v),
+        ("ATM Call     (RSI>80)",    call_m,    call_v),
+        ("Equity Short (RSI<30)",    eq_bear_m, eq_bear_v),
+        ("ATM Put      (RSI<20)",    put_m,     put_v),
+    ]
+    for label, m, v in rows:
+        if m:
+            print(f"{label:<28} {m['n_trades']:>7} {m['win_rate']*100:>7.1f}%"
+                  f" {m['cagr']*100:>+7.1f}% {m['sharpe']:>7.2f} {m['max_dd']*100:>6.1f}%  {v}")
+        else:
+            print(f"{label:<28} {'—':>7} {'—':>8} {'—':>8} {'—':>7} {'—':>7}  No data")
     print(sep)
-    print()
-    print("KEY INSIGHT:")
-    if opt_m and eq_m:
-        leverage = opt_m["avg_ret_pct"] / eq_m["avg_ret_pct"] if eq_m["avg_ret_pct"] != 0 else 0
-        print(f"  Options avg return is {leverage:.1f}x equity return per trade.")
-        print(f"  Options: ₹{OPT_POSITION:,.0f} premium/trade | {OPT_MAX_CONC} concurrent max | RSI>{OPT_RSI_MIN:.0f} filter")
-        approx_stock = OPT_POSITION / (args.iv / math.sqrt(252/OPTION_DAYS)) / 0.4
-        print(f"  ₹{OPT_POSITION:,.0f} premium controls ≈ ₹{approx_stock:,.0f} of stock exposure")
-        print(f"  Theta decay ≈ {args.iv/math.sqrt(252)*100:.2f}% per day on premium (hurts slow-moving trades)")
     print()
     print("ASSUMPTIONS:")
-    print(f"  IV={args.iv*100:.0f}% fixed (real IV varies 15-40% for NSE stocks)")
-    print("  ATM strike = exact entry price (no rounding to NSE strike grid)")
-    print("  No liquidity premium / bid-ask spread modelled beyond slippage 0.5%")
-    print("  Monthly expiry (21 trading days) — no weekly expiry modelled")
+    print(f"  IV={args.iv*100:.0f}% fixed | ATM strike = entry price | Monthly expiry (21d)")
+    print("  Equity short simulates F&O futures short — not available for all stocks")
+    print("  Bearish signals rare in 2021-2026 bull market (expected few trades)")
     print()
 
     # Save report
     out = Path("reports") / f"bb_options_{date.today()}.md"
     out.parent.mkdir(exist_ok=True)
     lines = [
-        f"# BB Breakout — Options vs Equity  ({date.today()})",
-        f"IV={args.iv*100:.0f}% | ATM Call | {OPTION_DAYS}-day expiry | ₹1L premium/trade",
+        f"# BB Breakout — Full Options Analysis ({date.today()})",
+        f"IV={args.iv*100:.0f}% | ATM options | {OPTION_DAYS}-day expiry | ₹{OPT_POSITION:,.0f} premium",
         "",
-        "| Metric | Equity | Options |",
-        "|---|---|---|",
+        "| Strategy | Trades | Win Rate | CAGR | Sharpe | MaxDD | Verdict |",
+        "|---|---|---|---|---|---|---|",
     ]
-    if eq_m and opt_m:
-        for label, ev, ov in [
-            ("Trades",   eq_m["n_trades"],       opt_m["n_trades"]),
-            ("Win rate", f"{eq_m['win_rate']*100:.1f}%", f"{opt_m['win_rate']*100:.1f}%"),
-            ("CAGR",     f"{eq_m['cagr']*100:.1f}%",     f"{opt_m['cagr']*100:.1f}%"),
-            ("Sharpe",   f"{eq_m['sharpe']:.2f}",         f"{opt_m['sharpe']:.2f}"),
-            ("Max DD",   f"{eq_m['max_dd']*100:.1f}%",    f"{opt_m['max_dd']*100:.1f}%"),
-            ("Verdict",  eq_v,                             opt_v),
-        ]:
-            lines.append(f"| {label} | {ev} | {ov} |")
+    for label, m, v in rows:
+        if m:
+            lines.append(f"| {label} | {m['n_trades']} | {m['win_rate']*100:.1f}% |"
+                         f" {m['cagr']*100:.1f}% | {m['sharpe']:.2f} |"
+                         f" {m['max_dd']*100:.1f}% | {v} |")
     out.write_text("\n".join(lines))
     logger.info("Report saved: %s", out)
 
