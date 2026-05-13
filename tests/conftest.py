@@ -1,24 +1,28 @@
 import os
+import tempfile
 import pytest
 import pytest_asyncio
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Use SQLite for tests
-os.environ["DATABASE_URL"] = "sqlite:///test_trading.db"
+# Use a unique per-session temp file so concurrent pytest invocations don't collide.
+_db_fd, _db_path = tempfile.mkstemp(suffix=".db", prefix="test_trading_")
+os.close(_db_fd)
+os.environ["DATABASE_URL"] = f"sqlite:///{_db_path}"
 
 from mcp_server.db import Base, get_db  # noqa: E402
 from mcp_server.mcp_server import app  # noqa: E402
 from httpx import AsyncClient, ASGITransport  # noqa: E402
 
-TEST_DATABASE_URL = "sqlite:///test_trading.db"
+TEST_DATABASE_URL = f"sqlite:///{_db_path}"
 engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 @pytest.fixture(autouse=True)
 def setup_db():
-    """Create tables before each test, drop after."""
+    """Reset DB schema before each test to ensure a clean state."""
+    Base.metadata.drop_all(bind=engine, checkfirst=True)
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine, checkfirst=True)

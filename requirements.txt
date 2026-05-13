@@ -17,7 +17,7 @@ backtrader
 pyotp==2.9.0
 requests==2.31.0
 beautifulsoup4==4.12.0
-yfinance>=0.2.44
+yfinance>=1.3.0
 tradingview-screener>=3.1.0
 dhanhq>=2.2.0rc1
 gspread==5.12.0

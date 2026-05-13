@@ -1,6 +1,8 @@
 """Tests for mcp_server.options_seller — IV engine, strike selector, adjustment engine."""
 
 import numpy as np
+import pytest
+from unittest.mock import MagicMock, patch
 
 from mcp_server.options_seller.iv_engine import (
     DELTA_TARGET,
@@ -242,6 +244,15 @@ def test_strangle_as_dict_keys():
 # ── Adjustment Engine ────────────────────────────────────────
 
 
+@pytest.fixture
+def no_events():
+    """Patch the event calendar so rule_1 never fires — keeps tests deterministic."""
+    mock_cal = MagicMock()
+    mock_cal.high_impact_within.return_value = False
+    with patch("mcp_server.event_calendar.get_calendar", return_value=mock_cal):
+        yield
+
+
 def _snap(
     spot: float = 45000,
     sc_strike: float = 45800,
@@ -273,63 +284,63 @@ def _snap(
     )
 
 
-def test_hold_when_all_parameters_ok():
-    decision = evaluate(_snap(), event_horizon_hours=0)   # disable event check
+def test_hold_when_all_parameters_ok(no_events):
+    decision = evaluate(_snap())
     assert decision.action == AdjustmentAction.HOLD
     assert decision.rule == "default"
 
 
-def test_rule_2_strike_imminent():
+def test_rule_2_strike_imminent(no_events):
     # Spot very close to call strike
     s = _snap(spot=45780, sc_strike=45800)
-    decision = evaluate(s, event_horizon_hours=0)
+    decision = evaluate(s)
     assert decision.action == AdjustmentAction.CLOSE_TESTED_LEG
     assert decision.rule == "rule_2"
 
 
-def test_rule_3_delta_breach():
+def test_rule_3_delta_breach(no_events):
     # Call delta crept to 0.35 (>0.30 threshold)
     s = _snap(sc_delta=0.35, spot=45500, sc_strike=45800)
-    decision = evaluate(s, event_horizon_hours=0)
+    decision = evaluate(s)
     assert decision.action == AdjustmentAction.ROLL_TESTED
     assert decision.rule == "rule_3"
 
 
-def test_rule_4_premium_decay_reload():
+def test_rule_4_premium_decay_reload(no_events):
     # Untested side decayed to 5% of entry
     s = _snap(
         sp_current=3.75,   # 5% of sp_entry=75
         sp_delta=-0.04,    # very small — far OTM, nearly worthless
         dte_remaining=3,
     )
-    decision = evaluate(s, event_horizon_hours=0)
+    decision = evaluate(s)
     assert decision.action == AdjustmentAction.ROLL_UNTESTED
     assert decision.rule == "rule_4"
 
 
-def test_rule_4_not_fired_when_dte_too_low():
+def test_rule_4_not_fired_when_dte_too_low(no_events):
     s = _snap(sp_current=3.75, dte_remaining=1)
-    decision = evaluate(s, event_horizon_hours=0)
+    decision = evaluate(s)
     # Rule 4 requires dte >= 2 — should not fire
     assert decision.rule != "rule_4"
 
 
-def test_rule_5_max_loss_breach():
+def test_rule_5_max_loss_breach(no_events):
     s = _snap(credit=100, pnl=-220)   # -2.2× credit
-    decision = evaluate(s, event_horizon_hours=0)
+    decision = evaluate(s)
     assert decision.action == AdjustmentAction.CLOSE_ALL
     assert decision.rule == "rule_5"
 
 
-def test_rule_priority_imminent_beats_delta_breach():
+def test_rule_priority_imminent_beats_delta_breach(no_events):
     # Both rule 2 and rule 3 conditions are true — rule 2 must win (lower number)
     s = _snap(spot=45790, sc_strike=45800, sc_delta=0.40)
-    decision = evaluate(s, event_horizon_hours=0)
+    decision = evaluate(s)
     assert decision.rule == "rule_2"
 
 
-def test_decision_as_dict_keys():
-    d = evaluate(_snap(), event_horizon_hours=0).as_dict()
+def test_decision_as_dict_keys(no_events):
+    d = evaluate(_snap()).as_dict()
     for k in ("action", "rule", "reason", "tested_leg", "untested_leg"):
         assert k in d
 
