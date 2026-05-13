@@ -84,9 +84,9 @@ def _load_dhan_3min(symbols: list[str], days: int) -> dict[str, list[dict]]:
     Returns {sym: [{date, ts, o, h, l, c, is_last_of_day}]}
     """
     import pandas as pd
-    from mcp_server.data_provider import DhanDataSource
+    from mcp_server.data_provider import DhanSource
 
-    dhan = DhanDataSource()
+    dhan = DhanSource()
     if not dhan.login():
         logger.error("Dhan login failed — check DHAN_CLIENT_ID + DHAN_ACCESS_TOKEN env vars")
         return {}
