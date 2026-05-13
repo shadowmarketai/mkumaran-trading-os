@@ -267,7 +267,9 @@ def _cost(pos: float) -> float:
 
 
 def _backtest(prices: dict, indicators: dict, date_to_idx: dict,
-              all_dates: list, start: date, regime: dict) -> list[dict]:
+              all_dates: list, start: date, regime: dict,
+              rsi_max: float = 30.0, hard_stop: float = HARD_STOP,
+              max_conc: int = MAX_CONC) -> list[dict]:
     open_pos: list[dict] = []
     closed:   list[dict] = []
     regime_blocked = 0
@@ -288,7 +290,7 @@ def _backtest(prices: dict, indicators: dict, date_to_idx: dict,
                 continue
             bar  = indicators[sym][idx]
             held = pos["days_held"] + 1
-            stop = pos["entry_px"] * (1 + HARD_STOP)  # short stops on price RISE
+            stop = pos["entry_px"] * (1 + hard_stop)  # short stops on price RISE
             ex   = None
             px   = bar["c"]
             if bar["c"] >= stop:
@@ -320,7 +322,7 @@ def _backtest(prices: dict, indicators: dict, date_to_idx: dict,
         regime_allowed += 1
 
         # ── Entries ─────────────────────────────────────────────────────────
-        if len(open_pos) >= MAX_CONC:
+        if len(open_pos) >= max_conc:
             continue
         already = {p["sym"] for p in open_pos}
         for sym, ind in indicators.items():
@@ -332,14 +334,14 @@ def _backtest(prices: dict, indicators: dict, date_to_idx: dict,
             bar = ind[idx]
             s1  = bar.get("s1", float("nan"))
             lb  = bar.get("lower_bb", float("nan"))
-            if (bar["st_dir"] == -1 and bar["rsi"] < 30
+            if (bar["st_dir"] == -1 and bar["rsi"] < rsi_max
                     and not math.isnan(s1) and bar["c"] < s1
                     and not math.isnan(lb) and bar["c"] < lb):
                 open_pos.append({
                     "sym": sym, "entry_day": today,
                     "entry_px": bar["c"], "entry_rsi": bar["rsi"], "days_held": 0,
                 })
-                if len(open_pos) >= MAX_CONC:
+                if len(open_pos) >= max_conc:
                     break
 
     logger.info("Regime: %d bear days (allowed entries) | %d bull days (blocked)",
@@ -394,10 +396,20 @@ def _verdict(m: dict) -> str:
 def main() -> None:
     import argparse
     parser = argparse.ArgumentParser(description="BB Breakout Bear with Nifty regime filter")
-    parser.add_argument("--from", dest="start", default="2020-01-01",
-                        help="Start from 2020 to capture COVID crash + 2022 correction")
-    parser.add_argument("--to",   dest="end",   default=str(date.today()))
+    parser.add_argument("--from",        dest="start",     default="2020-01-01")
+    parser.add_argument("--to",          dest="end",       default=str(date.today()))
+    parser.add_argument("--rsi-max",     type=float,       default=30.0,
+                        help="RSI upper threshold for bear entry (default 30, try 20)")
+    parser.add_argument("--hard-stop",   type=float,       default=HARD_STOP,
+                        help="Hard stop on short: stock rises this much = stop (default 0.05)")
+    parser.add_argument("--max-conc",    type=int,         default=MAX_CONC,
+                        help="Max concurrent short positions (default 5, try 3)")
     args = parser.parse_args()
+
+    # Apply CLI overrides
+    hard_stop = args.hard_stop
+    max_conc  = args.max_conc
+    rsi_max   = args.rsi_max
 
     start      = date.fromisoformat(args.start)
     end        = date.fromisoformat(args.end)
@@ -423,7 +435,8 @@ def main() -> None:
     all_dates = sorted({d for pd_data in prices.values() for d in pd_data
                         if start <= d <= end})
 
-    trades = _backtest(prices, indicators, date_to_idx, all_dates, start, regime)
+    trades = _backtest(prices, indicators, date_to_idx, all_dates, start, regime,
+                       rsi_max=rsi_max, hard_stop=hard_stop, max_conc=max_conc)
     m      = _metrics(trades, years)
     v      = _verdict(m)
 
@@ -432,7 +445,7 @@ def main() -> None:
     print(sep)
     print(f"BB BREAKOUT BEAR — REGIME FILTERED  |  {args.start} → {end}")
     print("Regime: Nifty < 200-day SMA AND 50-day SMA < 200-day SMA")
-    print("Entry: ST=-1 + RSI<30 + Close<S1 pivot + Close<Lower BB(20,2)")
+    print(f"Entry: ST=-1 + RSI<{rsi_max:.0f} + Close<S1 + Close<Lower BB | Stop: +{hard_stop*100:.0f}% | Conc: {max_conc}")
     print(sep)
 
     if not m:
