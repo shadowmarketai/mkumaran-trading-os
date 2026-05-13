@@ -285,7 +285,7 @@ def _run_equity(prices: dict[str, dict], indicators: dict[str, list[dict]],
                 closed.append({"sym": sym, "entry_date": pos["entry_day"],
                                "exit_date": today, "ret_pct": round(pnl / POSITION_INR * 100, 2),
                                "net_pnl": round(pnl, 2), "exit_reason": ex,
-                               "entry_rsi": pos["entry_rsi"]})
+                               "entry_rsi": pos["entry_rsi"], "days_held": held})
             else:
                 pos["days_held"] = held
                 still_open.append(pos)
@@ -359,7 +359,7 @@ def _run_options(prices: dict[str, dict], indicators: dict[str, list[dict]],
                 closed.append({"sym": sym, "entry_date": pos["entry_day"],
                                "exit_date": today, "ret_pct": round(ret_pct, 2),
                                "net_pnl": round(total_pnl, 2), "exit_reason": ex,
-                               "entry_rsi": pos["entry_rsi"],
+                               "entry_rsi": pos["entry_rsi"], "days_held": days_held,
                                "delta_at_entry": round(pos["entry_delta"], 2),
                                "entry_premium": round(pos["entry_premium"], 2)})
             else:
@@ -418,21 +418,24 @@ def _metrics(trades: list[dict], years: float) -> dict:
     cagr     = (1 + total) ** (1 / years) - 1 if years > 0 and total > -1 else -1.0
     mean_r   = total / n
     std_r    = math.sqrt(sum((r - mean_r) ** 2 for r in returns) / max(n - 1, 1))
-    avg_hold = sum(t.get("days_held", 0) if "days_held" in t else 0 for t in trades) / n
+    avg_hold = sum(t.get("days_held", 0) for t in trades) / max(n, 1)
     sharpe   = (mean_r / std_r) * math.sqrt(252 / max(avg_hold, 1)) if std_r > 0 else 0.0
-    is_opt = any("entry_premium" in t for t in trades)
-    ref    = float((OPT_MAX_CONC * OPT_POSITION) if is_opt else (MAX_CONC * POSITION_INR))
+
+    # MaxDD: peak-to-trough as % of PEAK cumulative P&L.
+    # This is meaningful regardless of initial capital size.
     cum = peak = max_dd = 0.0
     for t in sorted(trades, key=lambda x: x["exit_date"]):
         cum  += t["net_pnl"]
         peak  = max(peak, cum)
-        max_dd = max(max_dd, (peak - cum) / ref)
+        if peak > 0:
+            max_dd = max(max_dd, (peak - cum) / peak)
+
     reasons: dict[str, int] = {}
     for t in trades:
         reasons[t["exit_reason"]] = reasons.get(t["exit_reason"], 0) + 1
     return {"n_trades": n, "win_rate": wins / n, "cagr": cagr, "sharpe": sharpe,
             "max_dd": max_dd, "total_pnl": sum(t["net_pnl"] for t in trades),
-            "avg_ret_pct": mean_r * 100, "exit_reasons": reasons}
+            "avg_ret_pct": mean_r * 100, "avg_hold": avg_hold, "exit_reasons": reasons}
 
 
 def _verdict(m: dict) -> str:
@@ -536,7 +539,7 @@ def main() -> None:
         cmp("Avg ret/trade",eq_m["avg_ret_pct"],       opt_m["avg_ret_pct"],   True)
         cmp("CAGR %",       eq_m["cagr"] * 100,        opt_m["cagr"] * 100,    True)
         cmp("Sharpe",       eq_m["sharpe"],             opt_m["sharpe"],        True)
-        cmp("Max DD %",     eq_m["max_dd"] * 100,       opt_m["max_dd"] * 100, False)
+        cmp("Max DD % (peak)",eq_m["max_dd"] * 100,      opt_m["max_dd"] * 100, False)
 
     print(sep)
     print()

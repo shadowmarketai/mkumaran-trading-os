@@ -13,6 +13,7 @@ from mcp_server.technical_scanners import (
     scan_supertrend,
     scan_macd_crossover,
     scan_52week_high,
+    scan_bb_breakout_bull_weekly,
     run_all_technical_scanners,
 )
 from mcp_server.swing_detector import (
@@ -146,6 +147,22 @@ def test_scan_stock_ema_crossover():
 
 # ── run_all_technical_scanners ────────────────────────────────
 
+def test_scan_bb_breakout_bull_weekly_returns_dict():
+    stock_data = {"TEST": _make_df(list(range(100, 600)))}
+    result = scan_bb_breakout_bull_weekly(stock_data)
+    assert result["name"] == "BB Breakout Bullish (Weekly)"
+    assert result["weight"] == 5.0
+    assert result["direction"] == "BULL"
+    assert isinstance(result["stocks"], list)
+    assert isinstance(result["count"], int)
+
+
+def test_scan_bb_breakout_bull_weekly_short_data():
+    stock_data = {"TEST": _make_df(list(range(100, 150)))}
+    result = scan_bb_breakout_bull_weekly(stock_data)
+    assert result["count"] == 0
+
+
 def test_run_all_no_nifty():
     stock_data = {"TEST": _make_df(list(range(100, 200)))}
     results = run_all_technical_scanners(stock_data)
@@ -153,6 +170,7 @@ def test_run_all_no_nifty():
     assert "17_supertrend" in results
     assert "18_macd" in results
     assert "19_52week_high" in results
+    assert "bb_breakout_bull_weekly" in results
     assert "16b_nifty_ema" not in results
 
 
