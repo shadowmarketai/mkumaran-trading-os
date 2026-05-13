@@ -550,6 +550,25 @@ def main() -> None:
     out.write_text("\n".join(lines), encoding="utf-8")
     logger.info("Report saved: %s", out)
 
+    try:
+        from mcp_server.sheets_sync import log_backtest_result
+        for name, (_, m, v) in results.items():
+            log_backtest_result({
+                "strategy": f"MWA: {name}",
+                "timeframe": "1d",
+                "period": f"{args.start} to {args.end}",
+                "universe": f"Nifty 500 ({len(sym_data)} symbols)",
+                "trades": m["n"],
+                "cagr": round(m["cagr"] * 100, 2),
+                "sharpe": round(m["sharpe"], 2),
+                "max_dd": round(m["max_dd"] * 100, 2),
+                "win_rate": round(m["win_rate"] * 100, 2),
+                "verdict": v,
+                "notes": f"Standalone indicator. OVERRIDE expected — confluence input to composite MWA score.",
+            })
+    except Exception as e:
+        logger.warning("Sheets logging skipped: %s", e)
+
 
 if __name__ == "__main__":
     main()

@@ -549,10 +549,30 @@ def main() -> None:
         print(f"{'TF':<6} {'Trades':>7} {'CAGR':>10} {'Sharpe':>8}  Was → Now")
         print("-" * 68)
         for r in summary:
-            arrow = "✅" if r["new"] != "OVERRIDE" else "❌"
+            arrow = "OK" if r["new"] != "OVERRIDE" else "XX"
             print(f"{r['tf']:<6} {r['trades']:>7} {r['cagr']*100:>+9.1f}%"
-                  f" {r['sharpe']:>8.2f}  {r['orig']} → {r['new']} {arrow}")
+                  f" {r['sharpe']:>8.2f}  {r['orig']} -> {r['new']} [{arrow}]")
         print("=" * 68)
+
+    try:
+        from mcp_server.sheets_sync import log_backtest_result
+        for r in summary:
+            log_backtest_result({
+                "strategy": f"BB Breakout Revised ({r['tf']})",
+                "timeframe": r["tf"],
+                "period": "varies by TF",
+                "universe": "Nifty 500",
+                "trades": r["trades"],
+                "cagr": round(r["cagr"] * 100, 2),
+                "sharpe": round(r["sharpe"], 2),
+                "max_dd": 0,
+                "win_rate": 0,
+                "verdict": r["new"],
+                "notes": f"Revised params. Was: {r['orig']}",
+            })
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Sheets logging skipped: %s", e)
 
 
 if __name__ == "__main__":

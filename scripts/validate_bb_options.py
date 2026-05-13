@@ -754,6 +754,26 @@ def main() -> None:
     out.write_text("\n".join(lines))
     logger.info("Report saved: %s", out)
 
+    try:
+        from mcp_server.sheets_sync import log_backtest_result
+        for label, m, v in rows:
+            if m:
+                log_backtest_result({
+                    "strategy": f"BB Breakout: {label}",
+                    "timeframe": "1d",
+                    "period": f"{args.start} to {args.end}",
+                    "universe": "Nifty 500",
+                    "trades": m["n_trades"],
+                    "cagr": round(m["cagr"] * 100, 2),
+                    "sharpe": round(m["sharpe"], 2),
+                    "max_dd": round(m["max_dd"] * 100, 2),
+                    "win_rate": round(m["win_rate"] * 100, 2),
+                    "verdict": v,
+                    "notes": f"IV={args.iv*100:.0f}%",
+                })
+    except Exception as e:
+        logger.warning("Sheets logging skipped: %s", e)
+
 
 if __name__ == "__main__":
     main()

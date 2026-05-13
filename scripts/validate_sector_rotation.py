@@ -315,6 +315,25 @@ def main() -> None:
     out.write_text("\n".join(lines))
     logger.info("Report saved: %s", out)
 
+    try:
+        from mcp_server.sheets_sync import log_backtest_result
+        excluded = ", ".join(args.exclude) if args.exclude else "none"
+        log_backtest_result({
+            "strategy": f"Sector Rotation Top{args.top_sectors} ({args.lookback}d momentum)",
+            "timeframe": "monthly",
+            "period": f"{args.start} to {end}",
+            "universe": f"NSE sectors (excluded: {excluded})",
+            "trades": n_months,
+            "cagr": round(port_cagr * 100, 2),
+            "sharpe": round(sharpe, 2),
+            "max_dd": round(max_dd * 100, 2),
+            "win_rate": round(win_rate * 100, 2),
+            "verdict": tier,
+            "notes": f"Alpha vs Nifty50: {alpha*100:+.1f}pp",
+        })
+    except Exception as e:
+        logger.warning("Sheets logging skipped: %s", e)
+
 
 if __name__ == "__main__":
     main()

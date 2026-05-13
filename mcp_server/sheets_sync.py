@@ -331,6 +331,58 @@ def sync_active_trades(trades: list[dict]) -> bool:
         return False
 
 
+def log_backtest_result(result: dict) -> bool:
+    """
+    Log a strategy backtest verdict to the BACKTEST RESULTS tab.
+
+    Expected keys in result:
+        strategy    str   e.g. "BB Breakout Daily"
+        timeframe   str   e.g. "1d" / "options" / "sector"
+        period      str   e.g. "2021-01-01 to 2026-05-13"
+        universe    str   e.g. "Nifty 500"
+        trades      int
+        cagr        float  (as %)
+        sharpe      float
+        max_dd      float  (as %)
+        win_rate    float  (as %)
+        verdict     str   "TIER_1" / "TIER_2" / "OVERRIDE"
+        notes       str   optional free text
+    """
+    _, sheet = _get_sheets_client()
+    if not sheet:
+        return False
+
+    try:
+        headers = [
+            "Run Date", "Strategy", "Timeframe", "Period", "Universe",
+            "Trades", "CAGR %", "Sharpe", "MaxDD %", "WinRate %", "Verdict", "Notes",
+        ]
+        ws = _get_or_create_worksheet(
+            sheet, "BACKTEST RESULTS", cols=len(headers), header=headers,
+        )
+        row = [
+            str(date.today()),
+            result.get("strategy", ""),
+            result.get("timeframe", ""),
+            result.get("period", ""),
+            result.get("universe", "Nifty 500"),
+            result.get("trades", 0),
+            round(float(result.get("cagr", 0)), 2),
+            round(float(result.get("sharpe", 0)), 2),
+            round(float(result.get("max_dd", 0)), 2),
+            round(float(result.get("win_rate", 0)), 2),
+            result.get("verdict", ""),
+            result.get("notes", ""),
+        ]
+        ws.append_row(row)
+        logger.info("Logged backtest result for %s -> %s", result.get("strategy"), result.get("verdict"))
+        return True
+
+    except Exception as e:
+        logger.error("Backtest result sheet logging failed: %s", e)
+        return False
+
+
 def log_scanner_review(review_data: dict) -> bool:
     """
     Log daily scanner review to SCANNER REVIEW tab.
