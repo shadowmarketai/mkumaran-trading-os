@@ -148,10 +148,8 @@ def main() -> None:
     if args.exclude:
         logger.info("Excluded sectors: %s | Running with %d sectors: %s",
                     args.exclude, len(active_sectors), list(active_sectors))
-    global SECTORS
-    SECTORS = active_sectors
 
-    prices = _load_prices(SECTORS, data_start.isoformat(), end.isoformat())
+    prices = _load_prices(active_sectors, data_start.isoformat(), end.isoformat())
     if len(prices) < 3:
         logger.error("Insufficient sector data")
         return

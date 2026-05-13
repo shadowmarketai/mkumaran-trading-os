@@ -142,13 +142,24 @@ def _load_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str, 
 
 def _load_nifty(start_str: str, end_str: str) -> dict[date, float]:
     import yfinance as yf
+    import pandas as pd
     try:
         raw = yf.download("^NSEI", start=start_str, end=end_str,
                           auto_adjust=True, progress=False)
         if raw is None or raw.empty:
             return {}
-        c = raw["Close"].dropna()
-        return {d.date(): float(c[d]) for d in c.index}
+        # Handle both MultiIndex (newer yfinance) and flat columns
+        if isinstance(raw.columns, pd.MultiIndex):
+            c = raw["Close"]["^NSEI"].dropna()
+        else:
+            c = raw["Close"].dropna()
+        result = {}
+        for ts, val in c.items():
+            d = ts.date() if hasattr(ts, "date") else ts
+            result[d] = float(val)
+        logger.info("Nifty loaded: %d bars (%s → %s)",
+                    len(result), min(result), max(result))
+        return result
     except Exception as e:
         logger.warning("Nifty load failed: %s", e)
         return {}
