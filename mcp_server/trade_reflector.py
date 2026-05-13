@@ -16,6 +16,32 @@ from mcp_server.trade_memory import TradeMemory, TradeRecord
 
 logger = logging.getLogger(__name__)
 
+# Backtest-validated win rates by pattern layer (2021-2026, Nifty 500).
+# Used to contextualise whether a loss/win is expected or surprising.
+_PATTERN_WIN_RATES: dict[str, tuple[str, float]] = {
+    "harmonic":      ("TIER_2",   0.541),
+    "bb breakout weekly": ("TIER_1", 0.583),
+    "bb breakout":   ("TIER_2",   0.432),
+    "smc":           ("OVERRIDE", 0.454),
+    "vsa":           ("OVERRIDE", 0.457),
+    "wyckoff":       ("OVERRIDE", 0.488),
+    "supertrend":    ("OVERRIDE", 0.417),
+    "macd":          ("OVERRIDE", 0.320),
+    "ema":           ("OVERRIDE", 0.352),
+}
+
+
+def _pattern_context(pattern: str) -> str:
+    """Return tier + win-rate context for a given pattern name."""
+    p = pattern.lower()
+    for key, (tier, wr) in _PATTERN_WIN_RATES.items():
+        if key in p:
+            return (
+                f"{tier} validated (backtest WR={wr*100:.0f}%). "
+                f"{'Win is within expected range.' if tier in ('TIER_1','TIER_2') else 'Needs 5+ confluence signals.'}"
+            )
+    return "Unvalidated pattern — treat outcome as new data."
+
 
 class TradeReflector:
     """
@@ -69,15 +95,19 @@ class TradeReflector:
         """Generate lesson via the multi-provider AI abstraction (1 call)."""
         from mcp_server.ai_provider import call_ai
 
+        pat_ctx = _pattern_context(record.pattern)
         prompt = (
             f"You are a trading coach reviewing a closed trade. Generate a concise lesson (1-2 sentences).\n\n"
             f"TRADE:\n"
             f"- Ticker: {record.ticker} | Direction: {record.direction} | Pattern: {record.pattern}\n"
+            f"- Pattern context: {pat_ctx}\n"
             f"- Entry: ₹{record.entry_price:.2f} | SL: ₹{record.stop_loss:.2f} | Target: ₹{record.target:.2f}\n"
             f"- RRR: {record.rrr:.2f} | Confidence at entry: {record.confidence}%\n"
             f"- Outcome: {record.outcome} | Exit: ₹{record.exit_price:.2f} | P&L: {record.pnl_pct:+.1f}%\n"
             f"- Holding days: {record.holding_days}\n\n"
-            f"What's the key lesson? Focus on what to repeat (if win) or avoid (if loss).\n"
+            f"What's the key lesson? Use the pattern context to assess if this outcome was expected or surprising.\n"
+            f"If TIER_1/TIER_2 pattern won: confirm the edge. If OVERRIDE pattern won alone: flag as possible luck.\n"
+            f"If TIER_1/TIER_2 pattern lost: identify what confluence was missing. If OVERRIDE lost: expected.\n"
             f"Respond with just the lesson text, no JSON."
         )
 
@@ -96,36 +126,48 @@ class TradeReflector:
         high_conf = record.confidence >= 70
         is_win = record.outcome == "WIN"
         is_loss = record.outcome == "LOSS"
+        pat_ctx = _pattern_context(record.pattern)
+
+        # Determine if this outcome was expected based on backtest tier
+        p = record.pattern.lower()
+        is_tier1 = any(k in p for k in ("bb breakout weekly",))
+        is_tier2 = any(k in p for k in ("harmonic", "bb breakout",)) and not is_tier1
+        is_override = any(k in p for k in ("smc", "vsa", "wyckoff", "supertrend", "macd", "ema"))
+        expected_qualifier = (
+            "Expected loss (OVERRIDE pattern, <50% WR standalone)." if is_override and is_loss
+            else "Unexpected loss (TIER_1 validated pattern)." if is_tier1 and is_loss
+            else "Expected win range for TIER_2 pattern." if is_tier2 and is_win
+            else ""
+        )
 
         if high_conf and is_win:
             return (
-                f"High-confidence {record.pattern} on {record.ticker} confirmed. "
+                f"High-confidence {record.pattern} on {record.ticker} confirmed ({pat_ctx}). "
                 f"RRR {record.rrr:.1f} delivered {record.pnl_pct:+.1f}%. "
                 f"Trust this setup when conditions repeat."
             )
         elif high_conf and is_loss:
             return (
-                f"High-confidence {record.pattern} on {record.ticker} failed despite {record.confidence}% conviction. "
-                f"Loss of {record.pnl_pct:.1f}% — review if entry timing or market context was ignored. "
-                f"Overconfidence risk."
+                f"High-confidence {record.pattern} on {record.ticker} failed ({record.pnl_pct:.1f}%). "
+                f"{pat_ctx} {expected_qualifier} "
+                f"Review entry timing and whether 5+ scanner hits were present."
             )
         elif not high_conf and is_win:
             return (
-                f"Low-confidence {record.pattern} on {record.ticker} unexpectedly won ({record.pnl_pct:+.1f}%). "
-                f"Consider if the system under-scored this setup. "
-                f"May indicate a pattern worth upgrading in scoring."
+                f"Low-confidence {record.pattern} on {record.ticker} won ({record.pnl_pct:+.1f}%). "
+                f"{pat_ctx} "
+                f"{'System may be under-scoring this pattern.' if not is_override else 'Possible luck — needs confluence to be reliable.'}"
             )
         elif not high_conf and is_loss:
             return (
-                f"Low-confidence {record.pattern} on {record.ticker} lost as expected ({record.pnl_pct:.1f}%). "
-                f"System correctly flagged uncertainty. "
-                f"Continue filtering similar setups with caution."
+                f"Low-confidence {record.pattern} on {record.ticker} lost ({record.pnl_pct:.1f}%). "
+                f"{expected_qualifier if expected_qualifier else pat_ctx} "
+                f"System correctly flagged uncertainty — continue filtering similar setups."
             )
         else:
-            # BREAKEVEN
             return (
                 f"{record.pattern} on {record.ticker} ended breakeven after {record.holding_days} days. "
-                f"Consider tighter exit rules for this pattern."
+                f"{pat_ctx} Consider tighter exit rules for this pattern."
             )
 
     def reflect_batch(self, limit: int = 10) -> dict:

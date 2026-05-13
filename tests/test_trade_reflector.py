@@ -56,7 +56,8 @@ def test_offline_lesson_high_conf_loss(tmp_path):
         result = reflector.reflect_on_trade("S002")
 
     assert result["success"] is True
-    assert "Overconfidence" in result["lesson"]
+    # High-conf loss: lesson should flag timing/confluence review (overconfidence dropped in favour of actionable advice)
+    assert "failed" in result["lesson"] or "Review" in result["lesson"]
 
 
 def test_offline_lesson_low_conf_win(tmp_path):
@@ -70,7 +71,7 @@ def test_offline_lesson_low_conf_win(tmp_path):
         result = reflector.reflect_on_trade("S003")
 
     assert result["success"] is True
-    assert "under-scored" in result["lesson"] or "upgrading" in result["lesson"]
+    assert any(w in result["lesson"] for w in ("under-scored", "upgrading", "luck", "System may"))
 
 
 def test_offline_lesson_low_conf_loss(tmp_path):
