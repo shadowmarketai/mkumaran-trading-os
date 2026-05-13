@@ -77,22 +77,42 @@ Two independent scan loops run in parallel: a **daily-swing MWA loop** (default 
 
 ## Current phase
 
-**Path A — Deepen options (2026-05-12).** All strategy arcs closed. Only validated strategy is Nifty weekly short strangle (TIER_2). Now expanding options scan and letting 7 live strategies accumulate forward-test data.
+**Path B — Paper trade live (from 2026-05-14).** All backtests complete. System deployed with validated weights. Paper trade starts tomorrow — TAKE/SKIP signals via Telegram.
 
-**Strategy scorecard (all arcs closed):**
-- Nifty 100 equity — all 6 engines daily + weekly: ALL TIER_3 ✅ closed
-- BankNifty / Nifty strangle: TIER_4 / OVERRIDE ✅ closed
-- **Nifty weekly short strangle (VIX-gated): TIER_2 — LIVE** (emits Wednesday)
-- Pairs trading — sector-based (10 pairs): OVERRIDE ✅ closed
-- Pairs trading — screener-based (6 pairs, top Nifty 50 coint): OVERRIDE ✅ **FINAL — pairs chapter closed**
-- Options scan (7 strategies, live since 2026-05-12): forward-testing in progress
+**Full strategy scorecard (all backtests closed 2026-05-13):**
 
-**2026-05-12 session deliverables:**
-- Fixed Dhan option chain (int cast + double-nesting) — NIFTY chain now working ✅
-- Nifty 500 screener integrated into dashboard ✅
-- Nifty 50 cointegration screener (1225 pairs) built and run ✅
-- ohlcv_cache.source server_default migration added ✅
-- Options signal forward tracker script built ✅
+| Strategy | Verdict | Notes |
+|---|---|---|
+| BB Breakout weekly (RSI>60) | **TIER_1** | WR 58.3%, Sharpe 1.07, MaxDD 15% |
+| BB Breakout ATM Call options | **TIER_1** | WR 30.4% (options), CAGR +178% |
+| BB Breakout daily (RSI>80) | TIER_2 | WR 43.2%, Sharpe 0.89 |
+| BB Breakout 15m | TIER_2 | Limited by 60-day yfinance window |
+| Sector Rotation (8 sectors, excl Bank/Finance) | TIER_2 | Alpha +3.7pp vs Nifty |
+| Harmonic patterns standalone | TIER_2 | WR 54.1%, MaxDD 14.8% — best pattern engine |
+| SMC / VSA / Wyckoff standalone | OVERRIDE | Confluence inputs only, not standalone |
+| Supertrend/MACD/EMA/52w high standalone | OVERRIDE | Confluence inputs only |
+| BB Breakout bear (regime filter) | OVERRIDE | Closed permanently |
+
+**MWA engine weights updated 2026-05-13 (based on backtest WinRates):**
+- Harmonic: +46% (TIER_2 validated, 54.1% WR)
+- Wyckoff: -20% (OVERRIDE, 48.8% WR)
+- VSA: -28% (OVERRIDE, 45.7% WR)
+- SMC: -27% (OVERRIDE, 45.4% WR)
+- MAX_BULL_WEIGHT: 209.0 → 199.0
+
+**Debate validator updated 2026-05-13:**
+- All 4 agents (Bull/Bear/Judge/Risk) now see validated backtest knowledge
+- Pattern TIER injected into signal context for every debate
+- TIER_1 patterns get higher confidence boost; OVERRIDE patterns get skepticism
+
+**2026-05-13 session deliverables:**
+- Full backtest suite: all 15 strategies validated (scripts/validate_*.py)
+- Google Sheets BACKTEST RESULTS tab added (auto-populated on every future run)
+- Pattern engine sliding-window backtest (SMC/VSA/Wyckoff/Harmonic)
+- MWA weight rebalance based on standalone WinRates
+- Debate validator grounded with backtest knowledge
+- Test infrastructure: no_events fixture, tempfile conftest, yfinance 1.3.0
+- Commits: ba29e69 → e77779d → 88d3232 → b99437b → 29f6a56 → 6dead29 → (debate validator)
 
 ---
 
@@ -100,10 +120,13 @@ Two independent scan loops run in parallel: a **daily-swing MWA loop** (default 
 
 Ordered by priority.
 
-- [ ] **CRITICAL** — Rotate prod DB password (exposed in chat 2026-04-25). Update Coolify env + restart.
-- [ ] **Path A** — Let options scan run 2–3 weeks → run `track_options_signals.py` → identify which of 7 strategies have edge → backtest the winners.
-- [ ] **Path A** — Verify BANKNIFTY chain works (same Dhan fix as NIFTY) by running scan-diagnostic during market hours.
-- [ ] **Path A** — Wednesday 2026-05-14: check strangle diagnostic — if VIX drops below 80th pct, strangle auto-emits.
+- [x] ~~CRITICAL — Rotate prod DB password~~ — Done 2026-05-13 (new password set)
+- [ ] **IMMEDIATE** — Run `python scripts/backfill_backtest_results_to_sheets.py` on prod to populate BACKTEST RESULTS tab
+- [ ] **May 14** — Wednesday strangle check: VIX below 80th pct? → strangle auto-emits
+- [ ] **May 14** — Verify BANKNIFTY chain works during market hours
+- [ ] **May 23** — Run `python scripts/track_options_signals.py` (10 days of options forward data)
+- [ ] **Jun 2** — Run `validate_momentum_nifty500.py`, `validate_52w_breakout.py`, `validate_sector_rotation.py --exclude Bank Finance` (first monthly rebalances)
+- [ ] **Aug 13** — First composite MWA review: 90 days TAKE/SKIP data → win rate vs 50% threshold → options go live or extend paper
 - [ ] **LOW** — Tax export module needs real Outcome rows to validate.
 - [x] ~~Pairs trading~~ — HYPOTHESIS DISPROVEN (final). Both attempts closed.
 - [x] ~~Options seller: paper trade 30 days~~ — options-selling hypothesis closed.

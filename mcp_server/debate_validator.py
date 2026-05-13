@@ -20,6 +20,37 @@ from mcp_server.config import settings
 
 logger = logging.getLogger(__name__)
 
+# ── Validated strategy knowledge (from backtests 2021-2026, Nifty 500) ─────────
+# Updated: 2026-05-13. Used to ground all debate agent prompts with real edge data.
+VALIDATED_STRATEGY_KNOWLEDGE = """
+VALIDATED BACKTEST KNOWLEDGE (2021-2026, Nifty 500 universe):
+
+TIER_1 strategies (strong standalone edge — high confidence when these patterns appear):
+  - BB Breakout Weekly (RSI>60 + SuperTrend + Pivot + BB): WinRate 58.3%, CAGR +61.5%, Sharpe 1.07, MaxDD 15%
+  - BB Breakout ATM Call options (RSI>80 + 4-layer): WinRate 30.4%*, CAGR +178%, Sharpe 1.07, MaxDD 8.2%
+    (* options power-law: 30% WR is normal — winners are +200-500% premium)
+
+TIER_2 strategies (positive edge, use with confirmation):
+  - BB Breakout Daily (RSI>80 + 4-layer confluence): WinRate 43.2%, CAGR +59.7%, Sharpe 0.89
+  - BB Breakout 15m (intraday, RSI>80): WinRate 46.2%, CAGR +31.2%
+  - Harmonic patterns (Gartley/Bat/Crab/Cypher): WinRate 54.1%, CAGR +27.9%, MaxDD 14.8%
+    — Harmonic is the STRONGEST standalone pattern engine. Prioritise it in BULLISH analysis.
+  - Sector Rotation (monthly, top-3 by 3m momentum): WinRate 57.7% (vs Nifty), CAGR +14.2%
+
+OVERRIDE (no standalone edge — only valid as confluence inputs):
+  - SMC (BOS/CHoCH/Order Blocks): WinRate 45.4% standalone — needs 2+ other confirmations
+  - VSA (Volume Spread Analysis): WinRate 45.7% standalone — needs 2+ other confirmations
+  - Wyckoff (Accumulation/Distribution/Spring): WinRate 48.8% standalone — use as confirmation
+  - Single indicators (Supertrend, MACD cross, EMA 9/21, 52w high): WinRate 32-42% standalone
+
+KEY RULES FOR ANALYSIS:
+1. If pattern contains "Harmonic" — give strong BULLISH weight (TIER_2, 54% WR validated)
+2. If signal has 4-layer BB Breakout — give strong weight (TIER_1/TIER_2 validated)
+3. SMC/VSA/Wyckoff patterns alone are NOT sufficient — always check what other layers fired
+4. Higher scanner_count = stronger composite signal (each scanner = one validated input)
+5. Scanner count >= 5 with Harmonic or BB Breakout = high-conviction BULL signal
+"""
+
 # ── Result dataclasses ──────────────────────────────────────────────
 
 
@@ -88,9 +119,27 @@ def _build_signal_context(
     )
     rrr_status = "PASS" if (rrr >= 2.0 if is_leveraged else rrr >= 3.0) else "FAIL"
 
+    # Derive pattern tier from validated backtest results
+    p_lower = pattern.lower()
+    if "harmonic" in p_lower:
+        pattern_tier = "TIER_2 validated (WinRate 54.1% standalone)"
+    elif "bb breakout" in p_lower and "weekly" in p_lower:
+        pattern_tier = "TIER_1 validated (WinRate 58.3%, Sharpe 1.07)"
+    elif "bb breakout" in p_lower or "bb_breakout" in p_lower:
+        pattern_tier = "TIER_2 validated (WinRate 43.2%, Sharpe 0.89)"
+    elif any(x in p_lower for x in ("smc", "bos", "choch", "order block", "fvg", "liquidity")):
+        pattern_tier = "OVERRIDE standalone — valid only as confluence input (WinRate 45.4%)"
+    elif any(x in p_lower for x in ("vsa", "stopping volume", "selling climax", "no supply")):
+        pattern_tier = "OVERRIDE standalone — valid only as confluence input (WinRate 45.7%)"
+    elif any(x in p_lower for x in ("wyckoff", "accumulation", "spring", "upthrust")):
+        pattern_tier = "OVERRIDE standalone — valid only as confluence input (WinRate 48.8%)"
+    else:
+        pattern_tier = "Unvalidated — assess on scanner confluence"
+
     return (
         f"SIGNAL FOR ANALYSIS:\n"
         f"- Ticker: {ticker} | Direction: {direction} | Pattern: {pattern}\n"
+        f"- Pattern Backtest Status: {pattern_tier}\n"
         f"- Entry: ₹{entry_price:.2f} | SL: ₹{stop_loss:.2f} | Target: ₹{target:.2f} | RRR: {rrr:.2f} ({rrr_status})\n"
         f"- MWA Direction: {mwa_direction} | Scanner Hits: {scanner_count}\n"
         f"- TradingView Confirmed: {tv_confirmed}\n"
@@ -143,6 +192,9 @@ def _call_bull_analyst(client, ctx: str, memory_ctx: str, bear_argument: str = "
         "You are a BULL analyst for Indian stock markets. "
         "Your job is to find every reason this trade SHOULD be taken. "
         "Be specific about technical, fundamental, and market context evidence. "
+        "Use the validated backtest knowledge below to calibrate your confidence — "
+        "TIER_1/TIER_2 patterns deserve higher confidence than OVERRIDE patterns.\n\n"
+        f"{VALIDATED_STRATEGY_KNOWLEDGE}\n\n"
         "Respond ONLY in JSON: {\"confidence\": <50-95>, \"argument\": \"<2-3 sentences>\"}"
     )
     rebuttal = f"\n\nBEAR COUNTERARGUMENT TO ADDRESS:\n{bear_argument}" if bear_argument else ""
@@ -163,6 +215,9 @@ def _call_bear_analyst(client, ctx: str, memory_ctx: str, bull_argument: str = "
         "You are a BEAR analyst for Indian stock markets. "
         "Your job is to find every reason this trade SHOULD NOT be taken. "
         "Look for red flags in RRR, market context, pattern reliability, and risk. "
+        "Use the validated backtest knowledge below — OVERRIDE patterns (SMC/VSA/Wyckoff alone) "
+        "deserve more skepticism; TIER_1/TIER_2 patterns deserve less.\n\n"
+        f"{VALIDATED_STRATEGY_KNOWLEDGE}\n\n"
         "Respond ONLY in JSON: {\"confidence\": <5-50>, \"argument\": \"<2-3 sentences>\"}"
     )
     rebuttal = f"\n\nBULL COUNTERARGUMENT TO ADDRESS:\n{bull_argument}" if bull_argument else ""
@@ -183,6 +238,9 @@ def _call_judge(client, ctx: str, transcript: list[DebateMessage]) -> dict:
         "You are an impartial JUDGE for a trading signal debate. "
         "You've heard bull and bear arguments. Synthesize both sides into a final verdict. "
         "Weight the strength of arguments, not just confidence numbers. "
+        "Use the validated backtest knowledge to calibrate: TIER_1 patterns are statistically "
+        "proven, OVERRIDE patterns need strong confluence from other layers.\n\n"
+        f"{VALIDATED_STRATEGY_KNOWLEDGE}\n\n"
         "Respond ONLY in JSON: {\"confidence\": <0-100>, \"reasoning\": \"<2-3 sentences>\", "
         "\"recommendation\": \"ALERT|WATCHLIST|SKIP\"}"
     )
@@ -208,6 +266,10 @@ def _call_risk_assessment(client, ctx: str, judge_result: dict) -> dict:
         "1. AGGRESSIVE: Would a risk-seeking trader take this? Why?\n"
         "2. CONSERVATIVE: Would a risk-averse trader take this? Why?\n"
         "3. NEUTRAL: What's the balanced view?\n\n"
+        "Apply these position sizing guidelines from validated backtests:\n"
+        "- TIER_1 pattern (BB Breakout weekly/options, 58%+ WR): full position size allowed\n"
+        "- TIER_2 pattern (BB Breakout daily, Harmonic, 43-54% WR): standard position size\n"
+        "- OVERRIDE pattern alone (SMC/VSA/Wyckoff, <50% WR): reduce size by 30-50% unless 5+ scanner hits\n\n"
         "Based on all three perspectives, provide a final risk-adjusted confidence.\n"
         "Respond ONLY in JSON: {\"confidence\": <0-100>, \"risk_assessment\": \"<summary>\", "
         "\"adjustment\": <-15 to +10>}"
