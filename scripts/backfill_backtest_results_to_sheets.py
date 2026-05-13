@@ -107,6 +107,44 @@ RESULTS = [
         "verdict": "OVERRIDE",
         "notes": "Standalone. OVERRIDE expected — confluence input to composite MWA score.",
     },
+
+    # ── Pattern Engines (SMC / VSA / Wyckoff / Harmonic) ─────────────────────
+    {
+        "strategy": "Pattern Engine: SMC",
+        "timeframe": "1d", "period": "2021-01-01 to 2026-05-13",
+        "universe": "Nifty 500 (483 symbols)", "trades": 410,
+        "cagr": 7.5, "sharpe": 0.21, "max_dd": 36.6, "win_rate": 45.4,
+        "verdict": "OVERRIDE",
+        "notes": "16 sub-detectors. Standalone OVERRIDE — confluence input to MWA.",
+    },
+    {
+        "strategy": "Pattern Engine: VSA",
+        "timeframe": "1d", "period": "2021-01-01 to 2026-05-13",
+        "universe": "Nifty 500 (483 symbols)", "trades": 398,
+        "cagr": 7.6, "sharpe": 0.23, "max_dd": 33.3, "win_rate": 45.7,
+        "verdict": "OVERRIDE",
+        "notes": "Standalone OVERRIDE — confluence input to MWA composite.",
+    },
+    {
+        "strategy": "Pattern Engine: Wyckoff",
+        "timeframe": "1d", "period": "2021-01-01 to 2026-05-13",
+        "universe": "Nifty 500 (483 symbols)", "trades": 383,
+        "cagr": 4.3, "sharpe": 0.17, "max_dd": 37.5, "win_rate": 48.8,
+        "verdict": "OVERRIDE",
+        "notes": "Standalone OVERRIDE — confluence input to MWA composite.",
+    },
+    {
+        "strategy": "Pattern Engine: Harmonic",
+        "timeframe": "1d", "period": "2021-01-01 to 2026-05-13",
+        "universe": "Nifty 500 (483 symbols)", "trades": 314,
+        "cagr": 27.9, "sharpe": 0.78, "max_dd": 14.8, "win_rate": 54.1,
+        "verdict": "TIER_2",
+        "notes": (
+            "TIER_2 standalone! Misses TIER_1 by 0.02 Sharpe (0.78 vs 0.80). "
+            "Highest WinRate (54.1%) and lowest MaxDD (14.8%) of all 4 engines. "
+            "Recommend increasing Harmonic weight in MWA composite from 3.0 to 4.0."
+        ),
+    },
 ]
 
 

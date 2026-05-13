@@ -67,17 +67,52 @@ reduce its weight in the composite score.
 
 ---
 
-## Backtest Results (2021-2026, Nifty 500, step=5)
-
-_To be filled after backtest completes_
+## Backtest Results (2021-2026-05-13, Nifty 500, 483 symbols, step=5)
 
 | Engine | Trades | CAGR | Sharpe | MaxDD | WinRate | Verdict |
 |---|---|---|---|---|---|---|
-| SMC | TBD | TBD | TBD | TBD | TBD | TBD |
-| VSA | TBD | TBD | TBD | TBD | TBD | TBD |
-| Wyckoff | TBD | TBD | TBD | TBD | TBD | TBD |
-| Harmonic | TBD | TBD | TBD | TBD | TBD | TBD |
+| SMC | 410 | +7.5% | 0.21 | 36.6% | 45.4% | **OVERRIDE** |
+| VSA | 398 | +7.6% | 0.23 | 33.3% | 45.7% | **OVERRIDE** |
+| Wyckoff | 383 | +4.3% | 0.17 | 37.5% | 48.8% | **OVERRIDE** |
+| **Harmonic** | **314** | **+27.9%** | **0.78** | **14.8%** | **54.1%** | **TIER_2** |
+
+---
+
+## Key Finding: Harmonic is TIER_2
+
+Harmonic misses TIER_1 by **0.02 Sharpe** (0.78 vs 0.80 gate). All other TIER_1 gates pass:
+- WinRate 54.1% (>= 50%) ✓
+- CAGR +27.9% (>= 20%) ✓
+- MaxDD 14.8% (<= 30%) ✓
+- Trades 314 (>= 30) ✓
+- Sharpe 0.78 (needs 0.80) ✗ — misses by 0.02
+
+**Implications:**
+1. Harmonic is the only engine with standalone positive edge (WinRate > 50%)
+2. It has the lowest MaxDD of all 4 engines (14.8%) — very controlled risk
+3. As a composite input to MWA, it should carry the highest weight of all pattern engines
+4. Consider increasing Harmonic scanner weight in `mcp_server/mwa_scanner.py`
+
+**SMC/VSA/Wyckoff:** All OVERRIDE standalone. Win rates 45-49% show some edge but
+not enough for standalone trading. They contribute real information to the MWA composite
+but should not be traded in isolation.
+
+---
+
+## Weight recommendation for MWA composite
+
+Based on standalone backtest win rates (higher WinRate = more standalone edge = higher weight):
+
+| Engine | WinRate standalone | Current weight | Suggested weight |
+|---|---|---|---|
+| Harmonic | 54.1% | 3.0 | **4.0** (increase) |
+| Wyckoff | 48.8% | 3.0 | 3.0 (keep) |
+| VSA | 45.7% | 3.0 | 2.5 (slight decrease) |
+| SMC | 45.4% | 3.0 | 2.5 (slight decrease) |
+
+_Decision on weight changes: operator's call. Commit changes to `mcp_server/mwa_scanner.py`._
 
 ---
 
 _Criteria committed 2026-05-13, before backtest run._
+_Results filled 2026-05-13, after backtest completed._
