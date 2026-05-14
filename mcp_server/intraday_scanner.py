@@ -416,11 +416,14 @@ def run_scan() -> list[dict[str, Any]]:
         )
         return []
 
-    # Market regime gate: skip LONG-biased scan on bearish Nifty Supertrend days.
-    # Fail-open: if market_direction is unavailable, proceed normally.
+    # Market regime gate: Nifty Supertrend direction controls which side to trade.
+    # Bullish → LONG signals only. Bearish → skip entirely (no SHORT hunting).
+    # Fail-open: if market_direction unavailable, proceed with no filter.
+    _regime_bullish: bool | None = None
     try:
         from mcp_server.market_direction import is_market_bullish
-        if not is_market_bullish():
+        _regime_bullish = is_market_bullish()
+        if not _regime_bullish:
             logger.info("[INTRADAY] Nifty Supertrend bearish — skipping intraday scan")
             return []
     except Exception as _md_err:
@@ -545,9 +548,14 @@ def run_scan() -> list[dict[str, Any]]:
             "source": "intraday",
         })
 
+    # Direction filter: on bullish regime days take LONG only; bearish already
+    # returns [] above so this only applies when _regime_bullish is True.
+    if _regime_bullish:
+        candidates = [c for c in candidates if c["direction"] == "LONG"]
+
     candidates.sort(key=lambda c: (-c["scanner_count"], abs(c["entry"] - c["sl"])))
     logger.info(
-        "[INTRADAY] %d candidates pass RRR>=%.1f (watchlist=%d, scanners=8)",
+        "[INTRADAY] %d candidates pass RRR>=%.1f (watchlist=%d)",
         len(candidates), rrr_floor, len(tickers),
     )
     return candidates[:max_per_day]

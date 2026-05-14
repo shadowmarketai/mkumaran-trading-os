@@ -113,22 +113,25 @@ async def _deliver_intraday_signals(
     try:
         today = _now_ist().date()
 
-        # Deduplicate against OPEN intraday signals from today — an ORB
-        # breakout that re-fires every 5 min should not spam chat.
-        open_keys = {
+        # Deduplicate against ALL intraday signals from today, regardless of
+        # status. Checking OPEN-only caused repeated entries: when AXISBANK
+        # LONG hit SL at 09:50, dedup cleared and the same signal fired again
+        # at 09:53, 09:58, 10:03, … burning capital on the same losing setup.
+        # Rule: one signal per ticker+direction per day, win or lose.
+        sent_keys = {
             (row[0], row[1])
             for row in db.query(Signal.ticker, Signal.direction)
-            .filter(Signal.status == "OPEN", Signal.source == "intraday")
+            .filter(Signal.source == "intraday")
             .filter(Signal.signal_date == today)
             .all()
         }
         fresh = [
             c for c in candidates
-            if (c["ticker"], c["direction"]) not in open_keys
+            if (c["ticker"], c["direction"]) not in sent_keys
         ]
         if not fresh:
             logger.info(
-                "[INTRADAY] %d candidates, all already OPEN today — no delivery",
+                "[INTRADAY] %d candidates, all already sent today — no delivery",
                 len(candidates),
             )
             return
