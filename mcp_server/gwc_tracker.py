@@ -717,6 +717,9 @@ def link_gwc_outcome_from_message(text: str, extracted: dict) -> str:
         except ValueError:
             return ""
 
+        col_entry = header.index("Entry") + 1 if "Entry" in header else 0
+        col_notes = header.index("Notes") + 1 if "Notes" in header else 0
+
         for i, row in enumerate(rows[1:], start=2):
             if len(row) < max(col_date, col_ticker, col_t1, col_t2, col_status) - 1:
                 continue
@@ -736,6 +739,18 @@ def link_gwc_outcome_from_message(text: str, extracted: dict) -> str:
                 matched = "TARGET1"
             elif t2 > 0 and abs(t2 - price) / t2 < 0.02:
                 matched = "TARGET2"
+
+            # Hero zero fallback: no T1/T2 set — match by ticker+date only.
+            # If result price > entry it's a win; if below entry it expired.
+            if not matched and t1 == 0 and t2 == 0 and col_entry:
+                notes_cell = row[col_notes - 1] if col_notes and len(row) >= col_notes else ""
+                if "HERO_ZERO" in notes_cell.upper():
+                    try:
+                        entry = float(row[col_entry - 1]) if row[col_entry - 1] else 0.0
+                    except ValueError:
+                        entry = 0.0
+                    if entry > 0:
+                        matched = "TARGET1" if price > entry else "EXPIRED"
 
             if matched:
                 ticker    = row[col_ticker - 1]

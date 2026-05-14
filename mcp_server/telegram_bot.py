@@ -1341,6 +1341,22 @@ async def handle_gwc_raw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     msg_type, extracted = classify_gwc_message(text)
 
+    # For RESULT messages: first check if there's an embedded signal in the
+    # same forwarded block (e.g. "Buy crude 9600pe @55/40\nTill now 120").
+    # Log that signal to GWC TRACKER so the auto-link has something to match.
+    embedded_sig_logged = False
+    if msg_type == GWCMessageType.RESULT:
+        try:
+            embedded_sig = parse_gwc(text)
+            if embedded_sig is not None and embedded_sig.entry > 0:
+                log_to_sheets(embedded_sig, verdict="", confidence=0,
+                              notes="[embedded in result message]")
+                embedded_sig_logged = True
+                logger.info("GWC embedded signal logged from result message: %s %s",
+                            embedded_sig.ticker, embedded_sig.direction)
+        except Exception:
+            pass
+
     # Auto-link outcomes before logging (so linked_signal is in the log row)
     linked = ""
     if msg_type == GWCMessageType.RESULT:
@@ -1371,16 +1387,17 @@ async def handle_gwc_raw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     elif msg_type == GWCMessageType.RESULT:
         price = extracted.get("price", 0)
         price_str = f"₹{price:.0f}" if price else "?"
+        sig_note = "\n📊 Embedded signal also logged to GWC TRACKER." if embedded_sig_logged else ""
         if linked:
             await update.message.reply_text(
                 f"✅ Result logged ({price_str})\n"
                 f"Auto-linked: {linked}\n"
-                f"GWC TRACKER updated."
+                f"GWC TRACKER updated.{sig_note}"
             )
         else:
             await update.message.reply_text(
-                f"📈 Result logged ({price_str})\n"
-                f"No open signal matched within 2% — check GWC TRACKER manually."
+                f"📈 Result logged ({price_str}){sig_note}\n"
+                f"No open signal matched — check GWC TRACKER manually."
             )
 
     elif msg_type == GWCMessageType.UPDATE:
