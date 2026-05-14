@@ -1336,6 +1336,7 @@ async def handle_gwc_raw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
     except Exception as imp_err:
         logger.warning("GWC tracker import failed: %s", imp_err)
+        await update.message.reply_text(f"❌ GWC tracker error: {imp_err}")
         return
 
     msg_type, extracted = classify_gwc_message(text)
@@ -1397,13 +1398,13 @@ async def handle_gwc_raw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
     elif msg_type == GWCMessageType.NEWS:
-        # Silent log — no reply to avoid spamming
-        pass
+        await update.message.reply_text("📰 News logged to GWC LOG.")
 
     else:  # COMMENTARY
-        # Only reply when it's expiry-day context — worth noting
         if re.search(r'\b(?:EXPIRY|EXPIRE[DS]?|OPTION\s+DAY|LAST\s+(?:HOUR|DAY))\b', text.upper()):
             await update.message.reply_text("📅 Expiry note logged to GWC LOG.")
+        else:
+            await update.message.reply_text("💬 Commentary logged to GWC LOG.")
 
 
 async def cmd_gwc_learn(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
