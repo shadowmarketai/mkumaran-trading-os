@@ -43,13 +43,18 @@ _CACHE_TTL_HOURS                     = 23
 def _fetch_nifty_daily(lookback_days: int = 220) -> "Optional[pd.DataFrame]":
     """Download Nifty 50 daily OHLCV via yfinance."""
     try:
+        import pandas as pd
         import yfinance as yf
         period = f"{min(lookback_days, 365)}d"
         df = yf.download("^NSEI", period=period, interval="1d",
                          progress=False, auto_adjust=True)
         if df.empty:
             return None
-        df.columns = [str(c).lower() for c in df.columns]
+        # yfinance >= 0.2.x returns MultiIndex columns (metric, ticker) for
+        # single-ticker downloads. Flatten to bare metric names.
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.droplevel(1)
+        df.columns = [c.lower() for c in df.columns]
         return df
     except Exception as exc:
         logger.warning("Nifty daily fetch failed: %s", exc)
