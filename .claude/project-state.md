@@ -122,8 +122,8 @@ Ordered by priority.
 
 - [x] ~~CRITICAL — Rotate prod DB password~~ — Done 2026-05-13 (new password set)
 - [ ] **IMMEDIATE** — Run `python scripts/backfill_backtest_results_to_sheets.py` on prod to populate BACKTEST RESULTS tab
-- [ ] **IMMEDIATE** — Run `python scripts/validate_intraday_scanners.py` on prod (needs Dhan 1-min access; Coolify only). Results feed INTRADAY_VALIDATED_SCANNERS env var.
-- [ ] **After intraday backtest** — Set `INTRADAY_VALIDATED_SCANNERS` in .env for TIER_1/TIER_2 scanners; set `UNVALIDATED_SIGNAL_DISCLAIMER=""` for validated ones. OVERRIDE scanners → disable from standalone emission.
+- [x] ~~Run `python scripts/validate_intraday_scanners.py`~~ — Done 2026-05-14. All 8 scanners = OVERRIDE. See decisions log.
+- [ ] **LOW** — Investigate 4 zero-trade scanners (vwap_ema, ema_cross, supertrend, rsi_rev). Supertrend/RSI-rev need cross-day 15m warmup bars; ema_cross/vwap_ema conditions very strict. Revisit after fixing 15m accumulation in the backtest replay.
 - [ ] **May 14** — Wednesday strangle check: VIX below 80th pct? → strangle auto-emits
 - [ ] **May 14** — Verify BANKNIFTY chain works during market hours
 - [ ] **May 23** — Run `python scripts/track_options_signals.py` (10 days of options forward data)
@@ -168,6 +168,7 @@ Last ~15 closed, newest first.
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-05-14 | All 8 intraday scanners = OVERRIDE — INTRADAY_SIGNALS_ENABLED effectively disabled | 90-day Dhan 1-min backtest (Nifty 50): ORB 3.2% WR, VWAP 5.9%, Momentum 5.3%, Prev-day-HL 0.0% (zero targets hit), vwap_ema/ema_cross/supertrend/rsi_rev = 0 trades. Root cause: RRR 2× targets too far for intraday NSE — stocks rarely move 2× SL distance in one session. Code gate added: INTRADAY_VALIDATED_SCANNERS must be non-empty for any signal to emit. Re-run backtest after redesigning scanner exit logic (lower RRR, or trailing stop). |
 | 2026-04-29 | Options-selling hypothesis closed after 4 test arms | Weekly + monthly BankNifty, with + without VIX gate. All TIER 4 or OVERRIDE. Pre-committed criteria honored throughout. VIX gate is load-bearing (19.5pp weekly delta) but qualifying frequency too low in 2023-2026 low-vol era. No iteration. |
 | 2026-04-24 | PR #11 merged as a **merge commit**, PRs #12 + #13 **squashed** | Merge commit on PR #11 preserves the phased commits (money helpers → RRMS → monitor → backtester fix) so `git bisect` stays useful if a paper-mode regression surfaces. Single-commit / thematic PRs (#12, #13) squash to one tidy main-history entry each. |
 | 2026-04-24 | Relax brittle test assertions to lower-bounds / invariants rather than sync to current exact values | Scanner and signal-chain catalogs grow additively over time. Exact-count tests broke every time the catalog grew; `>= baseline` converts that into a one-way ratchet that only triggers on regressions. Same philosophy applied to mwa_scoring direction labels (assert bull dominates bear rather than a specific label that depends on the denominator). |

@@ -240,7 +240,12 @@ class Settings:
 
     # Intraday signals (ORB, VWAP, 5m momentum) — separate pipeline from MWA
     # daily-swing. Default false so turning this on is an explicit opt-in.
+    # IMPORTANT: run scripts/validate_intraday_scanners.py first. run_scan()
+    # will emit nothing unless at least one scanner appears in
+    # INTRADAY_VALIDATED_SCANNERS (i.e. reached TIER_1 or TIER_2 in backtest).
+    # 2026-05-14 backtest: all 8 scanners = OVERRIDE — keep this empty.
     INTRADAY_SIGNALS_ENABLED: bool = os.getenv("INTRADAY_SIGNALS_ENABLED", "false").lower() == "true"
+    INTRADAY_VALIDATED_SCANNERS: str = os.getenv("INTRADAY_VALIDATED_SCANNERS", "")  # empty = none validated
     INTRADAY_WATCHLIST: str = os.getenv("INTRADAY_WATCHLIST", "")  # empty → scanner's built-in 30-ticker default
     INTRADAY_SCAN_INTERVAL_SEC: int = int(os.getenv("INTRADAY_SCAN_INTERVAL_SEC", "300"))
     INTRADAY_MAX_SIGNALS_PER_DAY: int = int(os.getenv("INTRADAY_MAX_SIGNALS_PER_DAY", "5"))

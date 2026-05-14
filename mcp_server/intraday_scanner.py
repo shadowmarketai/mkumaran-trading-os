@@ -345,16 +345,18 @@ def scan_ema_crossover_mtf(
 
 
 # ── Scanner registry ────────────────────────────────────────────
-# Each entry: (function, needs_5m, needs_15m)
-SCANNERS: list[tuple[Any, bool, bool]] = [
-    (scan_orb, True, False),
-    (scan_vwap, True, False),
-    (scan_momentum, True, False),
-    (scan_prev_day_hl, True, False),
-    (scan_vwap_ema_confluence, True, False),
-    (scan_ema_crossover_mtf, True, True),   # MTF: 5m signal + 15m confirmation
-    (scan_supertrend_15m, False, True),      # 15m only
-    (scan_rsi_reversal_15m, False, True),    # 15m only
+# Each entry: (key, function, needs_5m, needs_15m)
+# key must match the name used in validate_intraday_scanners.py
+# and in INTRADAY_VALIDATED_SCANNERS env var.
+SCANNERS: list[tuple[str, Any, bool, bool]] = [
+    ("orb",         scan_orb,                True,  False),
+    ("vwap",        scan_vwap,               True,  False),
+    ("momentum",    scan_momentum,            True,  False),
+    ("prev_day_hl", scan_prev_day_hl,         True,  False),
+    ("vwap_ema",    scan_vwap_ema_confluence, True,  False),
+    ("ema_cross",   scan_ema_crossover_mtf,   True,  True),   # MTF: 5m + 15m confirmation
+    ("supertrend",  scan_supertrend_15m,      False, True),   # 15m only
+    ("rsi_rev",     scan_rsi_reversal_15m,    False, True),   # 15m only
 ]
 
 
@@ -362,8 +364,22 @@ SCANNERS: list[tuple[Any, bool, bool]] = [
 
 def run_scan() -> list[dict[str, Any]]:
     """Run all intraday scanners across the watchlist using both 5m and 15m
-    OHLCV. Returns candidate signal dicts with RRR >= floor enforced."""
+    OHLCV. Returns candidate signal dicts with RRR >= floor enforced.
+
+    Requires INTRADAY_VALIDATED_SCANNERS to be non-empty — at least one scanner
+    must have reached TIER_1 or TIER_2 in validate_intraday_scanners.py before
+    any signals are emitted. This enforces backtest-first discipline.
+    """
     if not getattr(settings, "INTRADAY_SIGNALS_ENABLED", False):
+        return []
+
+    validated_raw = getattr(settings, "INTRADAY_VALIDATED_SCANNERS", "")
+    validated_set: set[str] = {s.strip() for s in validated_raw.split(",") if s.strip()}
+    if not validated_set:
+        logger.warning(
+            "[INTRADAY] INTRADAY_SIGNALS_ENABLED=true but INTRADAY_VALIDATED_SCANNERS is empty. "
+            "Run scripts/validate_intraday_scanners.py first. No signals emitted."
+        )
         return []
 
     now = now_ist()
@@ -417,7 +433,9 @@ def run_scan() -> list[dict[str, Any]]:
                 pass
 
         hits: list[dict[str, Any]] = []
-        for scanner_fn, needs_5m, needs_15m in SCANNERS:
+        for scanner_key, scanner_fn, needs_5m, needs_15m in SCANNERS:
+            if scanner_key not in validated_set:
+                continue  # skip scanners not yet validated via backtest
             if needs_5m and (df5 is None or df5.empty):
                 continue
             if needs_15m and (df15 is None or df15.empty):
@@ -432,7 +450,7 @@ def run_scan() -> list[dict[str, Any]]:
             except Exception as scan_err:
                 logger.debug(
                     "Scanner %s failed for %s: %s",
-                    scanner_fn.__name__, ticker, scan_err,
+                    scanner_key, ticker, scan_err,
                 )
                 hit = None
             if hit:
