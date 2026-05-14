@@ -1390,7 +1390,7 @@ async def handle_gwc_raw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     elif msg_type == GWCMessageType.MARKET_CALL:
         levels = extracted.get("levels", [])
-        level_str = " / ".join(f"₹{int(l):,}" for l in levels) if levels else "—"
+        level_str = " / ".join(f"₹{int(lv):,}" for lv in levels) if levels else "—"
         await update.message.reply_text(
             f"🔭 Market call logged.\n"
             f"Key levels: {level_str}\n"

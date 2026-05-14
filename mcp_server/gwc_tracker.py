@@ -661,7 +661,7 @@ def log_raw_to_sheets(
         price     = extracted.get("price", "")
         levels    = extracted.get("levels", [])
         key_nums  = (str(price) if price
-                     else ", ".join(str(int(l)) for l in levels) if levels
+                     else ", ".join(str(int(lv)) for lv in levels) if levels
                      else "")
 
         row = [
