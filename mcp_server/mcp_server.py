@@ -1332,6 +1332,7 @@ AUTH_PUBLIC_PATHS = {
     "/openapi.json", "/redoc",
     "/api/tv_webhook", "/api/telegram_webhook",
     "/api/kite_callback", "/api/kite_login_url",
+    "/api/gwc/signal",
     "/api/gwc_callback", "/api/gwc_login_url",
     "/tools/connect_angel", "/tools/refresh_angel_token",
     "/tools/connect_gwc", "/tools/refresh_gwc_token",
@@ -2984,6 +2985,63 @@ def _fetch_market_movers() -> dict:
 # ============================================================
 # Self-Development System — API endpoints
 # ============================================================
+
+
+# ============================================================
+# GWC Signal Tracker — external signal intake endpoint
+# ============================================================
+
+@app.post("/api/gwc/signal")
+async def gwc_signal_intake(request: Request):
+    """
+    Receive a GWC (Goodwill) WhatsApp signal via HTTP POST.
+    Used by the n8n WhatsApp webhook workflow or any external caller.
+
+    Body: {"text": "<raw signal text>", "source": "whatsapp"}
+    Returns: {"verdict", "confidence", "rrr", "ticker", "logged"}
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+
+    text = (body.get("text") or "").strip()
+    if not text:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "text is required"}, status_code=400)
+
+    try:
+        from mcp_server.gwc_tracker import parse_gwc, validate_gwc_signal, log_to_sheets
+        sig = parse_gwc(text)
+        if sig is None:
+            return {"parsed": False, "message": "Not a tradeable signal (commentary ignored)"}
+
+        validation = validate_gwc_signal(sig)
+        logged = log_to_sheets(
+            sig,
+            verdict=validation.get("verdict", ""),
+            confidence=validation.get("confidence", 0),
+            notes=f"via {body.get('source', 'api')} | {text[:80]}",
+        )
+        return {
+            "parsed":     True,
+            "ticker":     sig.ticker,
+            "direction":  sig.direction,
+            "entry":      sig.entry,
+            "sl":         sig.sl,
+            "target1":    sig.target1,
+            "target2":    sig.target2,
+            "rrr":        sig.rrr,
+            "verdict":    validation.get("verdict"),
+            "confidence": validation.get("confidence"),
+            "reasoning":  validation.get("reasoning", "")[:300],
+            "logged":     logged,
+        }
+    except Exception as exc:
+        logger.error("GWC signal intake error: %s", exc)
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 # ============================================================

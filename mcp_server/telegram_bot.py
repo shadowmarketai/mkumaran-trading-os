@@ -885,6 +885,66 @@ async def cmd_signal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text(report)
 
 
+async def cmd_gwc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /gwc — parse a Goodwill WhatsApp signal, validate, and log to tracker.
+
+    Usage:
+      /gwc Buy nifty 23600ce @ 150 add more 130 sl 120 target 175 & 200
+      /gwc ALERT : LT 4000 CE BUY AROUNDD 52/50 TRG 64/83 STOP@38
+      /gwc Buy Sensex 74500pe @ 110 sl 30 target 185 & 250 Exit @cost
+    """
+    if not context.args:
+        await update.message.reply_text(
+            "📲 GWC Signal Tracker\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "Paste any Goodwill WhatsApp signal:\n\n"
+            "/gwc Buy nifty 23600ce @150 sl 120 target 175 & 200\n"
+            "/gwc ALERT: LT 4000CE BUY 52 TRG 83 STOP@38\n\n"
+            "The bot will:\n"
+            "1️⃣ Parse ticker, entry, SL, targets, add-more\n"
+            "2️⃣ Run 4-agent debate validator\n"
+            "3️⃣ Log to GWC TRACKER Google Sheet\n"
+            "4️⃣ Return TAKE / SKIP / REVIEW verdict"
+        )
+        return
+
+    signal_text = " ".join(context.args)
+    await update.message.reply_text("⏳ Parsing and validating GWC signal...")
+
+    try:
+        from mcp_server.gwc_tracker import parse_gwc, validate_gwc_signal, log_to_sheets, format_gwc_reply
+    except Exception as imp_err:
+        await update.message.reply_text(f"❌ Import error: {imp_err}")
+        return
+
+    sig = parse_gwc(signal_text)
+    if sig is None:
+        await update.message.reply_text(
+            "❌ Could not parse this as a tradeable signal.\n\n"
+            "Make sure the message contains:\n"
+            "• Direction (BUY/SELL)\n"
+            "• Ticker or option (e.g. nifty 23600ce)\n"
+            "• SL and target prices\n\n"
+            "Commentary lines like 'NIFTY CAN HIT 23430' are ignored."
+        )
+        return
+
+    # Run debate validation
+    validation = validate_gwc_signal(sig)
+
+    # Log to Sheets
+    log_to_sheets(
+        sig,
+        verdict=validation.get("verdict", ""),
+        confidence=validation.get("confidence", 0),
+        notes=signal_text[:100],
+    )
+
+    # Reply with formatted card
+    reply = format_gwc_reply(sig, validation)
+    await update.message.reply_text(reply)
+
+
 async def send_telegram_message(
     text: str,
     exchange: str = "NSE",
@@ -1119,6 +1179,7 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("close", cmd_close))
     app.add_handler(CommandHandler("analyze", cmd_analyze))
     app.add_handler(CommandHandler("signal", cmd_signal))
+    app.add_handler(CommandHandler("gwc", cmd_gwc))
     app.add_handler(CallbackQueryHandler(handle_take_skip_callback, pattern=r"^(take|skip):"))
 
     # SaaS multi-user commands
