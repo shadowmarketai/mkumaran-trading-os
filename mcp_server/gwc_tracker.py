@@ -52,11 +52,46 @@ class GWCSignal:
     rrr:        float        = 0.0
     cost_exit:  bool         = False    # "Exit @cost" flag
     hero_zero:  bool         = False    # binary trade: no SL, all-or-nothing
+    sl_auto:    bool         = False    # SL was computed by system, not given by GWC
+    sl_method:  str          = ""      # how auto-SL was derived
     is_option:  bool         = False
     underlying: str          = ""
     strike:     float        = 0.0
     opt_type:   str          = ""       # CE / PE
     notes:      str          = ""
+
+
+def _auto_sl(sig: "GWCSignal") -> tuple[float, str]:
+    """
+    Compute a system-derived SL when GWC doesn't provide one.
+
+    Priority:
+      1. Target known → back-calculate SL for RRR 1.5  (preserves upside)
+      2. Option, no target → 50% of entry premium      (standard options rule)
+      3. Equity/futures → 2% of entry price            (tight equity default)
+
+    Returns (sl_price, method_label).
+    """
+    if sig.entry <= 0:
+        return 0.0, ""
+
+    best_target = sig.target2 if sig.target2 > 0 else sig.target1
+
+    if best_target > 0:
+        reward = abs(best_target - sig.entry)
+        risk   = reward / 1.5           # RRR 1.5
+        if sig.direction == "BUY":
+            sl = max(sig.entry - risk, 1.0)
+        else:
+            sl = sig.entry + risk
+        return round(sl, 1), "system (RRR 1.5 from target)"
+
+    if sig.is_option:
+        sl = max(sig.entry * 0.50, 1.0)
+        return round(sl, 1), "system (50% premium rule)"
+
+    sl = round(sig.entry * 0.98, 2)
+    return sl, "system (2% entry rule)"
 
 
 def _num(text: str, pattern: str) -> float:
@@ -239,6 +274,14 @@ def parse_gwc(text: str) -> Optional[GWCSignal]:
     if re.search(r'EXIT\s*@?\s*COST', upper):
         sig.cost_exit = True
 
+    # Auto-SL: if GWC didn't provide one, derive it from the system rules
+    if sig.sl == 0 and sig.entry > 0:
+        auto_sl, auto_method = _auto_sl(sig)
+        if auto_sl > 0:
+            sig.sl        = auto_sl
+            sig.sl_auto   = True
+            sig.sl_method = auto_method
+
     # RRR — only compute when we have valid entry + SL + at least one target
     best_target = sig.target2 if sig.target2 > 0 else sig.target1
     if sig.entry > 0 and sig.sl > 0 and best_target > 0:
@@ -271,8 +314,9 @@ def log_to_sheets(
         )
 
         t2_str    = str(sig.target2) if sig.target2 > 0 else ""
-        cost_note = " | EXIT@COST" if sig.cost_exit else ""
-        hero_note = " | HERO_ZERO" if sig.hero_zero else ""
+        cost_note  = " | EXIT@COST" if sig.cost_exit else ""
+        hero_note  = " | HERO_ZERO" if sig.hero_zero else ""
+        auto_note  = f" | SL:{sig.sl_method}" if sig.sl_auto else ""
         row = [
             sig.date,
             sig.time,
@@ -290,7 +334,7 @@ def log_to_sheets(
             "OPEN",
             "",   # exit price — filled when outcome known
             "",   # P&L %
-            notes + cost_note + hero_note,
+            notes + cost_note + hero_note + auto_note,
         ]
         ws.append_row(row)
         logger.info("GWC signal logged: %s %s entry=%.2f", sig.ticker, sig.direction, sig.entry)
@@ -436,18 +480,21 @@ def format_gwc_reply(sig: GWCSignal, validation: dict) -> str:
     t2_line  = f" | T2: ₹{sig.target2:.1f}" if sig.target2 > 0 else ""
     add_line = f"\nAdd More: ₹{sig.add_more:.1f}" if sig.add_more > 0 else ""
     cost_line = "\n⚠️ Exit @Cost protection advised" if sig.cost_exit else ""
-    sl_str   = f"₹{sig.sl:.1f}" if sig.sl > 0 else "₹— (missing)"
+    if sig.sl > 0 and sig.sl_auto:
+        sl_str = f"₹{sig.sl:.1f} 🤖 ({sig.sl_method})"
+    elif sig.sl > 0:
+        sl_str = f"₹{sig.sl:.1f}"
+    else:
+        sl_str = "₹— (missing)"
     t1_str   = f"₹{sig.target1:.1f}" if sig.target1 > 0 else "₹—"
     rrr_str  = f"{sig.rrr:.2f} {rrr_flag}" if sig.rrr > 0 else f"— {rrr_flag}"
 
-    # Warn when critical fields are absent (suppress SL warning for Hero Zero)
+    # Warn only when critical fields are genuinely absent
     warnings: list[str] = []
     if sig.entry == 0:
         warnings.append("⚠️ Entry price not found — resend with @ price")
-    if sig.sl == 0 and not sig.hero_zero:
-        warnings.append("⚠️ SL not found — add 'SL X' to the signal")
     if sig.target1 == 0:
-        warnings.append("⚠️ Target not found — add 'TGT X' to the signal")
+        warnings.append("ℹ️ No target in signal — add TGT X for better RRR")
 
     hero_line = "\n🎲 HERO ZERO — binary trade (no SL, expires worthless or wins big)" if sig.hero_zero else ""
 
