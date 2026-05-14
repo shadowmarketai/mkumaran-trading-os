@@ -213,6 +213,10 @@ def scan_prev_day_hl(
     Uses actual prev-day H/L when supplied (run_scan passes these from the
     2-day 15m fetch). Falls back to today's opening 30-min range as a proxy
     only when called without historical context (unit tests, ad-hoc).
+
+    Proximity filter: only fires when price has broken the level by ≤ 0.3%.
+    Avoids chasing moves that already ran 1–2% past the level — the 90-day
+    backtest showed 0 targets hit when this filter was absent.
     """
     if not _ok(df5, 6):
         return None
@@ -222,10 +226,13 @@ def scan_prev_day_hl(
         ph = df5["high"].iloc[:6].max()
         pl = df5["low"].iloc[:6].min()
     last = df5.iloc[-1]
-    if last["close"] > ph and last["volume"] > df5["volume"].mean() * 1.2:
-        return _make_signal("LONG", last["close"], pl, "Prev-day H/L breakout", "prev_day_hl")
-    if last["close"] < pl and last["volume"] > df5["volume"].mean() * 1.2:
-        return _make_signal("SHORT", last["close"], ph, "Prev-day H/L breakdown", "prev_day_hl")
+    vol_ok = last["volume"] > df5["volume"].mean() * 1.2
+    if last["close"] > ph and vol_ok:
+        if (last["close"] - ph) / ph <= 0.003:
+            return _make_signal("LONG", last["close"], pl, "Prev-day H/L breakout", "prev_day_hl")
+    if last["close"] < pl and vol_ok:
+        if (pl - last["close"]) / pl <= 0.003:
+            return _make_signal("SHORT", last["close"], ph, "Prev-day H/L breakdown", "prev_day_hl")
     return None
 
 

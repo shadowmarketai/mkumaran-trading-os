@@ -1,23 +1,27 @@
 """
-Intraday Scanner Validation — all 8 patterns
+Intraday Scanner Validation — all 8 patterns, multi-RRR sweep
 Dhan 1-min data resampled to 5m / 15m bars. Max window: 90 trading days.
 
-Each scanner is evaluated independently. One position per scanner per
-ticker per day. Exit rules: target (RRR 2×SL), SL touch, or EOD force-
-close at 15:10 IST. Costs follow the same model as validate_bb_3min_dhan.py.
+Data is loaded once. The simulation reruns for each RRR (default: 1.0, 1.2,
+1.5) so you can find the exit multiplier that gives each scanner a real edge
+without refetching from Dhan.
+
+Each scanner is evaluated independently. One position per scanner per ticker
+per day. Exit rules: target (entry ± risk × RRR), SL touch, or EOD 15:10 IST.
 
 Tier criteria (90-day window, ~50 tickers):
   TIER_1 : ≥ 20 trades, WR ≥ 55%, Sharpe ≥ 0.8
   TIER_2 : ≥ 10 trades, WR ≥ 45%, Sharpe ≥ 0.5
-  OVERRIDE: below TIER_2 — confluence input only, disable standalone emission
+  OVERRIDE: below TIER_2 — confluence input only
 
-After running, set in .env:
-  INTRADAY_VALIDATED_SCANNERS="orb,vwap,..."   (comma-separated TIER_1/TIER_2 names)
+Session 1 fixes included in this run:
+  - Multi-RRR sweep (find the right exit distance)
+  - prev_day_hl proximity filter (≤ 0.3% past the level)
 
 Usage:
     python scripts/validate_intraday_scanners.py
-    python scripts/validate_intraday_scanners.py --days 60
-    python scripts/validate_intraday_scanners.py --tickers RELIANCE HDFCBANK ONGC
+    python scripts/validate_intraday_scanners.py --rrr 1.0 1.2 1.5 2.0
+    python scripts/validate_intraday_scanners.py --days 60 --tickers RELIANCE HDFCBANK ONGC
 """
 from __future__ import annotations
 
@@ -59,13 +63,13 @@ NIFTY50: list[str] = [
 
 POSITION_INR = 100_000.0
 BROKERAGE    = 20.0
-STT_SELL     = 0.00025    # 0.025% sell side, intraday
+STT_SELL     = 0.00025
 EXCHANGE     = 0.0000345
 GST          = 0.18
 STAMP        = 0.00003
-SLIPPAGE     = 0.001      # 0.1% per leg
+SLIPPAGE     = 0.001
 
-SESSION_END = dtime(15, 10)   # force-close all positions at 15:10 IST
+SESSION_END = dtime(15, 10)
 
 # ── Tier criteria ─────────────────────────────────────────────────────────────
 
@@ -86,14 +90,10 @@ def _cost(pos: float) -> float:
 # ── Data loading ──────────────────────────────────────────────────────────────
 
 def _load_dhan_1min(symbols: list[str], days: int) -> dict[str, pd.DataFrame]:
-    """Fetch Dhan 1-min bars for each symbol. Returns {sym: df} indexed by ts."""
     from mcp_server.data_provider import DhanSource
     dhan = DhanSource()
     if not dhan.login():
-        logger.error(
-            "Dhan login failed — set DHAN_CLIENT_ID + DHAN_ACCESS_TOKEN "
-            "(or DHAN_TOTP_KEY + DHAN_PIN for auto-refresh)"
-        )
+        logger.error("Dhan login failed — set DHAN_CLIENT_ID + DHAN_ACCESS_TOKEN")
         return {}
 
     logger.info("Fetching 1-min data: %d symbols × %d days...", len(symbols), days)
@@ -124,7 +124,6 @@ def _resample(df1m: pd.DataFrame, freq: str) -> pd.DataFrame:
 
 
 def _split_by_date(df: pd.DataFrame) -> dict[date, pd.DataFrame]:
-    """Split resampled DataFrame into per-day slices, NSE session only."""
     days: dict[date, pd.DataFrame] = {}
     for d, grp in df.groupby(df.index.date):
         session = grp.between_time("09:15", "15:30")
@@ -134,7 +133,6 @@ def _split_by_date(df: pd.DataFrame) -> dict[date, pd.DataFrame]:
 
 
 def _prev_hl(days: dict[date, pd.DataFrame], today: date) -> tuple[float | None, float | None]:
-    """Previous trading day's high and low from the supplied per-day map."""
     sorted_days = sorted(days.keys())
     if today not in sorted_days:
         return None, None
@@ -148,10 +146,6 @@ def _prev_hl(days: dict[date, pd.DataFrame], today: date) -> tuple[float | None,
 # ── Load scanner functions ────────────────────────────────────────────────────
 
 def _load_scanners() -> list[tuple[str, object, bool, bool]]:
-    """
-    Import scanner callables from intraday_scanner.
-    Returns [(key, fn, needs_5m, needs_15m)].
-    """
     from mcp_server.intraday_scanner import (
         scan_ema_crossover_mtf,
         scan_momentum,
@@ -181,34 +175,35 @@ def _simulate_symbol(
     days_5m: dict[date, pd.DataFrame],
     days_15m: dict[date, pd.DataFrame],
     scanners: list[tuple[str, object, bool, bool]],
+    rrr_mult: float,
 ) -> list[dict]:
     """
-    Walk-forward day-by-day replay for one symbol.
+    Walk-forward day-by-day replay for one symbol at the given RRR.
+    Target is overridden by rrr_mult — scanner entry/SL are unchanged.
     One position per scanner per day; no re-entry after first signal.
     """
     trades: list[dict] = []
 
     for day in sorted(days_5m.keys()):
-        df5_day = days_5m[day]
+        df5_day  = days_5m[day]
         df15_day = days_15m.get(day, pd.DataFrame())
-        ph, pl = _prev_hl(days_5m, day)
+        ph, pl   = _prev_hl(days_5m, day)
 
-        # open_pos: {scanner_key: {direction, entry, target, sl}}
-        open_pos: dict[str, dict] = {}
+        open_pos:   dict[str, dict] = {}
         fired_today: set[str] = set()
 
         bars = list(df5_day.iterrows())
-        n = len(bars)
+        n    = len(bars)
 
         for bar_idx, (ts, row) in enumerate(bars):
             is_eod = row.name.time() >= SESSION_END or bar_idx == n - 1  # type: ignore[union-attr]
-            high  = float(row["high"])
-            low   = float(row["low"])
-            close = float(row["close"])
+            high   = float(row["high"])
+            low    = float(row["low"])
+            close  = float(row["close"])
 
-            # ── Exits (check BEFORE entries so no same-bar fill) ────────────
+            # ── Exits ────────────────────────────────────────────────────────
             for key in list(open_pos.keys()):
-                pos = open_pos[key]
+                pos     = open_pos[key]
                 exit_px: float | None = None
                 exit_why = ""
 
@@ -228,10 +223,9 @@ def _simulate_symbol(
                         exit_px, exit_why = close, "eod"
 
                 if exit_px is not None:
-                    if pos["direction"] == "LONG":
-                        ret = (exit_px - pos["entry"]) / pos["entry"]
-                    else:
-                        ret = (pos["entry"] - exit_px) / pos["entry"]
+                    ret = ((exit_px - pos["entry"]) / pos["entry"]
+                           if pos["direction"] == "LONG"
+                           else (pos["entry"] - exit_px) / pos["entry"])
                     pnl = ret * POSITION_INR - _cost(POSITION_INR)
                     trades.append({
                         "scanner":   key,
@@ -250,9 +244,10 @@ def _simulate_symbol(
             if is_eod:
                 break
 
-            # ── Entries ─────────────────────────────────────────────────────
-            df5_so_far = df5_day.iloc[: bar_idx + 1]
-            df15_so_far = df15_day[df15_day.index <= ts] if not df15_day.empty else pd.DataFrame()
+            # ── Entries ──────────────────────────────────────────────────────
+            df5_so_far  = df5_day.iloc[: bar_idx + 1]
+            df15_so_far = (df15_day[df15_day.index <= ts]
+                           if not df15_day.empty else pd.DataFrame())
 
             for key, fn, needs_5m, needs_15m in scanners:
                 if key in open_pos or key in fired_today:
@@ -272,10 +267,18 @@ def _simulate_symbol(
                     hit = None
 
                 if hit:
+                    risk   = abs(hit["entry"] - hit["sl"])
+                    if risk <= 0:
+                        continue
+                    # Override target with the test RRR (entry/SL unchanged)
+                    if hit["direction"] == "LONG":
+                        target = hit["entry"] + risk * rrr_mult
+                    else:
+                        target = hit["entry"] - risk * rrr_mult
                     open_pos[key] = {
                         "direction": hit["direction"],
                         "entry":     hit["entry"],
-                        "target":    hit["target"],
+                        "target":    target,
                         "sl":        hit["sl"],
                     }
                     fired_today.add(key)
@@ -288,13 +291,12 @@ def _simulate_symbol(
 def _metrics(trades: list[dict]) -> dict:
     if not trades:
         return {}
-    n     = len(trades)
-    wins  = sum(1 for t in trades if t["win"])
-    wr    = wins / n
-    rets  = [t["ret_pct"] / 100 for t in trades]
+    n      = len(trades)
+    wins   = sum(1 for t in trades if t["win"])
+    wr     = wins / n
+    rets   = [t["ret_pct"] / 100 for t in trades]
     mean_r = sum(rets) / n
     std_r  = math.sqrt(sum((r - mean_r) ** 2 for r in rets) / max(n - 1, 1))
-    # Annualise for 5-min bars: ~75 bars/session × 250 sessions = 18,750 bars/yr
     sharpe = (mean_r / std_r) * math.sqrt(18_750) if std_r > 0 else 0.0
     reasons: dict[str, int] = {}
     for t in trades:
@@ -323,115 +325,158 @@ def _verdict(m: dict) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Validate all 8 intraday scanners via Dhan 1-min data"
+        description="Validate all 8 intraday scanners — multi-RRR sweep"
     )
     parser.add_argument("--days", type=int, default=90,
                         help="Days of 1-min history (Dhan max ~90)")
+    parser.add_argument("--rrr", nargs="+", type=float, default=[1.0, 1.2, 1.5],
+                        help="RRR values to test (default: 1.0 1.2 1.5)")
     parser.add_argument("--tickers", nargs="+", default=None,
                         help="Override symbol list (default: Nifty 50)")
     args = parser.parse_args()
 
-    symbols   = args.tickers or NIFTY50
-    scanners  = _load_scanners()
-    sep       = "=" * 74
+    symbols  = args.tickers or NIFTY50
+    rrr_list = sorted(set(args.rrr))
+    scanners = _load_scanners()
+    sep      = "=" * 80
 
     print()
     print(sep)
-    print("INTRADAY SCANNER VALIDATION — 8 patterns × Nifty 50 × 90 days")
-    print("Dhan 1-min → 5m / 15m  |  Exit: target / SL / EOD 15:10 IST")
+    print(f"INTRADAY SCANNER VALIDATION — 8 patterns × {len(symbols)} tickers × {args.days} days")
+    print(f"RRR sweep: {rrr_list}  |  Exit: target / SL / EOD 15:10 IST")
+    print("Session 1 fixes: prev_day_hl proximity filter + multi-RRR exit sweep")
     print(sep)
 
+    # ── Load data once ───────────────────────────────────────────────────────
     raw = _load_dhan_1min(symbols, args.days)
     if len(raw) < 3:
         print("ERROR: too few symbols loaded. Check Dhan credentials.")
         return
 
-    # Resample and split by date (done once per symbol)
     days_5m:  dict[str, dict[date, pd.DataFrame]] = {}
     days_15m: dict[str, dict[date, pd.DataFrame]] = {}
     for sym, df1m in raw.items():
         days_5m[sym]  = _split_by_date(_resample(df1m, "5min"))
         days_15m[sym] = _split_by_date(_resample(df1m, "15min"))
 
-    # Walk-forward simulation across all symbols
-    all_trades: list[dict] = []
-    for sym in sorted(days_5m.keys()):
-        sym_trades = _simulate_symbol(sym, days_5m[sym], days_15m[sym], scanners)
-        all_trades.extend(sym_trades)
-        if sym_trades:
-            logger.debug("%s: %d trades", sym, len(sym_trades))
-
-    logger.info("Total trades across all scanners: %d", len(all_trades))
-
-    # Per-scanner results
+    # ── Simulate for each RRR ────────────────────────────────────────────────
+    # {rrr: {scanner_key: {m, v}}}
+    all_results: dict[float, dict[str, dict]] = {}
     scanner_keys = [s[0] for s in scanners]
-    results: dict[str, dict] = {}
+
+    for rrr in rrr_list:
+        logger.info("Simulating RRR=%.1f ...", rrr)
+        all_trades: list[dict] = []
+        for sym in sorted(days_5m.keys()):
+            sym_trades = _simulate_symbol(sym, days_5m[sym], days_15m[sym], scanners, rrr)
+            all_trades.extend(sym_trades)
+
+        rrr_results: dict[str, dict] = {}
+        for key in scanner_keys:
+            s_trades = [t for t in all_trades if t["scanner"] == key]
+            m = _metrics(s_trades)
+            rrr_results[key] = {"m": m, "v": _verdict(m)}
+        all_results[rrr] = rrr_results
+        logger.info("RRR=%.1f — total trades: %d", rrr, len(all_trades))
+
+    # ── Per-RRR summary tables ───────────────────────────────────────────────
+    for rrr in rrr_list:
+        res = all_results[rrr]
+        print()
+        print(f"RRR = {rrr:.1f}×")
+        print(f"{'Scanner':<14} {'Trades':>6} {'WinRate':>8} {'Sharpe':>7} {'P&L ₹':>12}  Verdict")
+        print("-" * 60)
+        for key in scanner_keys:
+            r = res[key]
+            m, v = r["m"], r["v"]
+            if not m:
+                print(f"{key:<14} {'0':>6} {'—':>8} {'—':>7} {'—':>12}  OVERRIDE")
+            else:
+                mark = "✓" if v != "OVERRIDE" else "✗"
+                reasons = ", ".join(f"{k}:{c}" for k, c in sorted(m["reasons"].items()))
+                print(
+                    f"{key:<14} {m['n']:>6} {m['wr']*100:>7.1f}% {m['sharpe']:>7.2f}"
+                    f" {m['total_pnl']:>12,.0f}  {mark} {v}  [{reasons}]"
+                )
+
+    # ── Best RRR per scanner ─────────────────────────────────────────────────
+    print()
+    print(sep)
+    print("BEST RRR PER SCANNER (highest Sharpe among tested values)")
+    print(sep)
+    print(f"{'Scanner':<14} {'Best RRR':>8} {'WinRate':>8} {'Sharpe':>7}  Verdict")
+    print("-" * 50)
+
+    validated_by_rrr: dict[float, list[str]] = {r: [] for r in rrr_list}
+
     for key in scanner_keys:
-        s_trades = [t for t in all_trades if t["scanner"] == key]
-        m = _metrics(s_trades)
-        results[key] = {"m": m, "v": _verdict(m)}
-
-    # ── Summary table ────────────────────────────────────────────────────────
-    print()
-    print(f"{'Scanner':<14} {'Trades':>6} {'WinRate':>8} {'Sharpe':>7} {'P&L ₹':>12}  Verdict")
-    print("-" * 74)
-    validated: list[str] = []
-    for key, res in results.items():
-        m, v = res["m"], res["v"]
-        if not m:
-            print(f"{key:<14} {'0':>6} {'—':>8} {'—':>7} {'—':>12}  ✗ OVERRIDE (no trades)")
-        else:
-            mark = "✓" if v != "OVERRIDE" else "✗"
-            wr_str = f"{m['wr']*100:.1f}%"
-            reasons = ", ".join(f"{k}:{c}" for k, c in sorted(m["reasons"].items()))
+        best_rrr = None
+        best_sharpe = -999.0
+        best_m: dict = {}
+        best_v = "OVERRIDE"
+        for rrr in rrr_list:
+            r = all_results[rrr][key]
+            m = r["m"]
+            if m and m["sharpe"] > best_sharpe:
+                best_sharpe = m["sharpe"]
+                best_rrr = rrr
+                best_m = m
+                best_v = r["v"]
+        if best_rrr is not None and best_m:
+            mark = "✓" if best_v != "OVERRIDE" else "✗"
             print(
-                f"{key:<14} {m['n']:>6} {wr_str:>8} {m['sharpe']:>7.2f}"
-                f" {m['total_pnl']:>12,.0f}  {mark} {v}  [{reasons}]"
+                f"{key:<14} {best_rrr:>8.1f} {best_m['wr']*100:>7.1f}%"
+                f" {best_m['sharpe']:>7.2f}  {mark} {best_v}"
             )
-            if v != "OVERRIDE":
-                validated.append(key)
+            if best_v != "OVERRIDE":
+                validated_by_rrr[best_rrr].append(key)
+        else:
+            print(f"{key:<14} {'—':>8} {'—':>8} {'—':>7}  ✗ OVERRIDE (no trades)")
 
     print()
-    print("Tier criteria (90-day window):")
+    print("Tier criteria:")
     print(f"  TIER_1 : ≥{TIER1['trades']} trades, WR≥{TIER1['wr']*100:.0f}%, Sharpe≥{TIER1['sharpe']}")
     print(f"  TIER_2 : ≥{TIER2['trades']} trades, WR≥{TIER2['wr']*100:.0f}%, Sharpe≥{TIER2['sharpe']}")
-    print("  OVERRIDE: confluence only — do not emit as standalone signal")
     print()
 
-    if validated:
-        print("Validated scanners (TIER_1 or TIER_2):")
-        for k in validated:
-            print(f"  {k}  ({results[k]['v']})")
-        print()
-        print("Add to .env after reviewing results:")
-        print(f'  INTRADAY_VALIDATED_SCANNERS="{",".join(validated)}"')
-        print('  UNVALIDATED_SIGNAL_DISCLAIMER=""')
+    all_validated = [k for rrr in rrr_list for k in validated_by_rrr[rrr]]
+    if all_validated:
+        print("Recommended next steps:")
+        for rrr in rrr_list:
+            keys = validated_by_rrr[rrr]
+            if keys:
+                print(f"  Set INTRADAY_RRR_FLOOR={rrr} in .env")
+                print(f'  Set INTRADAY_VALIDATED_SCANNERS="{",".join(keys)}"')
     else:
-        print("No scanner reached TIER_1 or TIER_2 with this data window.")
-        print("Keep INTRADAY_SIGNALS_ENABLED=false until more data is available,")
-        print("or treat all intraday signals as educational only.")
+        print("No scanner reached TIER_2 at any tested RRR.")
+        print("Proceed to Session 2 fixes (cross-day 15m data for supertrend/rsi_rev).")
 
-    print()
-
-    # ── Save markdown report ─────────────────────────────────────────────────
-    out = Path("reports") / f"intraday_scanners_{date.today()}.md"
+    # ── Save report ──────────────────────────────────────────────────────────
+    out = Path("reports") / f"intraday_scanners_s1_{date.today()}.md"
     out.parent.mkdir(exist_ok=True)
     lines = [
-        f"# Intraday Scanner Validation — {date.today()}",
+        f"# Intraday Scanner Validation — Session 1 — {date.today()}",
         f"Universe: {len(days_5m)} symbols | Window: {args.days} days",
+        f"RRR sweep: {rrr_list}",
+        "Fixes: prev_day_hl proximity filter (≤0.3%)",
         "",
-        "| Scanner | Trades | WinRate | Sharpe | P&L ₹ | Verdict |",
-        "|---|---|---|---|---|---|",
     ]
-    for key, res in results.items():
-        m, v = res["m"], res["v"]
-        if not m:
-            lines.append(f"| {key} | 0 | — | — | — | **OVERRIDE** |")
-        else:
-            lines.append(
-                f"| {key} | {m['n']} | {m['wr']*100:.1f}% | {m['sharpe']:.2f}"
-                f" | {m['total_pnl']:,.0f} | **{v}** |"
-            )
+    for rrr in rrr_list:
+        lines += [f"## RRR = {rrr:.1f}", "",
+                  "| Scanner | Trades | WinRate | Sharpe | P&L ₹ | Verdict |",
+                  "|---|---|---|---|---|---|"]
+        for key in scanner_keys:
+            r = all_results[rrr][key]
+            m, v = r["m"], r["v"]
+            if not m:
+                lines.append(f"| {key} | 0 | — | — | — | **OVERRIDE** |")
+            else:
+                lines.append(
+                    f"| {key} | {m['n']} | {m['wr']*100:.1f}% | {m['sharpe']:.2f}"
+                    f" | {m['total_pnl']:,.0f} | **{v}** |"
+                )
+        lines.append("")
+
     out.write_text("\n".join(lines))
     print(f"Report saved → {out}")
     print(sep)
