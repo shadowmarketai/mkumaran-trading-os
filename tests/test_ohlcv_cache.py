@@ -390,9 +390,14 @@ def test_cache_stats_populated(db):
 
 
 def test_cache_stats_hit_rate(db):
-    """Hit rate tracks hits and misses."""
+    """Hit rate tracks hits and misses.
+
+    Uses a dynamic start_date so 250 business-day bars always fall inside
+    the 1y window (same fix applied to test_check_cache_hit).
+    """
     reset_counters()
-    df = _make_df(bars=250)
+    start = (datetime.now() - timedelta(days=300)).strftime("%Y-%m-%d")
+    df = _make_df(bars=250, start_date=start)
     store_cache("NSE:RELIANCE", "1d", df, "yfinance", db)
 
     # Generate a miss
