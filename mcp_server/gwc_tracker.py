@@ -153,14 +153,13 @@ def parse_gwc(text: str) -> Optional[GWCSignal]:
     # ── Price extraction ──────────────────────────────────────────────────────
     clean = upper.replace(",", "").replace("₹", "").replace("RS.", "")
 
-    # Entry: @X, @ X, AROUNDD X/Y (take first), CMP X, ENTRY X
-    entry = _num(clean, r'(?:@|AT|CMP|ENTRY|AROUND+)\s*(\d+\.?\d*)')
+    # Entry: @X, CMP X, ENTRY X, AROUNDD X
+    entry = _num(clean, r'(?:@|CMP|ENTRY|AROUND+)\s*(\d+\.?\d*)')
     if entry == 0:
-        # "AROUNDD 52/50" → take 52
-        entry = _num(clean, r'AROUND+\s+(\d+\.?\d*)')
+        # "CAME 41" — GWC price-update shorthand: "SENSEX 75500CE CAME 41"
+        entry = _num(clean, r'CAME\s+(\d+\.?\d*)')
     if entry == 0:
-        # CE/PE followed by number: "23600CE @ 150" already caught by @ pattern
-        # Try number after option symbol: "23600PE 110"
+        # Number right after the option symbol with a space: "23600PE 110"
         entry = _num(clean, r'(?:CE|PE)\s+(\d+\.?\d*)')
     sig.entry = entry
 
@@ -174,14 +173,15 @@ def parse_gwc(text: str) -> Optional[GWCSignal]:
     if sig.sl == 0:
         sig.sl = _num(clean, r'STOP@(\d+\.?\d*)')
 
-    # Targets: TGT/TRG/TARGET X & Y or X / Y or X , Y
-    # First target
+    # Targets — only extract from explicit keywords (TGT / TRG / TARGET / T1 / TP)
+    # Do NOT use the price-pairs fallback — it causes false matches when the
+    # signal has patterns like "52/50" (entry range) or "175 & 200" that aren't targets.
     t1 = _num(clean, r'(?:TGT|TRG|TARGET)\s*(\d+\.?\d*)')
     if t1 == 0:
         t1 = _num(clean, r'(?:T1|TP1|PROFIT)\s*(\d+\.?\d*)')
     sig.target1 = t1
 
-    # Second target — after & or / or second number in target block
+    # Second target — only from TGT/TRG/TARGET X & Y or X / Y
     t2_match = re.search(
         r'(?:TGT|TRG|TARGET)\s*\d+\.?\d*\s*[&/,]\s*(\d+\.?\d*)', clean
     )
@@ -190,20 +190,33 @@ def parse_gwc(text: str) -> Optional[GWCSignal]:
             sig.target2 = float(t2_match.group(1))
         except ValueError:
             pass
-    if sig.target2 == 0:
-        # "64/83" or "175 & 200" patterns
-        price_pairs = re.search(
-            r'(\d+\.?\d*)\s*[&/]\s*(\d+\.?\d*)', clean
-        )
-        if price_pairs and sig.target1 == 0:
-            sig.target1 = float(price_pairs.group(1))
-            sig.target2 = float(price_pairs.group(2))
+
+    # ── Post-parse sanity checks ──────────────────────────────────────────────
+
+    # If T1 == entry, the target number collided with the entry — discard T1.
+    if sig.target1 > 0 and abs(sig.target1 - sig.entry) < 0.01:
+        sig.target1 = 0.0
+
+    # For BUY direction, targets must be above entry (option premium going up).
+    # If T2 < entry it is likely a misidentified SL or random number — discard.
+    if sig.direction == "BUY" and sig.target2 > 0 and sig.target2 <= sig.entry:
+        if sig.sl == 0 and sig.target2 < sig.entry:
+            sig.sl = sig.target2   # promote it to SL
+        sig.target2 = 0.0
+    if sig.direction == "BUY" and sig.target1 > 0 and sig.target1 <= sig.entry:
+        sig.target1 = 0.0
+
+    # Same for SELL direction — targets must be below entry.
+    if sig.direction == "SELL" and sig.target1 > 0 and sig.target1 >= sig.entry > 0:
+        sig.target1 = 0.0
+    if sig.direction == "SELL" and sig.target2 > 0 and sig.target2 >= sig.entry > 0:
+        sig.target2 = 0.0
 
     # "Exit @cost" flag
     if re.search(r'EXIT\s*@?\s*COST', upper):
         sig.cost_exit = True
 
-    # RRR calculation (use best target)
+    # RRR — only compute when we have valid entry + SL + at least one target
     best_target = sig.target2 if sig.target2 > 0 else sig.target1
     if sig.entry > 0 and sig.sl > 0 and best_target > 0:
         risk   = abs(sig.entry - sig.sl)
@@ -396,9 +409,21 @@ def format_gwc_reply(sig: GWCSignal, validation: dict) -> str:
     verdict_emoji = {"TAKE": "✅", "SKIP": "🔴", "REVIEW": "🟡"}.get(verdict, "🟡")
     rrr_flag = "✅" if sig.rrr >= 2.0 else "⚠️" if sig.rrr >= 1.0 else "❌"
 
-    t2_line = f" | T2: ₹{sig.target2:.1f}" if sig.target2 > 0 else ""
+    t2_line  = f" | T2: ₹{sig.target2:.1f}" if sig.target2 > 0 else ""
     add_line = f"\nAdd More: ₹{sig.add_more:.1f}" if sig.add_more > 0 else ""
     cost_line = "\n⚠️ Exit @Cost protection advised" if sig.cost_exit else ""
+    sl_str   = f"₹{sig.sl:.1f}" if sig.sl > 0 else "₹— (missing)"
+    t1_str   = f"₹{sig.target1:.1f}" if sig.target1 > 0 else "₹—"
+    rrr_str  = f"{sig.rrr:.2f} {rrr_flag}" if sig.rrr > 0 else f"— {rrr_flag}"
+
+    # Warn when critical fields are absent
+    warnings: list[str] = []
+    if sig.entry == 0:
+        warnings.append("⚠️ Entry price not found — resend with @ price")
+    if sig.sl == 0:
+        warnings.append("⚠️ SL not found — add 'SL X' to the signal")
+    if sig.target1 == 0:
+        warnings.append("⚠️ Target not found — add 'TGT X' to the signal")
 
     lines = [
         "📲 GWC Signal Tracker",
@@ -406,10 +431,11 @@ def format_gwc_reply(sig: GWCSignal, validation: dict) -> str:
         f"Ticker: {sig.ticker}" + (f" {int(sig.strike)}{sig.opt_type}" if sig.is_option else ""),
         f"Direction: {'🟢 BUY' if sig.direction == 'BUY' else '🔴 SELL'}",
         sep,
-        f"Entry: ₹{sig.entry:.1f}{add_line}",
-        f"SL: ₹{sig.sl:.1f} | T1: ₹{sig.target1:.1f}{t2_line}",
-        f"RRR: {sig.rrr:.2f} {rrr_flag}",
+        f"Entry: ₹{sig.entry:.1f}{add_line}" if sig.entry > 0 else "Entry: ₹— (not found)",
+        f"SL: {sl_str} | T1: {t1_str}{t2_line}",
+        f"RRR: {rrr_str}",
         cost_line,
+        "\n".join(warnings) if warnings else "",
         sep,
         f"{verdict_emoji} Verdict: {verdict} ({confidence}%)",
     ]
