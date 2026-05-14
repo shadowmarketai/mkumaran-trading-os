@@ -1,24 +1,24 @@
 """
-Intraday Scanner Validation — Session 2 — regime + confluence + cross-day 15m
+Intraday Scanner Validation — Session 3 — trailing stop + ATR SL
 Dhan 1-min data resampled to 5m / 15m. Max window: 90 trading days.
 
-Session 2 fixes on top of Session 1:
-  1. Regime filter   — LONG signals only on days when Nifty close > 9 EMA.
-                       Bearish days: skip entirely (no signals taken).
-  2. Confluence gate — require N scanners to agree on same ticker + direction
-                       before opening a position. Tested at 1, 2, 3.
-  3. Cross-day 15m   — supertrend and rsi_rev now receive full 15m history
-                       (not just today's bars), enabling intraday direction flips.
-  4. prev_day_hl     — permanently removed (1.4% WR in Session 1; no proximity
-                       filter can recover a scanner with zero follow-through).
+Session 3 fixes on top of Sessions 1 & 2:
+  1. Supertrend trailing stop — exit when 15m Supertrend flips direction,
+     not at a fixed RRR target. Session 2 showed 218 EOD exits at positive
+     average returns: the direction is correct, the fixed exit is wrong.
+  2. VWAP ATR-based SL — widen stop to max(3-bar swing, 1.5×ATR). Session 2
+     showed 82 SL hits vs 89 targets at RRR 1.0 — stocks whipsawed through
+     a tight SL and then recovered. Wider stop reduces this.
+  3. vwap_ema + ema_cross removed permanently — 0 trades across 2 sessions
+     because stocks open already in confluence on bullish regime days.
 
-Each (RRR, confluence) combination is simulated independently.
-Data loads once from Dhan; subsequent sweeps run in-memory.
+Regime filter and cross-day 15m accumulation carried over from Session 2.
+Data loads once; RRR × confluence sweep runs in-memory.
 
 Usage:
     python scripts/validate_intraday_scanners.py
-    python scripts/validate_intraday_scanners.py --rrr 1.0 1.2 --confluence 2 3
-    python scripts/validate_intraday_scanners.py --days 60 --tickers RELIANCE HDFCBANK
+    python scripts/validate_intraday_scanners.py --rrr 1.0 1.2
+    python scripts/validate_intraday_scanners.py --days 60 --tickers RELIANCE HDFCBANK ONGC
 """
 from __future__ import annotations
 
@@ -84,7 +84,7 @@ def _cost(pos: float) -> float:
     return c
 
 
-# ── Data loading ──────────────────────────────────────────────────────────────
+# ── Data ──────────────────────────────────────────────────────────────────────
 
 def _load_dhan_1min(symbols: list[str], days: int) -> dict[str, pd.DataFrame]:
     from mcp_server.data_provider import DhanSource
@@ -104,7 +104,6 @@ def _load_dhan_1min(symbols: list[str], days: int) -> dict[str, pd.DataFrame]:
             df = df.set_index("ts").sort_index()
             df.columns = [c.lower() for c in df.columns]
             result[sym] = df
-            logger.debug("Loaded %s: %d bars", sym, len(df))
         except Exception as exc:
             logger.warning("Skip %s: %s", sym, exc)
     logger.info("Loaded %d / %d symbols", len(result), len(symbols))
@@ -112,31 +111,25 @@ def _load_dhan_1min(symbols: list[str], days: int) -> dict[str, pd.DataFrame]:
 
 
 def _load_nifty_regime(days: int) -> dict[date, bool]:
-    """
-    Load Nifty 50 daily closes via yfinance and compute 9 EMA.
-    Returns {date: True} when Nifty close > 9 EMA (bullish → allow LONGs).
-    Falls back to all-True (no filter) if yfinance is unavailable.
-    """
     try:
         import yfinance as yf
         period = f"{min(days + 40, 200)}d"
-        nifty = yf.download("^NSEI", period=period, interval="1d",
-                            progress=False, auto_adjust=True)
+        nifty  = yf.download("^NSEI", period=period, interval="1d",
+                             progress=False, auto_adjust=True)
         if nifty.empty:
             raise ValueError("empty")
         closes = nifty["Close"].squeeze()
-        ema9 = closes.ewm(span=9, adjust=False).mean()
+        ema9   = closes.ewm(span=9, adjust=False).mean()
         regime: dict[date, bool] = {}
         for ts in closes.index:
             d = ts.date() if hasattr(ts, "date") else ts
             regime[d] = float(closes[ts]) > float(ema9[ts])
-        logger.info("Nifty regime loaded: %d days (%d bullish / %d bearish)",
-                    len(regime),
-                    sum(v for v in regime.values()),
-                    sum(not v for v in regime.values()))
+        bullish = sum(v for v in regime.values())
+        logger.info("Nifty regime: %d days (%d bullish / %d bearish)",
+                    len(regime), bullish, len(regime) - bullish)
         return regime
     except Exception as exc:
-        logger.warning("Nifty regime unavailable (%s) — running without filter", exc)
+        logger.warning("Nifty regime unavailable (%s) — no filter applied", exc)
         return {}
 
 
@@ -179,26 +172,24 @@ def _prev_day(days: dict[date, pd.DataFrame], today: date) -> date | None:
 
 def _load_scanners() -> list[tuple[str, object, bool, bool]]:
     """
-    7 scanners (prev_day_hl permanently removed — 1.4% WR in Session 1).
-    Cross-day 15m fix unlocks supertrend and rsi_rev.
+    5 scanners remaining after Sessions 1-2 pruning:
+      - prev_day_hl  removed: 1.4% WR even with proximity filter
+      - vwap_ema     removed: 0 trades (stocks open already in confluence)
+      - ema_cross    removed: 0 trades (same structural issue)
     """
     from mcp_server.intraday_scanner import (
-        scan_ema_crossover_mtf,
         scan_momentum,
         scan_orb,
         scan_rsi_reversal_15m,
         scan_supertrend_15m,
         scan_vwap,
-        scan_vwap_ema_confluence,
     )
     return [
-        ("orb",        scan_orb,                True,  False),
-        ("vwap",       scan_vwap,               True,  False),
-        ("momentum",   scan_momentum,            True,  False),
-        ("vwap_ema",   scan_vwap_ema_confluence, True,  False),
-        ("ema_cross",  scan_ema_crossover_mtf,   True,  True),
-        ("supertrend", scan_supertrend_15m,      False, True),
-        ("rsi_rev",    scan_rsi_reversal_15m,    False, True),
+        ("orb",        scan_orb,              True,  False),
+        ("vwap",       scan_vwap,             True,  False),
+        ("momentum",   scan_momentum,          True,  False),
+        ("supertrend", scan_supertrend_15m,   False, True),
+        ("rsi_rev",    scan_rsi_reversal_15m, False, True),
     ]
 
 
@@ -220,22 +211,45 @@ def _call(fn: object, df5: pd.DataFrame, df15: pd.DataFrame | None,
         return None
 
 
+# ── Pre-compute Supertrend on full 15m history ────────────────────────────────
+
+def _precompute_supertrend(full_15m: dict[str, pd.DataFrame]) -> dict[str, pd.Series]:
+    """
+    Compute Supertrend direction (+1 / -1) on the full cross-day 15m DataFrame
+    for each symbol. Used for trailing-stop exit in the simulation.
+    """
+    from mcp_server.intraday_scanner import _supertrend
+    result: dict[str, pd.Series] = {}
+    for sym, df15 in full_15m.items():
+        if df15.empty or len(df15) < 12:
+            result[sym] = pd.Series(dtype=int)
+            continue
+        try:
+            result[sym] = _supertrend(df15, period=10, multiplier=3.0)
+        except Exception:
+            result[sym] = pd.Series(dtype=int)
+    return result
+
+
 # ── Simulation ────────────────────────────────────────────────────────────────
 
 def _simulate_symbol(
     sym: str,
     days_5m: dict[date, pd.DataFrame],
-    df15_full: pd.DataFrame,          # full cross-day 15m history (Session 2 fix)
+    df15_full: pd.DataFrame,
+    st_series: pd.Series,              # pre-computed supertrend direction
     scanners: list[tuple[str, object, bool, bool]],
     rrr_mult: float,
     confluence: int,
-    regime_map: dict[date, bool],     # date → True = bullish
+    regime_map: dict[date, bool],
 ) -> list[dict]:
     """
-    Walk-forward replay with three Session 2 additions:
-      - Cross-day 15m: df15_full sliced at each bar's timestamp
-      - Regime filter: LONG signals skipped on bearish Nifty days
-      - Confluence gate: position opened only when ≥ confluence scanners agree
+    Walk-forward replay with Session 3 additions:
+      - Supertrend positions use trailing stop (st_flip exit) instead of
+        a fixed RRR target. rrr_mult is ignored for supertrend.
+      - VWAP ATR-based SL is computed inside scan_vwap (intraday_scanner.py).
+      - Cross-day 15m accumulation from Session 2 retained.
+      - Regime filter from Session 2 retained.
     """
     trades: list[dict] = []
 
@@ -243,15 +257,11 @@ def _simulate_symbol(
         df5_day = days_5m[day]
         ph, pl  = _prev_hl(days_5m, day)
 
-        # Regime: use previous trading day's Nifty signal (no lookahead)
-        prev_d      = _prev_day(days_5m, day)
-        is_bullish  = regime_map.get(prev_d, True) if (prev_d and regime_map) else True
-
-        # Skip bearish days entirely (LONG-only strategy)
+        prev_d     = _prev_day(days_5m, day)
+        is_bullish = regime_map.get(prev_d, True) if (prev_d and regime_map) else True
         if regime_map and not is_bullish:
             continue
 
-        # Per-scanner positions (confluence=1) or single combined position (>=2)
         open_pos:    dict[str, dict] = {}
         fired_today: set[str] = set()
 
@@ -270,20 +280,29 @@ def _simulate_symbol(
                 exit_px: float | None = None
                 exit_why = ""
 
-                if pos["direction"] == "LONG":
-                    if low <= pos["sl"]:
-                        exit_px, exit_why = pos["sl"], "sl"
-                    elif high >= pos["target"]:
-                        exit_px, exit_why = pos["target"], "target"
-                    elif is_eod:
+                if pos.get("trailing_st"):
+                    # Supertrend trailing stop: exit when 15m ST flips direction
+                    if not st_series.empty:
+                        st_now = st_series[st_series.index <= ts]
+                        if not st_now.empty and int(st_now.iloc[-1]) != pos["entry_st_dir"]:
+                            exit_px, exit_why = close, "st_flip"
+                    if exit_px is None and is_eod:
                         exit_px, exit_why = close, "eod"
                 else:
-                    if high >= pos["sl"]:
-                        exit_px, exit_why = pos["sl"], "sl"
-                    elif low <= pos["target"]:
-                        exit_px, exit_why = pos["target"], "target"
-                    elif is_eod:
-                        exit_px, exit_why = close, "eod"
+                    if pos["direction"] == "LONG":
+                        if low <= pos["sl"]:
+                            exit_px, exit_why = pos["sl"], "sl"
+                        elif high >= pos["target"]:
+                            exit_px, exit_why = pos["target"], "target"
+                        elif is_eod:
+                            exit_px, exit_why = close, "eod"
+                    else:
+                        if high >= pos["sl"]:
+                            exit_px, exit_why = pos["sl"], "sl"
+                        elif low <= pos["target"]:
+                            exit_px, exit_why = pos["target"], "target"
+                        elif is_eod:
+                            exit_px, exit_why = close, "eod"
 
                 if exit_px is not None:
                     ret = ((exit_px - pos["entry"]) / pos["entry"]
@@ -300,7 +319,7 @@ def _simulate_symbol(
                         "exit_why":  exit_why,
                         "ret_pct":   round(ret * 100, 3),
                         "pnl":       round(pnl, 2),
-                        "win":       exit_why == "target",
+                        "win":       exit_why in ("target", "st_flip") and ret > 0,
                     })
                     del open_pos[key]
 
@@ -308,43 +327,57 @@ def _simulate_symbol(
                 break
 
             # ── Entries ──────────────────────────────────────────────────────
-            df5_so_far = df5_day.iloc[: bar_idx + 1]
-            # Cross-day 15m: slice full history up to current timestamp
+            df5_so_far  = df5_day.iloc[: bar_idx + 1]
             df15_so_far = (df15_full[df15_full.index <= ts]
                            if not df15_full.empty else pd.DataFrame())
 
+            def _open_pos(key: str, hit: dict) -> None:
+                risk = abs(hit["entry"] - hit["sl"])
+                if risk <= 0:
+                    return
+                if key == "supertrend":
+                    # Trailing stop: get current ST direction at entry
+                    if not st_series.empty:
+                        st_at_entry = st_series[st_series.index <= ts]
+                        entry_dir   = int(st_at_entry.iloc[-1]) if not st_at_entry.empty else 1
+                    else:
+                        entry_dir = 1 if hit["direction"] == "LONG" else -1
+                    open_pos[key] = {
+                        "direction":    hit["direction"],
+                        "entry":        hit["entry"],
+                        "sl":           hit["sl"],
+                        "target":       1e9 if hit["direction"] == "LONG" else -1e9,
+                        "trailing_st":  True,
+                        "entry_st_dir": entry_dir,
+                    }
+                else:
+                    tgt = (hit["entry"] + risk * rrr_mult
+                           if hit["direction"] == "LONG"
+                           else hit["entry"] - risk * rrr_mult)
+                    open_pos[key] = {
+                        "direction": hit["direction"],
+                        "entry":     hit["entry"],
+                        "sl":        hit["sl"],
+                        "target":    tgt,
+                        "trailing_st": False,
+                    }
+                fired_today.add(key)
+
             if confluence == 1:
-                # Per-scanner mode: independent positions
                 for key, fn, needs_5m, needs_15m in scanners:
                     if key in open_pos or key in fired_today:
                         continue
                     hit = _call(fn, df5_so_far, df15_so_far, ph, pl, needs_5m, needs_15m)
-                    if not hit:
-                        continue
-                    risk = abs(hit["entry"] - hit["sl"])
-                    if risk <= 0:
-                        continue
-                    tgt = (hit["entry"] + risk * rrr_mult if hit["direction"] == "LONG"
-                           else hit["entry"] - risk * rrr_mult)
-                    open_pos[key] = {
-                        "direction": hit["direction"],
-                        "entry": hit["entry"],
-                        "target": tgt,
-                        "sl": hit["sl"],
-                    }
-                    fired_today.add(key)
-
+                    if hit:
+                        _open_pos(key, hit)
             else:
-                # Confluence mode: open when ≥ N scanners agree
                 if "signal" in open_pos or "signal" in fired_today:
                     continue
-
                 long_hits: list[dict] = []
                 for key, fn, needs_5m, needs_15m in scanners:
                     hit = _call(fn, df5_so_far, df15_so_far, ph, pl, needs_5m, needs_15m)
                     if hit and hit["direction"] == "LONG":
                         long_hits.append(hit)
-
                 if len(long_hits) >= confluence:
                     chosen = long_hits[0]
                     risk   = abs(chosen["entry"] - chosen["sl"])
@@ -355,6 +388,7 @@ def _simulate_symbol(
                             "entry":  chosen["entry"],
                             "target": tgt,
                             "sl":     chosen["sl"],
+                            "trailing_st": False,
                         }
                         fired_today.add("signal")
 
@@ -372,7 +406,6 @@ def _metrics(trades: list[dict]) -> dict:
     rets   = [t["ret_pct"] / 100 for t in trades]
     mean_r = sum(rets) / n
     std_r  = math.sqrt(sum((r - mean_r) ** 2 for r in rets) / max(n - 1, 1))
-    # Annualise using trade count: ~trades/90d × 250d = trades/yr
     trades_per_yr = max(n / 90 * 250, 1)
     sharpe = (mean_r / std_r) * math.sqrt(trades_per_yr) if std_r > 0 else 0.0
     reasons: dict[str, int] = {}
@@ -402,76 +435,98 @@ def _verdict(m: dict) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Intraday scanner validation — Session 2 (regime + confluence + cross-day 15m)"
+        description="Intraday scanner validation — Session 3 (trailing stop + ATR SL)"
     )
-    parser.add_argument("--days", type=int, default=90)
-    parser.add_argument("--rrr", nargs="+", type=float, default=[1.0, 1.2, 1.5])
-    parser.add_argument("--confluence", nargs="+", type=int, default=[1, 2, 3])
-    parser.add_argument("--tickers", nargs="+", default=None)
+    parser.add_argument("--days",       type=int,   default=90)
+    parser.add_argument("--rrr",        nargs="+",  type=float, default=[1.0, 1.2, 1.5])
+    parser.add_argument("--confluence", nargs="+",  type=int,   default=[1, 2])
+    parser.add_argument("--tickers",    nargs="+",  default=None)
     args = parser.parse_args()
 
-    symbols    = args.tickers or NIFTY50
-    rrr_list   = sorted(set(args.rrr))
-    conf_list  = sorted(set(args.confluence))
-    scanners   = _load_scanners()
-    sep        = "=" * 80
+    symbols   = args.tickers or NIFTY50
+    rrr_list  = sorted(set(args.rrr))
+    conf_list = sorted(set(args.confluence))
+    scanners  = _load_scanners()
+    sep       = "=" * 80
 
     print()
     print(sep)
-    print("INTRADAY SCANNER VALIDATION — Session 2")
+    print("INTRADAY SCANNER VALIDATION — Session 3")
     print(f"Tickers: {len(symbols)} | Days: {args.days} | "
           f"RRR: {rrr_list} | Confluence: {conf_list}")
-    print("Fixes: regime filter (Nifty 9 EMA) + confluence gate + cross-day 15m")
+    print("Fixes: supertrend trailing stop + VWAP ATR SL + scanner pruning")
     print(sep)
 
-    # ── Load data (once) ─────────────────────────────────────────────────────
+    # ── Load once ────────────────────────────────────────────────────────────
     raw        = _load_dhan_1min(symbols, args.days)
     regime_map = _load_nifty_regime(args.days)
 
     if len(raw) < 3:
-        print("ERROR: too few symbols loaded. Check Dhan credentials.")
+        print("ERROR: too few symbols. Check Dhan credentials.")
         return
 
-    # 5m per-day split (for prev-day H/L helper)
-    days_5m: dict[str, dict[date, pd.DataFrame]] = {}
-    # Full cross-day 15m DataFrames (Session 2 fix for supertrend / rsi_rev)
+    days_5m:  dict[str, dict[date, pd.DataFrame]] = {}
     full_15m: dict[str, pd.DataFrame] = {}
-
     for sym, df1m in raw.items():
-        df5  = _resample(df1m, "5min")
-        df15 = _resample(df1m, "15min")
-        days_5m[sym] = _split_by_date(df5)
-        # Keep full 15m history within NSE hours (cross-day accumulation)
-        full_15m[sym] = df15.between_time("09:15", "15:30")
+        days_5m[sym]  = _split_by_date(_resample(df1m, "5min"))
+        full_15m[sym] = _resample(df1m, "15min").between_time("09:15", "15:30")
 
-    # ── Sweep (RRR × confluence) ──────────────────────────────────────────────
-    # {(rrr, conf): {metric_key: value}}
+    logger.info("Pre-computing Supertrend on full 15m history...")
+    st_series = _precompute_supertrend(full_15m)
+
+    # ── Per-scanner standalone (confluence=1, RRR=1.0) ────────────────────────
+    logger.info("Per-scanner breakdown (confluence=1, RRR=1.0)...")
+    scanner_keys   = [s[0] for s in scanners]
+    solo_trades: list[dict] = []
+    for sym in sorted(days_5m.keys()):
+        solo_trades.extend(_simulate_symbol(
+            sym, days_5m[sym], full_15m.get(sym, pd.DataFrame()),
+            st_series.get(sym, pd.Series(dtype=int)),
+            scanners, 1.0, 1, regime_map,
+        ))
+
+    print()
+    print("PER-SCANNER BREAKDOWN  (confluence=1, RRR=1.0 / supertrend: trailing stop)")
+    print(f"{'Scanner':<12} {'Trades':>6} {'WinRate':>8} {'Sharpe':>7} {'P&L ₹':>12}  Verdict")
+    print("-" * 65)
+    for key in scanner_keys:
+        s_trades = [t for t in solo_trades if t["scanner"] == key]
+        m = _metrics(s_trades)
+        v = _verdict(m)
+        if not m:
+            print(f"{key:<12} {'0':>6} {'—':>8} {'—':>7} {'—':>12}  OVERRIDE")
+        else:
+            note = " [trailing stop]" if key == "supertrend" else ""
+            reasons = ", ".join(f"{k}:{c}" for k, c in sorted(m["reasons"].items()))
+            mark = "✓" if v != "OVERRIDE" else "✗"
+            print(f"{key:<12} {m['n']:>6} {m['wr']*100:>7.1f}% {m['sharpe']:>7.2f}"
+                  f" {m['total_pnl']:>12,.0f}  {mark} {v}  [{reasons}]{note}")
+
+    # ── RRR × confluence sweep ────────────────────────────────────────────────
     combo_results: dict[tuple, dict] = {}
-
     for rrr in rrr_list:
         for conf in conf_list:
             logger.info("Simulating RRR=%.1f | confluence=%d ...", rrr, conf)
             all_trades: list[dict] = []
             for sym in sorted(days_5m.keys()):
-                sym_trades = _simulate_symbol(
-                    sym, days_5m[sym],
-                    full_15m.get(sym, pd.DataFrame()),
+                all_trades.extend(_simulate_symbol(
+                    sym, days_5m[sym], full_15m.get(sym, pd.DataFrame()),
+                    st_series.get(sym, pd.Series(dtype=int)),
                     scanners, rrr, conf, regime_map,
-                )
-                all_trades.extend(sym_trades)
-
+                ))
             m = _metrics(all_trades)
             v = _verdict(m)
-            combo_results[(rrr, conf)] = {"m": m, "v": v, "trades": all_trades}
+            combo_results[(rrr, conf)] = {"m": m, "v": v}
             logger.info("  → %d trades | WR=%.1f%% | Sharpe=%.2f | %s",
                         m.get("n", 0), m.get("wr", 0) * 100,
                         m.get("sharpe", 0), v)
 
-    # ── Summary grid ─────────────────────────────────────────────────────────
+    # ── Grid ─────────────────────────────────────────────────────────────────
     print()
+    print("PARAMETER GRID  (supertrend always uses trailing stop; RRR applies to others)")
     print(f"{'':16}", end="")
     for conf in conf_list:
-        print(f"  confluence={conf}{'':4}", end="")
+        print(f"  confluence={conf}{'':6}", end="")
     print()
     print(f"{'':16}", end="")
     for _ in conf_list:
@@ -481,7 +536,6 @@ def main() -> None:
 
     best_combo: tuple | None = None
     best_sharpe = -999.0
-
     for rrr in rrr_list:
         print(f"RRR = {rrr:.1f}×{'':8}", end="")
         for conf in conf_list:
@@ -497,28 +551,6 @@ def main() -> None:
                 print(f"  {'0':>6} {'—':>6} {'—':>5}", end="")
         print()
 
-    # ── Per-scanner breakdown (confluence=1 only) ─────────────────────────────
-    print()
-    print(sep)
-    print("PER-SCANNER BREAKDOWN  (confluence=1, best RRR)")
-    print(sep)
-    best_rrr_solo = min(rrr_list)  # lowest RRR = most trades, useful for breakdown
-    solo_trades   = combo_results[(best_rrr_solo, 1)]["trades"]
-    scanner_keys  = [s[0] for s in scanners]
-    print(f"{'Scanner':<12} {'Trades':>6} {'WinRate':>8} {'Sharpe':>7} {'P&L ₹':>12}  Verdict")
-    print("-" * 60)
-    for key in scanner_keys:
-        s_trades = [t for t in solo_trades if t["scanner"] == key]
-        m = _metrics(s_trades)
-        v = _verdict(m)
-        if not m:
-            print(f"{key:<12} {'0':>6} {'—':>8} {'—':>7} {'—':>12}  OVERRIDE")
-        else:
-            mark = "✓" if v != "OVERRIDE" else "✗"
-            reasons = ", ".join(f"{k}:{c}" for k, c in sorted(m["reasons"].items()))
-            print(f"{key:<12} {m['n']:>6} {m['wr']*100:>7.1f}% {m['sharpe']:>7.2f}"
-                  f" {m['total_pnl']:>12,.0f}  {mark} {v}  [{reasons}]")
-
     # ── Recommendation ────────────────────────────────────────────────────────
     print()
     print(sep)
@@ -533,40 +565,39 @@ def main() -> None:
         print("Combinations that passed tier criteria:")
         for (rrr, conf), res in sorted(passing, key=lambda x: -x[1]["m"].get("sharpe", 0)):
             m = res["m"]
-            print(f"  RRR={rrr:.1f} conf={conf} → {res['v']}"
+            print(f"  RRR={rrr:.1f}  conf={conf}  → {res['v']}"
                   f"  ({m['n']} trades, WR {m['wr']*100:.1f}%, Sharpe {m['sharpe']:.2f})")
-        best_k, best_res = sorted(passing, key=lambda x: -x[1]["m"].get("sharpe", 0))[0]
+        best_k, _ = sorted(passing, key=lambda x: -x[1]["m"].get("sharpe", 0))[0]
         rrr_rec, conf_rec = best_k
-        validated = [s for s in scanner_keys]  # all scanners contribute in confluence mode
         print()
         print("Add to .env:")
         print(f"  INTRADAY_RRR_FLOOR={rrr_rec}")
-        if conf_rec == 1:
-            print(f'  INTRADAY_VALIDATED_SCANNERS="{",".join(validated)}"')
-        else:
-            print(f'  INTRADAY_CONFLUENCE={conf_rec}')
-            print(f'  INTRADAY_VALIDATED_SCANNERS="{",".join(validated)}"')
+        print(f'  INTRADAY_VALIDATED_SCANNERS="{",".join(scanner_keys)}"')
+        if conf_rec > 1:
+            print(f"  INTRADAY_CONFLUENCE={conf_rec}")
+        print("  UNVALIDATED_SIGNAL_DISCLAIMER=\"\"")
     else:
         print("No combination reached TIER_2.")
         if best_combo:
             rrr_b, conf_b = best_combo
             m_b = combo_results[best_combo]["m"]
-            print(f"Closest: RRR={rrr_b:.1f} conf={conf_b} → "
-                  f"WR {m_b.get('wr',0)*100:.1f}% Sharpe {m_b.get('sharpe',0):.2f}")
+            print(f"Closest: RRR={rrr_b:.1f}  conf={conf_b}  →  "
+                  f"WR {m_b.get('wr',0)*100:.1f}%  Sharpe {m_b.get('sharpe',0):.2f}")
         print()
-        print("Proceed to Session 3: relax vwap_ema / ema_cross fresh-cross condition")
-        print("and add time filter (no entries after 14:00 IST).")
+        print("Next steps:")
+        print("  - Keep INTRADAY_SIGNALS_ENABLED=false (swing paper trade is the priority)")
+        print("  - Re-run this script in 30 days after collecting real market observations")
+        print("  - Consider: supertrend EOD-only strategy (no SL, just hold until 15:10)")
 
-    # ── Save report ──────────────────────────────────────────────────────────
-    out = Path("reports") / f"intraday_scanners_s2_{date.today()}.md"
+    # ── Report ────────────────────────────────────────────────────────────────
+    out = Path("reports") / f"intraday_scanners_s3_{date.today()}.md"
     out.parent.mkdir(exist_ok=True)
     lines = [
-        f"# Intraday Scanner Validation — Session 2 — {date.today()}",
+        f"# Intraday Scanner Validation — Session 3 — {date.today()}",
         f"Universe: {len(days_5m)} symbols | Window: {args.days} days",
-        f"Regime filter: Nifty 9 EMA | RRR: {rrr_list} | Confluence: {conf_list}",
+        "Fixes: supertrend trailing stop + VWAP ATR SL + vwap_ema/ema_cross removed",
         "",
-        "## Parameter Grid (Trades | WinRate | Sharpe | Verdict)",
-        "",
+        "## Parameter Grid",
         "| RRR | Confluence | Trades | WinRate | Sharpe | Verdict |",
         "|---|---|---|---|---|---|",
     ]

@@ -128,6 +128,22 @@ def _supertrend(df: pd.DataFrame, period: int = 10, multiplier: float = 3.0) -> 
     return direction
 
 
+def _atr(df: pd.DataFrame, period: int = 14) -> float:
+    """Average True Range over the last `period` 5m bars."""
+    if len(df) < period + 1:
+        return float(df["close"].iloc[-1]) * 0.002
+    highs  = df["high"].values
+    lows   = df["low"].values
+    closes = df["close"].values
+    trs = [
+        max(highs[i] - lows[i],
+            abs(highs[i] - closes[i - 1]),
+            abs(lows[i]  - closes[i - 1]))
+        for i in range(max(1, len(df) - period), len(df))
+    ]
+    return sum(trs) / len(trs)
+
+
 def _make_signal(
     direction: str, entry: float, sl: float,
     pattern: str, scanner: str, rrr_mult: float = 2.0,
@@ -169,17 +185,28 @@ def scan_orb(df5: pd.DataFrame, **_kw: Any) -> dict[str, Any] | None:
 
 
 def scan_vwap(df5: pd.DataFrame, **_kw: Any) -> dict[str, Any] | None:
-    """VWAP reclaim (bull) or reject (bear) — 3-bar state flip."""
+    """VWAP reclaim (bull) or reject (bear) — 3-bar state flip.
+
+    SL uses the wider of: 3-bar swing low/high OR 1.5×ATR from entry.
+    The original 3-bar SL was too tight — stocks were whipsawing through
+    it and then recovering in the intended direction (Session 2: 82 SL
+    hits vs 89 targets at RRR 1.0).
+    """
     if not _ok(df5, 6):
         return None
-    vwap = _vwap(df5)
-    last = df5.iloc[-1]
+    vwap  = _vwap(df5)
+    last  = df5.iloc[-1]
     prev3 = df5.iloc[-4:-1]
+    atr_val = _atr(df5)
     if (prev3["close"].values < vwap.iloc[-4:-1].values).all() and last["close"] > vwap.iloc[-1]:
-        sl = float(prev3["low"].min())
+        swing_sl  = float(prev3["low"].min())
+        atr_sl    = last["close"] - 1.5 * atr_val
+        sl        = min(swing_sl, atr_sl)   # lower price = wider stop for LONG
         return _make_signal("LONG", last["close"], sl, "VWAP reclaim", "vwap")
     if (prev3["close"].values > vwap.iloc[-4:-1].values).all() and last["close"] < vwap.iloc[-1]:
-        sl = float(prev3["high"].max())
+        swing_sl  = float(prev3["high"].max())
+        atr_sl    = last["close"] + 1.5 * atr_val
+        sl        = max(swing_sl, atr_sl)   # higher price = wider stop for SHORT
         return _make_signal("SHORT", last["close"], sl, "VWAP reject", "vwap")
     return None
 
