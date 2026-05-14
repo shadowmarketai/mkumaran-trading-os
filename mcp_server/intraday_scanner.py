@@ -416,6 +416,16 @@ def run_scan() -> list[dict[str, Any]]:
         )
         return []
 
+    # Market regime gate: skip LONG-biased scan on bearish Nifty Supertrend days.
+    # Fail-open: if market_direction is unavailable, proceed normally.
+    try:
+        from mcp_server.market_direction import is_market_bullish
+        if not is_market_bullish():
+            logger.info("[INTRADAY] Nifty Supertrend bearish — skipping intraday scan")
+            return []
+    except Exception as _md_err:
+        logger.debug("[INTRADAY] market_direction unavailable (%s) — proceeding", _md_err)
+
     now = now_ist()
     market_time = now.time()
     if not (time(9, 15) <= market_time <= time(15, 15)):

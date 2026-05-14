@@ -136,6 +136,13 @@ def _build_signal_context(
     else:
         pattern_tier = "Unvalidated — assess on scanner confluence"
 
+    # Nifty Supertrend market regime — fail-open if unavailable
+    try:
+        from mcp_server.market_direction import get_direction_label
+        nifty_regime = f"Nifty Supertrend(10,3) = {get_direction_label()}"
+    except Exception:
+        nifty_regime = "Nifty Supertrend = unavailable"
+
     return (
         f"SIGNAL FOR ANALYSIS:\n"
         f"- Ticker: {ticker} | Direction: {direction} | Pattern: {pattern}\n"
@@ -143,6 +150,7 @@ def _build_signal_context(
         f"- Entry: ₹{entry_price:.2f} | SL: ₹{stop_loss:.2f} | Target: ₹{target:.2f} | RRR: {rrr:.2f} ({rrr_status})\n"
         f"- MWA Direction: {mwa_direction} | Scanner Hits: {scanner_count}\n"
         f"- TradingView Confirmed: {tv_confirmed}\n"
+        f"- Market Regime: {nifty_regime}\n"
         f"- Sector: {sector_strength} | FII Net: ₹{fii_net:.0f} Cr | Delivery: {delivery_pct:.1f}%\n"
         f"- Pre-filter Confidence: {pre_confidence}% | Boosts: {', '.join(confidence_boosts) if confidence_boosts else 'None'}\n"
         f"- Asset Type: {'Leveraged (NFO/MCX/CDS)' if is_leveraged else 'Equity'}"

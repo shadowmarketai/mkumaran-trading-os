@@ -111,26 +111,13 @@ def _load_dhan_1min(symbols: list[str], days: int) -> dict[str, pd.DataFrame]:
 
 
 def _load_nifty_regime(days: int) -> dict[date, bool]:
-    try:
-        import yfinance as yf
-        period = f"{min(days + 40, 200)}d"
-        nifty  = yf.download("^NSEI", period=period, interval="1d",
-                             progress=False, auto_adjust=True)
-        if nifty.empty:
-            raise ValueError("empty")
-        closes = nifty["Close"].squeeze()
-        ema9   = closes.ewm(span=9, adjust=False).mean()
-        regime: dict[date, bool] = {}
-        for ts in closes.index:
-            d = ts.date() if hasattr(ts, "date") else ts
-            regime[d] = float(closes[ts]) > float(ema9[ts])
-        bullish = sum(v for v in regime.values())
-        logger.info("Nifty regime: %d days (%d bullish / %d bearish)",
-                    len(regime), bullish, len(regime) - bullish)
-        return regime
-    except Exception as exc:
-        logger.warning("Nifty regime unavailable (%s) — no filter applied", exc)
-        return {}
+    """
+    Load Nifty regime map using Supertrend(10,3) via market_direction module.
+    Replaces the Session 2 Nifty 9 EMA approach — Supertrend is ATR-adaptive,
+    less prone to whipsaw, and coherent with the BB Breakout entry conditions.
+    """
+    from mcp_server.market_direction import get_regime_map
+    return get_regime_map(lookback_days=days + 40)
 
 
 def _resample(df1m: pd.DataFrame, freq: str) -> pd.DataFrame:
