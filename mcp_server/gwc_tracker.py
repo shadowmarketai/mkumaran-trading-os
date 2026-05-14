@@ -51,6 +51,7 @@ class GWCSignal:
     target2:    float        = 0.0
     rrr:        float        = 0.0
     cost_exit:  bool         = False    # "Exit @cost" flag
+    hero_zero:  bool         = False    # binary trade: no SL, all-or-nothing
     is_option:  bool         = False
     underlying: str          = ""
     strike:     float        = 0.0
@@ -84,13 +85,22 @@ def parse_gwc(text: str) -> Optional[GWCSignal]:
 
     upper = text.upper()
 
-    # Skip pure commentary lines
+    # Skip pure commentary / result-update lines (no trade action needed)
     commentary_markers = [
         "FROM HERE", "CAN HIT", "VOLATILE", "NO ONE SIDE",
-        "TRADING BOTH SIDE", "CAME ", "HOPE REDUCED",
+        "TRADING BOTH SIDE", "HOPE REDUCED", "TRUMP", "BREAKING NEWS",
+        "BOOK PROFITS", "DOUBLED", "WATCHLIST",
     ]
     if any(m in upper for m in commentary_markers) and not re.search(r'\bSL\b|\bSTOP\b', upper):
         return None
+
+    # Skip pure update messages: "Till now 175 ✌️" without a buy/sell action
+    if re.search(r'TILL\s+NOW\s+\d', upper) and not re.search(r'\b(BUY|SELL|LONG|SHORT)\b', upper):
+        return None
+
+    # Hero zero detection — GWC's binary expiry trade (no SL, all-or-nothing)
+    if re.search(r'HERO\s*ZERO', upper):
+        sig.hero_zero = True
 
     # Direction
     if re.search(r'\b(BUY|LONG|BULLISH)\b', upper):
@@ -153,20 +163,33 @@ def parse_gwc(text: str) -> Optional[GWCSignal]:
     # ── Price extraction ──────────────────────────────────────────────────────
     clean = upper.replace(",", "").replace("₹", "").replace("RS.", "")
 
-    # Entry: @X, CMP X, ENTRY X, AROUNDD X
-    entry = _num(clean, r'(?:@|CMP|ENTRY|AROUND+)\s*(\d+\.?\d*)')
-    if entry == 0:
-        # "CAME 41" — GWC price-update shorthand: "SENSEX 75500CE CAME 41"
-        entry = _num(clean, r'CAME\s+(\d+\.?\d*)')
-    if entry == 0:
-        # Number right after the option symbol with a space: "23600PE 110"
-        entry = _num(clean, r'(?:CE|PE)\s+(\d+\.?\d*)')
-    sig.entry = entry
+    # Entry + add_more: handles "@125/75", "AROUND 80/50", "@55/40" formats.
+    # The slash separates the initial entry from the averaging level — NOT two targets.
+    entry_slash = re.search(
+        r'(?:@|AROUND+)\s*(\d+\.?\d*)\s*/\s*(\d+\.?\d*)', clean
+    )
+    if entry_slash:
+        try:
+            sig.entry    = float(entry_slash.group(1))
+            sig.add_more = float(entry_slash.group(2))
+        except ValueError:
+            pass
 
-    # Add more / averaging level
-    sig.add_more = _num(clean, r'ADD\s*(?:MORE)?\s*(?:@|AT)?\s*(\d+\.?\d*)')
-    if sig.add_more == 0:
-        sig.add_more = _num(clean, r'AVG(?:ERAGE)?\s*(?:@|AT)?\s*(\d+\.?\d*)')
+    if sig.entry == 0:
+        # Plain: @X or ENTRY X (no slash)
+        sig.entry = _num(clean, r'(?:@|ENTRY|AROUND+)\s*(\d+\.?\d*)')
+    if sig.entry == 0:
+        # "CAME 41" — GWC price-update shorthand
+        sig.entry = _num(clean, r'CAME\s+(\d+\.?\d*)')
+    if sig.entry == 0:
+        sig.entry = _num(clean, r'(?:CE|PE)\s+(\d+\.?\d*)')
+
+    # Add more / averaging (explicit keyword, overrides slash-parsed value)
+    explicit_add = _num(clean, r'ADD\s*(?:MORE)?\s*(?:@|AT)?\s*(\d+\.?\d*)')
+    if explicit_add == 0:
+        explicit_add = _num(clean, r'AVG(?:ERAGE)?\s*(?:@|AT)?\s*(\d+\.?\d*)')
+    if explicit_add > 0:
+        sig.add_more = explicit_add
 
     # Stop loss: SL X, STOP@X, STOP X
     sig.sl = _num(clean, r'(?:SL|STOP\s*@?|STOP\s+LOSS)\s*(\d+\.?\d*)')
@@ -247,8 +270,9 @@ def log_to_sheets(
             header=GWC_TRACKER_HEADERS,
         )
 
-        t2_str = str(sig.target2) if sig.target2 > 0 else ""
+        t2_str    = str(sig.target2) if sig.target2 > 0 else ""
         cost_note = " | EXIT@COST" if sig.cost_exit else ""
+        hero_note = " | HERO_ZERO" if sig.hero_zero else ""
         row = [
             sig.date,
             sig.time,
@@ -266,7 +290,7 @@ def log_to_sheets(
             "OPEN",
             "",   # exit price — filled when outcome known
             "",   # P&L %
-            notes + cost_note,
+            notes + cost_note + hero_note,
         ]
         ws.append_row(row)
         logger.info("GWC signal logged: %s %s entry=%.2f", sig.ticker, sig.direction, sig.entry)
@@ -416,20 +440,23 @@ def format_gwc_reply(sig: GWCSignal, validation: dict) -> str:
     t1_str   = f"₹{sig.target1:.1f}" if sig.target1 > 0 else "₹—"
     rrr_str  = f"{sig.rrr:.2f} {rrr_flag}" if sig.rrr > 0 else f"— {rrr_flag}"
 
-    # Warn when critical fields are absent
+    # Warn when critical fields are absent (suppress SL warning for Hero Zero)
     warnings: list[str] = []
     if sig.entry == 0:
         warnings.append("⚠️ Entry price not found — resend with @ price")
-    if sig.sl == 0:
+    if sig.sl == 0 and not sig.hero_zero:
         warnings.append("⚠️ SL not found — add 'SL X' to the signal")
     if sig.target1 == 0:
         warnings.append("⚠️ Target not found — add 'TGT X' to the signal")
+
+    hero_line = "\n🎲 HERO ZERO — binary trade (no SL, expires worthless or wins big)" if sig.hero_zero else ""
 
     lines = [
         "📲 GWC Signal Tracker",
         sep,
         f"Ticker: {sig.ticker}" + (f" {int(sig.strike)}{sig.opt_type}" if sig.is_option else ""),
         f"Direction: {'🟢 BUY' if sig.direction == 'BUY' else '🔴 SELL'}",
+        hero_line,
         sep,
         f"Entry: ₹{sig.entry:.1f}{add_line}" if sig.entry > 0 else "Entry: ₹— (not found)",
         f"SL: {sl_str} | T1: {t1_str}{t2_line}",
