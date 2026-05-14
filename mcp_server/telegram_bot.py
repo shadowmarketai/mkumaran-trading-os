@@ -1,12 +1,15 @@
 """Telegram bot for MKUMARAN Trading OS."""
 import asyncio
 import logging
+import re
 from telegram import Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 
 from mcp_server.config import settings
@@ -32,6 +35,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/close NSE:TICKER \u2014 Log trade exit\n"
         "/analyze BUY TICKER @ PRICE SL PRICE TGT PRICE \u2014 Quick AI analysis\n"
         "/signal BUY TICKER @ PRICE SL PRICE TGT PRICE \u2014 Full pipeline\n"
+        "\n\U0001f4c8 GWC Tracker (Goodwill signals):\n"
+        "/gwc <paste signal> \u2014 Parse + validate + log GWC signal\n"
+        "/gwc_learn \u2014 Pattern insights from forwarded messages\n"
+        "Or just forward any GWC WhatsApp message directly \u2014 auto-classified & logged\n"
         "\n\U0001f464 Account:\n"
         "/login email password \u2014 Link your account\n"
         "/segments \u2014 View/toggle trading segments\n"
@@ -1157,6 +1164,125 @@ async def handle_take_skip_callback(update: Update, context: ContextTypes.DEFAUL
         logger.debug("Button edit-out failed (may be >48h old or unchanged): %s", e)
 
 
+async def handle_gwc_raw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Catch-all text handler — receives any raw GWC message the owner forwards.
+
+    Classifies the message, logs it to GWC LOG, and takes appropriate action:
+      SIGNAL      → parse + validate + log to GWC TRACKER + reply with verdict card
+      RESULT      → auto-link to open signal + reply with confirmation
+      UPDATE      → log silently + brief ack
+      MARKET_CALL → log + reply with key levels
+      COMMENTARY  → log silently (no reply unless expiry-related)
+      NEWS        → log silently
+    """
+    # Owner-only guard — ignore messages from other users in group chats
+    if settings.TELEGRAM_CHAT_ID:
+        try:
+            chat_id_int = int(settings.TELEGRAM_CHAT_ID)
+            if chat_id_int > 0 and update.effective_user.id != chat_id_int:
+                return
+        except (ValueError, TypeError):
+            pass
+
+    text = (update.message.text or "").strip()
+    if not text:
+        return
+
+    try:
+        from mcp_server.gwc_tracker import (
+            GWCMessageType,
+            classify_gwc_message,
+            link_gwc_outcome_from_message,
+            log_raw_to_sheets,
+            log_to_sheets,
+            format_gwc_reply,
+            parse_gwc,
+            validate_gwc_signal,
+        )
+    except Exception as imp_err:
+        logger.warning("GWC tracker import failed: %s", imp_err)
+        return
+
+    msg_type, extracted = classify_gwc_message(text)
+
+    # Auto-link outcomes before logging (so linked_signal is in the log row)
+    linked = ""
+    if msg_type == GWCMessageType.RESULT:
+        linked = link_gwc_outcome_from_message(text, extracted)
+
+    log_raw_to_sheets(text, msg_type, extracted, linked_signal=linked)
+
+    # ── Route by type ──────────────────────────────────────────────────────────
+    if msg_type == GWCMessageType.SIGNAL:
+        sig = parse_gwc(text)
+        if sig is None:
+            await update.message.reply_text(
+                "📊 Logged as signal-like — parse incomplete.\n"
+                "Use /gwc to reprocess with manual entry."
+            )
+            return
+        await update.message.reply_text("⏳ Signal detected — validating...")
+        validation = validate_gwc_signal(sig)
+        log_to_sheets(
+            sig,
+            verdict=validation.get("verdict", ""),
+            confidence=validation.get("confidence", 0),
+            notes=text[:100],
+        )
+        reply = format_gwc_reply(sig, validation)
+        await update.message.reply_text(reply)
+
+    elif msg_type == GWCMessageType.RESULT:
+        price = extracted.get("price", 0)
+        price_str = f"₹{price:.0f}" if price else "?"
+        if linked:
+            await update.message.reply_text(
+                f"✅ Result logged ({price_str})\n"
+                f"Auto-linked: {linked}\n"
+                f"GWC TRACKER updated."
+            )
+        else:
+            await update.message.reply_text(
+                f"📈 Result logged ({price_str})\n"
+                f"No open signal matched within 2% — check GWC TRACKER manually."
+            )
+
+    elif msg_type == GWCMessageType.UPDATE:
+        price = extracted.get("price", 0)
+        price_str = f" (₹{price:.0f})" if price else ""
+        await update.message.reply_text(f"📝 Level update{price_str} logged to GWC LOG.")
+
+    elif msg_type == GWCMessageType.MARKET_CALL:
+        levels = extracted.get("levels", [])
+        level_str = " / ".join(f"₹{int(l):,}" for l in levels) if levels else "—"
+        await update.message.reply_text(
+            f"🔭 Market call logged.\n"
+            f"Key levels: {level_str}\n"
+            f"(Observation — no trade action)"
+        )
+
+    elif msg_type == GWCMessageType.NEWS:
+        # Silent log — no reply to avoid spamming
+        pass
+
+    else:  # COMMENTARY
+        # Only reply when it's expiry-day context — worth noting
+        if re.search(r'\b(?:EXPIRY|EXPIRE[DS]?|OPTION\s+DAY|LAST\s+(?:HOUR|DAY))\b', text.upper()):
+            await update.message.reply_text("📅 Expiry note logged to GWC LOG.")
+
+
+async def cmd_gwc_learn(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /gwc_learn — analyze GWC LOG patterns and surface insights."""
+    await update.message.reply_text("🔍 Analyzing GWC message patterns...")
+    try:
+        from mcp_server.gwc_tracker import get_gwc_learn_insights
+        insights = get_gwc_learn_insights()
+        await update.message.reply_text(insights)
+    except Exception as exc:
+        logger.error("gwc_learn failed: %s", exc)
+        await update.message.reply_text(f"❌ Analysis failed: {exc}")
+
+
 def create_bot_application() -> Application:
     """Create and configure the Telegram bot application."""
     if not settings.TELEGRAM_BOT_TOKEN:
@@ -1180,7 +1306,12 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("analyze", cmd_analyze))
     app.add_handler(CommandHandler("signal", cmd_signal))
     app.add_handler(CommandHandler("gwc", cmd_gwc))
+    app.add_handler(CommandHandler("gwc_learn", cmd_gwc_learn))
     app.add_handler(CallbackQueryHandler(handle_take_skip_callback, pattern=r"^(take|skip):"))
+
+    # Raw text handler — catches all non-command forwarded GWC messages.
+    # Must be registered AFTER all CommandHandlers so commands take priority.
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_gwc_raw))
 
     # SaaS multi-user commands
     from mcp_server.telegram_saas import (
@@ -1196,5 +1327,5 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("mystats", cmd_mystats))
     app.add_handler(CommandHandler("plan", cmd_plan))
 
-    logger.info("Telegram bot configured with 21 command handlers + TAKE/SKIP callback")
+    logger.info("Telegram bot configured with 23 command handlers + TAKE/SKIP callback + raw text handler")
     return app

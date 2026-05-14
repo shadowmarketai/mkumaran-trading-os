@@ -19,8 +19,10 @@ Differences from standard parse_signal_message:
 """
 from __future__ import annotations
 
+import enum
 import logging
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -522,3 +524,333 @@ def format_gwc_reply(sig: GWCSignal, validation: dict) -> str:
         "✅ Logged to GWC TRACKER sheet",
     ]
     return "\n".join(line for line in lines if line)
+
+
+# ── Message classifier ────────────────────────────────────────────────────────
+
+class GWCMessageType(enum.Enum):
+    SIGNAL      = "SIGNAL"       # tradeable: BUY/SELL + option/ticker
+    RESULT      = "RESULT"       # "Till now 175", "Target hit", price+emoji
+    UPDATE      = "UPDATE"       # SL moved, new level for existing trade
+    MARKET_CALL = "MARKET_CALL"  # directional view without an entry
+    COMMENTARY  = "COMMENTARY"   # analysis, opinion
+    NEWS        = "NEWS"         # external event (Trump, RBI, etc.)
+
+
+GWC_LOG_HEADERS = [
+    "Date", "Time", "Type", "Raw Message", "Ticker",
+    "Key Numbers", "Linked Signal", "Notes",
+]
+
+
+def classify_gwc_message(text: str) -> tuple[GWCMessageType, dict]:
+    """
+    Classify a raw GWC forwarded message.
+    Returns (GWCMessageType, extracted_data_dict).
+    extracted_data may contain: ticker, direction, entry, price, levels.
+    """
+    if not text or len(text) < 3:
+        return GWCMessageType.COMMENTARY, {}
+
+    upper = text.upper().strip()
+    extracted: dict = {}
+
+    # ── RESULT patterns ───────────────────────────────────────────────────────
+
+    till_now = re.search(r'TILL\s+NOW\s+(\d+\.?\d*)', upper)
+    if till_now:
+        extracted["price"] = float(till_now.group(1))
+        extracted["type"]  = "till_now"
+        return GWCMessageType.RESULT, extracted
+
+    if re.search(r'TARGET\s+(?:HIT|ACHIEVED|DONE|COMPLETE[D]?)', upper):
+        nums = re.findall(r'\b(\d{2,6}\.?\d*)\b', upper)
+        if nums:
+            extracted["price"] = float(nums[-1])
+        extracted["type"] = "target_hit"
+        return GWCMessageType.RESULT, extracted
+
+    if re.search(r'\b(?:BOOK(?:ED)?|PROFIT\s+BOOK)', upper):
+        nums = re.findall(r'\b(\d{2,6}\.?\d*)\b', upper)
+        if nums:
+            extracted["price"] = float(nums[-1])
+        extracted["type"] = "profit_book"
+        return GWCMessageType.RESULT, extracted
+
+    # Line is just digits + win-emoji (e.g. "250 ✌️" or "175 🎯")
+    if re.match(r'^\s*\d+\.?\d*\s*[\U0001F300-\U0001FFFF✌🎯✅💰🔥👍⭐🏆]+\s*$', text):
+        m = re.search(r'(\d+\.?\d*)', text)
+        if m:
+            extracted["price"] = float(m.group(1))
+        extracted["type"] = "price_emoji"
+        return GWCMessageType.RESULT, extracted
+
+    # ── SIGNAL — try parse_gwc() as ground truth ─────────────────────────────
+
+    has_direction = bool(re.search(r'\b(BUY|SELL|LONG|SHORT)\b', upper))
+    has_option    = bool(re.search(
+        r'\b(?:NIFTY|BANKNIFTY|FINNIFTY|MIDCPNIFTY|SENSEX|[A-Z]{2,10})\s*\d{4,6}\s*(?:CE|PE)\b',
+        upper,
+    ))
+    has_entry_hint = bool(re.search(r'(?:@|AROUND+|ENTRY)\s*\d+', upper))
+
+    if has_direction and (has_option or has_entry_hint):
+        sig = parse_gwc(text)
+        if sig is not None:
+            extracted["ticker"]    = sig.ticker
+            extracted["direction"] = sig.direction
+            extracted["entry"]     = sig.entry
+            return GWCMessageType.SIGNAL, extracted
+
+    # ── UPDATE — SL moved, level change ──────────────────────────────────────
+
+    if re.search(r'(?:STOP|SL)\s+(?:NOW|MOVE[DS]?|TRAIL)', upper):
+        m = re.search(r'(\d+\.?\d*)', upper)
+        if m:
+            extracted["price"] = float(m.group(1))
+        extracted["type"] = "sl_update"
+        return GWCMessageType.UPDATE, extracted
+
+    # ── MARKET_CALL — view without an explicit entry ──────────────────────────
+
+    market_call_pats = [
+        r'CAN\s+HIT', r'WILL\s+HIT', r'LIKELY\s+TO', r'EXPECTING',
+        r'FROM\s+HERE', r'WATCHLIST', r'WATCH\s+FOR', r'NO\s+ONE\s+SIDE',
+        r'TRADING\s+BOTH', r'VOLATILE', r'RANGE\s+BOUND',
+    ]
+    if any(re.search(p, upper) for p in market_call_pats):
+        nums = re.findall(r'\b(\d{4,6})\b', upper)
+        if nums:
+            extracted["levels"] = [float(n) for n in nums[:4]]
+        return GWCMessageType.MARKET_CALL, extracted
+
+    # ── NEWS — external events ────────────────────────────────────────────────
+
+    news_kws = [
+        "TRUMP", "FOMC", "RBI", "FED", "OPEC", "GDP", "CPI", "INFLATION",
+        "BREAKING", "BUDGET", "ELECTION", "WAR", "CEASEFIRE",
+    ]
+    if any(kw in upper for kw in news_kws):
+        return GWCMessageType.NEWS, extracted
+
+    return GWCMessageType.COMMENTARY, extracted
+
+
+def log_raw_to_sheets(
+    text: str,
+    msg_type: GWCMessageType,
+    extracted: dict,
+    linked_signal: str = "",
+    notes: str = "",
+) -> bool:
+    """Append a raw GWC message to the 'GWC LOG' Google Sheets tab."""
+    try:
+        from mcp_server.sheets_sync import _get_sheets_client, _get_or_create_worksheet
+        _, sheet = _get_sheets_client()
+        if not sheet:
+            return False
+
+        ws = _get_or_create_worksheet(
+            sheet, "GWC LOG",
+            cols=len(GWC_LOG_HEADERS),
+            header=GWC_LOG_HEADERS,
+        )
+
+        now       = datetime.now()
+        ticker    = extracted.get("ticker", "")
+        price     = extracted.get("price", "")
+        levels    = extracted.get("levels", [])
+        key_nums  = (str(price) if price
+                     else ", ".join(str(int(l)) for l in levels) if levels
+                     else "")
+
+        row = [
+            now.strftime("%Y-%m-%d"),
+            now.strftime("%H:%M"),
+            msg_type.value,
+            text[:300],
+            ticker,
+            key_nums,
+            linked_signal,
+            notes,
+        ]
+        ws.append_row(row)
+        logger.info("GWC LOG: %s — %s", msg_type.value, text[:60])
+        return True
+    except Exception as exc:
+        logger.warning("GWC LOG sheet failed: %s", exc)
+        return False
+
+
+def link_gwc_outcome_from_message(text: str, extracted: dict) -> str:
+    """
+    For a RESULT message, find the open GWC TRACKER row whose T1/T2 matches
+    the price (within 2%), update its status, and return a description.
+    Returns empty string if no match found.
+    """
+    price = extracted.get("price", 0)
+    if not price:
+        return ""
+
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        from mcp_server.sheets_sync import _get_sheets_client
+        _, sheet = _get_sheets_client()
+        if not sheet:
+            return ""
+
+        ws   = sheet.worksheet("GWC TRACKER")
+        rows = ws.get_all_values()
+        if not rows:
+            return ""
+
+        header = rows[0]
+        try:
+            col_date   = header.index("Date")   + 1
+            col_ticker = header.index("Ticker") + 1
+            col_t1     = header.index("T1")     + 1
+            col_t2     = header.index("T2")     + 1
+            col_status = header.index("Status") + 1
+            col_dir    = header.index("Direction") + 1
+            col_exit   = header.index("Exit Price") + 1
+        except ValueError:
+            return ""
+
+        for i, row in enumerate(rows[1:], start=2):
+            if len(row) < max(col_date, col_ticker, col_t1, col_t2, col_status) - 1:
+                continue
+            if row[col_status - 1] != "OPEN":
+                continue
+            if row[col_date - 1] != today:
+                continue
+
+            try:
+                t1 = float(row[col_t1 - 1]) if row[col_t1 - 1] else 0.0
+                t2 = float(row[col_t2 - 1]) if row[col_t2 - 1] else 0.0
+            except ValueError:
+                continue
+
+            matched = ""
+            if t1 > 0 and abs(t1 - price) / t1 < 0.02:
+                matched = "TARGET1"
+            elif t2 > 0 and abs(t2 - price) / t2 < 0.02:
+                matched = "TARGET2"
+
+            if matched:
+                ticker    = row[col_ticker - 1]
+                direction = row[col_dir - 1]
+                ws.update_cell(i, col_status, matched)
+                ws.update_cell(i, col_exit,   price)
+                logger.info(
+                    "GWC auto-linked: %s %s → %s (price=%.1f)",
+                    ticker, direction, matched, price,
+                )
+                return f"{ticker} {direction} → {matched}"
+
+        return ""
+    except Exception as exc:
+        logger.warning("GWC outcome auto-link failed: %s", exc)
+        return ""
+
+
+def get_gwc_learn_insights() -> str:
+    """
+    Pull GWC LOG + GWC TRACKER data and return a pattern summary string
+    suitable for a Telegram message.
+    """
+    try:
+        from mcp_server.sheets_sync import _get_sheets_client
+        _, sheet = _get_sheets_client()
+        if not sheet:
+            return "❌ Google Sheets not connected."
+
+        try:
+            log_ws   = sheet.worksheet("GWC LOG")
+            log_rows = log_ws.get_all_values()
+        except Exception:
+            return "ℹ️ GWC LOG tab not found yet. Forward some messages first."
+
+        if len(log_rows) <= 1:
+            return "ℹ️ GWC LOG is empty. Forward some GWC messages first."
+
+        header = log_rows[0]
+        data   = log_rows[1:]
+
+        try:
+            col_type   = header.index("Type")
+            col_time   = header.index("Time")
+            col_ticker = header.index("Ticker")
+            col_linked = header.index("Linked Signal")
+        except ValueError:
+            return "❌ GWC LOG header mismatch — re-forward a message to rebuild headers."
+
+        type_counts = Counter(
+            row[col_type] for row in data if len(row) > col_type and row[col_type]
+        )
+
+        signal_times = [
+            row[col_time] for row in data
+            if len(row) > col_time and row[col_type] == "SIGNAL"
+        ]
+
+        tickers = [
+            row[col_ticker] for row in data
+            if len(row) > col_ticker and row[col_ticker]
+        ]
+        ticker_counts = Counter(tickers)
+
+        linked_count    = sum(1 for row in data if len(row) > col_linked and row[col_linked])
+        total_signals   = type_counts.get("SIGNAL", 0)
+        total_results   = type_counts.get("RESULT", 0)
+
+        lines = [
+            "📊 GWC Pattern Insights",
+            "━━━━━━━━━━━━━━━━━━━━━━━━",
+            f"Total messages: {len(data)}",
+            "",
+            "By Type:",
+        ]
+        for t, c in type_counts.most_common():
+            lines.append(f"  {t}: {c}")
+
+        if signal_times:
+            lines += [
+                "",
+                f"Signal Timing ({len(signal_times)} signals):",
+                f"  First: {min(signal_times)}  Last: {max(signal_times)}",
+            ]
+
+        if ticker_counts:
+            lines += ["", "Top Tickers:"]
+            for t, c in ticker_counts.most_common(6):
+                lines.append(f"  {t}: {c}x")
+
+        if total_results > 0:
+            link_rate = linked_count / total_results * 100
+            lines += [
+                "",
+                "Result Auto-Linking:",
+                f"  Results received : {total_results}",
+                f"  Matched to signal: {linked_count} ({link_rate:.0f}%)",
+            ]
+
+        if total_signals > 0 and linked_count > 0:
+            win_est = linked_count / total_signals * 100
+            lines += [
+                "",
+                f"Win Rate Estimate: ~{win_est:.0f}%",
+                f"  ({linked_count} target hits / {total_signals} signals logged)",
+                "  Counts only auto-linked target arrivals.",
+            ]
+
+        lines += [
+            "",
+            "━━━━━━━━━━━━━━━━━━━━━━━━",
+            "💡 Forward more messages to grow the dataset.",
+        ]
+        return "\n".join(lines)
+
+    except Exception as exc:
+        logger.warning("GWC learn insights failed: %s", exc)
+        return f"❌ Analysis error: {exc}"
