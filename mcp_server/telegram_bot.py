@@ -39,6 +39,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/gwc <paste signal> \u2014 Parse + validate + log GWC signal\n"
         "/gwc_learn \u2014 Pattern insights from forwarded messages\n"
         "Or just forward any GWC WhatsApp message directly \u2014 auto-classified & logged\n"
+        "\n\U0001f3af Options Scanner:\n"
+        "/test_options \u2014 Live diagnostic: Dhan chain, VIX, per-strategy dry-run\n"
+        "/dhantoken <JWT> \u2014 Refresh Dhan token (needed for chain data)\n"
         "\n\U0001f464 Account:\n"
         "/login email password \u2014 Link your account\n"
         "/segments \u2014 View/toggle trading segments\n"
@@ -892,6 +895,138 @@ async def cmd_signal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text(report)
 
 
+async def cmd_test_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /test_options — run a live options scan diagnostic and report results.
+
+    Checks: Dhan connection → chain data → VIX → each strategy → signals generated.
+    Safe to call any time (read-only, no signals sent).
+    """
+    await update.message.reply_text("⏳ Running options scan diagnostic...")
+
+    sep = "━" * 24
+    lines = ["🎯 Options Scan Diagnostic", sep]
+
+    # ── 1. Dhan connection ────────────────────────────────────────────────────
+    dhan_ok = False
+    try:
+        from mcp_server.data_provider import get_provider
+        provider = get_provider()
+        dhan_ok = bool(getattr(provider.dhan, "logged_in", False))
+    except Exception as e:
+        lines.append(f"⚠️ Provider error: {e}")
+
+    lines.append(f"{'🟢' if dhan_ok else '🔴'} Dhan: {'Connected' if dhan_ok else 'Not connected — use /dhantoken'}")
+
+    # ── 2. Market status ──────────────────────────────────────────────────────
+    try:
+        from mcp_server.market_calendar import is_market_open, now_ist
+        mkt_open = is_market_open("NSE")
+        lines.append(f"{'🟢' if mkt_open else '🟡'} Market: {'Open' if mkt_open else 'Closed'} ({now_ist().strftime('%H:%M IST')})")
+    except Exception as e:
+        lines.append(f"⚠️ Market check failed: {e}")
+        mkt_open = False
+
+    # ── 3. India VIX ─────────────────────────────────────────────────────────
+    try:
+        from mcp_server.options_signal_engine import _get_vix_data
+        vix_data = _get_vix_data()
+        if vix_data:
+            vix_val = vix_data.get("vix", 0)
+            vix_chg = vix_data.get("pct_change", 0)
+            arrow = "↑" if vix_chg > 0 else "↓"
+            lines.append(f"📊 India VIX: {vix_val:.2f} ({arrow}{vix_chg:+.1f}%)")
+        else:
+            lines.append("⚠️ VIX: unavailable")
+            vix_data = None
+    except Exception as e:
+        lines.append(f"⚠️ VIX error: {e}")
+        vix_data = None
+
+    # ── 4. NIFTY chain data ───────────────────────────────────────────────────
+    chain_ok = False
+    nifty_data = None
+    try:
+        from mcp_server.options_signal_engine import _get_chain_and_data
+        nifty_data = _get_chain_and_data("NIFTY")
+        if nifty_data:
+            chain_ok = True
+            lines += [
+                sep,
+                f"📈 NIFTY spot:    ₹{nifty_data['spot']:,.0f}",
+                f"   ATM strike:   ₹{nifty_data['atm_strike']:,.0f}",
+                f"   ATM IV:       {nifty_data['atm_iv']:.1f}%",
+                f"   ATM CE/PE:    ₹{nifty_data.get('atm_ce_ltp', 0):.1f} / ₹{nifty_data.get('atm_pe_ltp', 0):.1f}",
+                f"   PCR:          {nifty_data['pcr']:.2f}",
+                f"   Max Pain:     ₹{nifty_data['max_pain']:,.0f}",
+                f"   Expiry:       {nifty_data.get('expiry', '?')} ({nifty_data['days_to_expiry']}d)",
+                f"   Chain depth:  {len(nifty_data.get('chain', {}))} strikes",
+                f"   Expiry day:   {'YES 🎯' if nifty_data.get('is_expiry_day') else 'No'}",
+            ]
+        else:
+            lines += [sep, "🔴 NIFTY chain: no data (Dhan chain fetch failed)"]
+    except Exception as e:
+        lines += [sep, f"🔴 Chain error: {e}"]
+
+    # ── 5. Per-strategy dry-run ───────────────────────────────────────────────
+    lines += [sep, "Strategy Results:"]
+    if nifty_data:
+        from mcp_server.options_signal_engine import (
+            strategy_iv_crush, strategy_cheap_premium, strategy_pcr_extreme,
+            strategy_expiry_day, strategy_max_pain_magnet, strategy_oi_wall,
+            strategy_vix_spike,
+        )
+        strategies = [
+            strategy_iv_crush, strategy_cheap_premium, strategy_pcr_extreme,
+            strategy_expiry_day, strategy_max_pain_magnet, strategy_oi_wall,
+            strategy_vix_spike,
+        ]
+        fired_count = 0
+        for fn in strategies:
+            try:
+                result = fn(nifty_data, vix_data=vix_data)
+                if result:
+                    fired_count += 1
+                    premium_key = "premium_collected" if "premium_collected" in result else "premium_paid"
+                    premium = result.get(premium_key, 0)
+                    lines.append(f"  ✅ {fn.__name__.replace('strategy_', '')}: {result['direction']} ₹{premium:.0f}")
+                else:
+                    lines.append(f"  ⚫ {fn.__name__.replace('strategy_', '')}: no signal")
+            except Exception as e:
+                lines.append(f"  ⚠️ {fn.__name__.replace('strategy_', '')}: error ({e})")
+    else:
+        lines.append("  (skipped — no chain data)")
+        fired_count = 0
+
+    # ── 6. Full scan across all symbols ──────────────────────────────────────
+    lines += [sep, "Full Scan:"]
+    try:
+        from mcp_server.options_signal_engine import run_options_scan
+        all_signals = run_options_scan()
+        if all_signals:
+            lines.append(f"  ✅ {len(all_signals)} signal(s) generated:")
+            for s in all_signals[:5]:
+                lines.append(f"    • {s['symbol']} {s.get('direction','')} — {s['strategy']}")
+            if len(all_signals) > 5:
+                lines.append(f"    ... +{len(all_signals)-5} more")
+        else:
+            lines.append("  ⚫ 0 signals — thresholds not met or market closed")
+    except Exception as e:
+        lines.append(f"  ⚠️ Scan error: {e}")
+
+    # ── 7. Advice ─────────────────────────────────────────────────────────────
+    lines.append(sep)
+    if not dhan_ok:
+        lines.append("💡 Fix: /dhantoken <JWT from web.dhan.co>")
+    elif not chain_ok:
+        lines.append("💡 Dhan connected but chain fetch failed — token may be expired. /dhantoken again.")
+    elif fired_count == 0:
+        lines.append("💡 Chain OK. No signals today = normal market (thresholds not extreme).")
+    else:
+        lines.append(f"💡 {fired_count} strategy(s) firing on NIFTY — signals will be auto-sent during market hours.")
+
+    await update.message.reply_text("\n".join(lines))
+
+
 async def cmd_gwc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /gwc — parse a Goodwill WhatsApp signal, validate, and log to tracker.
 
@@ -1307,6 +1442,7 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("signal", cmd_signal))
     app.add_handler(CommandHandler("gwc", cmd_gwc))
     app.add_handler(CommandHandler("gwc_learn", cmd_gwc_learn))
+    app.add_handler(CommandHandler("test_options", cmd_test_options))
     app.add_handler(CallbackQueryHandler(handle_take_skip_callback, pattern=r"^(take|skip):"))
 
     # Raw text handler — catches all non-command forwarded GWC messages.
@@ -1327,5 +1463,5 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("mystats", cmd_mystats))
     app.add_handler(CommandHandler("plan", cmd_plan))
 
-    logger.info("Telegram bot configured with 23 command handlers + TAKE/SKIP callback + raw text handler")
+    logger.info("Telegram bot configured with 24 command handlers + TAKE/SKIP callback + raw text handler")
     return app
