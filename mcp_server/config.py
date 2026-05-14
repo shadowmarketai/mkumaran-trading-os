@@ -207,11 +207,12 @@ class Settings:
     EARNINGS_GATE_DAYS: int = int(os.getenv("EARNINGS_GATE_DAYS", "7"))
     FII_GATE_ENABLED: bool = os.getenv("FII_GATE_ENABLED", "true").lower() == "true"
 
-    # Unvalidated signal disclaimer — prepended to all scanner signals that have
-    # not passed a pre-committed backtest validation. Set to "" to disable prefix.
+    # Intraday signal disclaimer — prepended to intraday signals that have not
+    # yet completed a scanner-level backtest validation. Set to "" once all
+    # scanners have passed validate_intraday_scanners.py and tiers are assigned.
     UNVALIDATED_SIGNAL_DISCLAIMER: str = os.getenv(
         "UNVALIDATED_SIGNAL_DISCLAIMER",
-        "⚠️ Unvalidated scanner signal — no backtested edge confirmed. Educational reference only. Not financial advice.\n\n",
+        "📚 Educational purpose only — intraday pattern, backtest pending. Do not size real capital on this signal.\n\n",
     )
 
     # Options Enrichment (attach concrete option contracts to FNO futures signals)

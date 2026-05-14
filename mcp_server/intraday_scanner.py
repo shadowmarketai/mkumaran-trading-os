@@ -202,21 +202,30 @@ def scan_momentum(df5: pd.DataFrame, **_kw: Any) -> dict[str, Any] | None:
     return None
 
 
-def scan_prev_day_hl(df5: pd.DataFrame, **_kw: Any) -> dict[str, Any] | None:
-    """Breakout above previous day's high or below previous day's low."""
+def scan_prev_day_hl(
+    df5: pd.DataFrame,
+    prev_day_high: float | None = None,
+    prev_day_low: float | None = None,
+    **_kw: Any,
+) -> dict[str, Any] | None:
+    """Breakout above previous day's high or below previous day's low.
+
+    Uses actual prev-day H/L when supplied (run_scan passes these from the
+    2-day 15m fetch). Falls back to today's opening 30-min range as a proxy
+    only when called without historical context (unit tests, ad-hoc).
+    """
     if not _ok(df5, 6):
         return None
-    # Previous day high/low from the first bar's OHLC (session start)
-    # approximated as the max/min of the first 3 bars of the PREVIOUS session.
-    # Since we only fetch 1 day of 5m, we use the opening range as proxy.
-    # For a real prev-day H/L we'd need 2 days of data. Use available info:
-    prev_high = df5["high"].iloc[:6].max()  # first 30 min range as proxy
-    prev_low = df5["low"].iloc[:6].min()
+    if prev_day_high is not None and prev_day_low is not None:
+        ph, pl = prev_day_high, prev_day_low
+    else:
+        ph = df5["high"].iloc[:6].max()
+        pl = df5["low"].iloc[:6].min()
     last = df5.iloc[-1]
-    if last["close"] > prev_high and last["volume"] > df5["volume"].mean() * 1.2:
-        return _make_signal("LONG", last["close"], prev_low, "Prev-range breakout", "prev_day_hl")
-    if last["close"] < prev_low and last["volume"] > df5["volume"].mean() * 1.2:
-        return _make_signal("SHORT", last["close"], prev_high, "Prev-range breakdown", "prev_day_hl")
+    if last["close"] > ph and last["volume"] > df5["volume"].mean() * 1.2:
+        return _make_signal("LONG", last["close"], pl, "Prev-day H/L breakout", "prev_day_hl")
+    if last["close"] < pl and last["volume"] > df5["volume"].mean() * 1.2:
+        return _make_signal("SHORT", last["close"], ph, "Prev-day H/L breakdown", "prev_day_hl")
     return None
 
 
@@ -392,6 +401,21 @@ def run_scan() -> list[dict[str, Any]]:
         if df5 is None and df15 is None:
             continue
 
+        # Extract real prev-day H/L from the 2-day 15m fetch.
+        prev_day_high: float | None = None
+        prev_day_low: float | None = None
+        if df15 is not None and not df15.empty:
+            try:
+                today = now_ist().date()
+                idx = pd.to_datetime(df15.index) if not isinstance(df15.index, pd.DatetimeIndex) else df15.index
+                prev_mask = idx.date < today
+                prev_bars = df15[prev_mask]
+                if not prev_bars.empty:
+                    prev_day_high = float(prev_bars["high"].max())
+                    prev_day_low = float(prev_bars["low"].min())
+            except Exception:
+                pass
+
         hits: list[dict[str, Any]] = []
         for scanner_fn, needs_5m, needs_15m in SCANNERS:
             if needs_5m and (df5 is None or df5.empty):
@@ -402,6 +426,8 @@ def run_scan() -> list[dict[str, Any]]:
                 hit = scanner_fn(
                     df5=df5 if needs_5m else pd.DataFrame(),
                     df15=df15 if needs_15m else None,
+                    prev_day_high=prev_day_high,
+                    prev_day_low=prev_day_low,
                 )
             except Exception as scan_err:
                 logger.debug(

@@ -122,6 +122,8 @@ Ordered by priority.
 
 - [x] ~~CRITICAL — Rotate prod DB password~~ — Done 2026-05-13 (new password set)
 - [ ] **IMMEDIATE** — Run `python scripts/backfill_backtest_results_to_sheets.py` on prod to populate BACKTEST RESULTS tab
+- [ ] **IMMEDIATE** — Run `python scripts/validate_intraday_scanners.py` on prod (needs Dhan 1-min access; Coolify only). Results feed INTRADAY_VALIDATED_SCANNERS env var.
+- [ ] **After intraday backtest** — Set `INTRADAY_VALIDATED_SCANNERS` in .env for TIER_1/TIER_2 scanners; set `UNVALIDATED_SIGNAL_DISCLAIMER=""` for validated ones. OVERRIDE scanners → disable from standalone emission.
 - [ ] **May 14** — Wednesday strangle check: VIX below 80th pct? → strangle auto-emits
 - [ ] **May 14** — Verify BANKNIFTY chain works during market hours
 - [ ] **May 23** — Run `python scripts/track_options_signals.py` (10 days of options forward data)
