@@ -996,12 +996,19 @@ async def cmd_test_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                                 if isinstance(_raw, dict):
                                     _oc = _raw.get("oc", {}) if "oc" in _raw else _raw
                                     _n_strikes = len(_oc) if isinstance(_oc, dict) else 0
-                                    _sample_key = next(iter(_raw), None)
-                                    _sample_val = _raw.get(_sample_key, "")
-                                    _row_info = f"dict(oc={_n_strikes} strikes) last_price={_raw.get('last_price','?')} eg {_sample_key}:{str(_sample_val)[:40]}"
+                                    _row_info = f"dict(oc={_n_strikes} strikes) last_price={_raw.get('last_price','?')}"
+                                    # Dump one sample strike to show CE/PE field names
+                                    if isinstance(_oc, dict) and _oc:
+                                        _sk = next(iter(_oc))
+                                        _sv = _oc[_sk]
+                                        _row_info += f"\n   sample strike {_sk}: keys={list(_sv.keys()) if isinstance(_sv,dict) else type(_sv).__name__}"
+                                        if isinstance(_sv, dict):
+                                            _ce = _sv.get("CE", _sv.get("callOptions", {}))
+                                            if isinstance(_ce, dict) and _ce:
+                                                _row_info += f"\n   CE keys: {list(_ce.keys())[:8]}"
                                 else:
                                     _row_info = str(len(_raw)) if isinstance(_raw, list) else type(_raw).__name__
-                                lines.append(f"   option_chain({_seg}): status={_cr.get('status','?')} rows={_row_info} remarks={str(_remarks)[:60]}")
+                                lines.append(f"   option_chain({_seg}): status={_cr.get('status','?')} rows={_row_info} remarks={str(_remarks)[:40]}")
                             except Exception as _ce:
                                 lines.append(f"   option_chain({_seg}): ERROR — {str(_ce)[:80]}")
                     except Exception as _ee:
