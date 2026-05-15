@@ -135,20 +135,17 @@ def _adx(high: np.ndarray, low: np.ndarray, close: np.ndarray,
 # ── Scanner signal functions ──────────────────────────────────────────────────
 
 def _scan_ema_cross_adx(df: pd.DataFrame) -> dict | None:
-    """Original: EMA 9/21 crossover + ADX > 25. Kept for baseline."""
+    """Baseline: EMA 9/21 crossover + ADX > 25."""
     if len(df) < 30:
         return None
     c   = df["close"].values.astype(float)
     h   = df["high"].values.astype(float)
     low = df["low"].values.astype(float)
-
     e9  = _ema(c, 9)
     e21 = _ema(c, 21)
     adx_arr = _adx(h, low, c, 14)
-
     if np.isnan(e9[-1]) or np.isnan(e21[-1]) or adx_arr[-1] < 25:
         return None
-
     if e9[-1] > e21[-1] and e9[-2] <= e21[-2]:
         sl = float(low[-3:].min())
         return {"direction": "LONG",  "entry": float(c[-1]), "sl": sl}
@@ -158,54 +155,51 @@ def _scan_ema_cross_adx(df: pd.DataFrame) -> dict | None:
     return None
 
 
-def _weekly_ema_trend(df: pd.DataFrame) -> int:
-    """Return +1 (weekly bullish) / -1 (weekly bearish) / 0 (no trend) using weekly EMA9/21."""
-    weekly = df.resample("W-FRI", closed="right", label="right")["close"].last().dropna()
-    if len(weekly) < 21:
-        return 0
-    wc = weekly.values.astype(float)
-    we9  = _ema(wc, 9)
-    we21 = _ema(wc, 21)
-    if np.isnan(we9[-1]) or np.isnan(we21[-1]):
-        return 0
-    return 1 if we9[-1] > we21[-1] else -1
+def _atr14(h: np.ndarray, low: np.ndarray, c: np.ndarray) -> float:
+    """Last ATR(14) value."""
+    tr = np.maximum(h[1:] - low[1:],
+         np.maximum(np.abs(h[1:] - c[:-1]),
+                    np.abs(low[1:] - c[:-1])))
+    if len(tr) < 14:
+        return float(tr.mean()) if len(tr) > 0 else 0.0
+    atr = np.zeros(len(tr))
+    atr[13] = tr[:14].mean()
+    for i in range(14, len(tr)):
+        atr[i] = (atr[i - 1] * 13 + tr[i]) / 14
+    return float(atr[-1])
 
 
-def _scan_ema_cross_adx_v2(df: pd.DataFrame) -> dict | None:
-    """Redesigned: EMA 9/21 cross + ADX > 30 + weekly EMA trend gate."""
-    if len(df) < 63:  # need 3 months for weekly EMA21
+def _scan_ema_21_55(df: pd.DataFrame) -> dict | None:
+    """Variant A: EMA 21/55 cross + ADX > 25 — medium-term, less whipsaw."""
+    if len(df) < 60:
         return None
     c   = df["close"].values.astype(float)
     h   = df["high"].values.astype(float)
     low = df["low"].values.astype(float)
-
-    e9  = _ema(c, 9)
     e21 = _ema(c, 21)
+    e55 = _ema(c, 55)
     adx_arr = _adx(h, low, c, 14)
-
-    if np.isnan(e9[-1]) or np.isnan(e21[-1]) or adx_arr[-1] < 25:
+    if np.isnan(e21[-1]) or np.isnan(e55[-1]) or adx_arr[-1] < 25:
         return None
-
-    weekly_trend = _weekly_ema_trend(df)
-
-    if e9[-1] > e21[-1] and e9[-2] <= e21[-2] and weekly_trend == 1:
-        sl = float(low[-3:].min())
+    if e21[-1] > e55[-1] and e21[-2] <= e55[-2]:
+        cur_atr = _atr14(h, low, c)
+        sl = float(c[-1]) - 1.5 * cur_atr
         return {"direction": "LONG",  "entry": float(c[-1]), "sl": sl}
-    if e9[-1] < e21[-1] and e9[-2] >= e21[-2] and weekly_trend == -1:
-        sl = float(h[-3:].max())
+    if e21[-1] < e55[-1] and e21[-2] >= e55[-2]:
+        cur_atr = _atr14(h, low, c)
+        sl = float(c[-1]) + 1.5 * cur_atr
         return {"direction": "SHORT", "entry": float(c[-1]), "sl": sl}
     return None
 
 
 def _scan_volume_breakout(df: pd.DataFrame) -> dict | None:
-    """Original: volume > 2x avg + new 20d high. Kept for baseline."""
+    """Baseline: volume > 2x avg + new 20d high."""
     if len(df) < 21:
         return None
     c   = df["close"].values.astype(float)
     h   = df["high"].values.astype(float)
     low = df["low"].values.astype(float)
     v   = df["volume"].values.astype(float)
-
     avg_vol = float(np.mean(v[-21:-1]))
     if avg_vol <= 0 or v[-1] < 2 * avg_vol:
         return None
@@ -216,32 +210,36 @@ def _scan_volume_breakout(df: pd.DataFrame) -> dict | None:
     return {"direction": "LONG", "entry": float(c[-1]), "sl": sl}
 
 
-def _scan_volume_breakout_v2(df: pd.DataFrame) -> dict | None:
-    """Redesigned: volume > 2x avg + new 20d high + ADX > 20 (trending market only)."""
-    if len(df) < 30:
+def _scan_volume_breakout_3x(df: pd.DataFrame) -> dict | None:
+    """Variant B: volume > 3x avg + new 20d high — stricter volume filter."""
+    if len(df) < 21:
         return None
     c   = df["close"].values.astype(float)
     h   = df["high"].values.astype(float)
     low = df["low"].values.astype(float)
     v   = df["volume"].values.astype(float)
-
-    adx_arr = _adx(h, low, c, 14)
-    if adx_arr[-1] < 20:  # skip sideways markets
-        return None
-
     avg_vol = float(np.mean(v[-21:-1]))
-    if avg_vol <= 0 or v[-1] < 2 * avg_vol:
+    if avg_vol <= 0 or v[-1] < 3 * avg_vol:
         return None
     high_20 = float(h[-21:-1].max())
     if c[-1] <= high_20:
         return None
-    sl = float(low[-3:].min())
+    cur_atr = _atr14(h, low, c)
+    sl = float(c[-1]) - 1.5 * cur_atr  # ATR-based SL (wider than 3-bar low)
     return {"direction": "LONG", "entry": float(c[-1]), "sl": sl}
 
 
+# max_hold override per scanner (default = MAX_HOLD_DAYS = 20)
+SCANNER_MAX_HOLD: dict[str, int] = {
+    "volume_breakout_7d": 7,
+}
+
 SCANNERS = {
-    "ema_cross_adx":   _scan_ema_cross_adx,
-    "volume_breakout": _scan_volume_breakout,
+    "ema_cross_adx":        _scan_ema_cross_adx,
+    "ema_21_55":            _scan_ema_21_55,
+    "volume_breakout":      _scan_volume_breakout,
+    "volume_breakout_3x":   _scan_volume_breakout_3x,
+    "volume_breakout_7d":   _scan_volume_breakout,   # same fn, different max_hold
 }
 
 
@@ -286,6 +284,7 @@ def _simulate_trades(
     regime: dict[date, bool],
     lookback_days: int,
     rrr: float,
+    max_hold: int = MAX_HOLD_DAYS,
 ) -> list[dict]:
     cutoff = date.today() - timedelta(days=lookback_days)
     trades = []
@@ -329,7 +328,7 @@ def _simulate_trades(
         exit_price = None
         exit_why   = "max_hold"
 
-        for j in range(i + 2, min(i + 2 + MAX_HOLD_DAYS, len(df))):
+        for j in range(i + 2, min(i + 2 + max_hold, len(df))):
             bar_high = float(df["high"].iloc[j])
             bar_low  = float(df["low"].iloc[j])
 
@@ -353,7 +352,7 @@ def _simulate_trades(
                     break
 
         if exit_price is None:
-            exit_price = float(df["close"].iloc[min(i + 2 + MAX_HOLD_DAYS - 1, len(df) - 1)])
+            exit_price = float(df["close"].iloc[min(i + 2 + max_hold - 1, len(df) - 1)])
 
         if direction == "LONG":
             ret_pct = (exit_price - entry_price) / entry_price * 100
@@ -462,7 +461,8 @@ def main():
     all_results: dict[str, dict] = {}
 
     for scanner_name, scanner_fn in SCANNERS.items():
-        logger.info("\n── %s ──", scanner_name.upper())
+        mh = SCANNER_MAX_HOLD.get(scanner_name, MAX_HOLD_DAYS)
+        logger.info("\n── %s (max_hold=%d) ──", scanner_name.upper(), mh)
         best_verdict = "OVERRIDE"
         best_rrr     = args.rrr[0]
         best_metrics: dict = {}
@@ -470,7 +470,7 @@ def main():
         for rrr in args.rrr:
             all_trades: list[dict] = []
             for sym, df in data.items():
-                trades = _simulate_trades(df, scanner_fn, sym, regime, args.days, rrr)
+                trades = _simulate_trades(df, scanner_fn, sym, regime, args.days, rrr, max_hold=mh)
                 all_trades.extend(trades)
 
             m = _metrics(all_trades)
@@ -496,7 +496,7 @@ def main():
         for rrr in [best_rrr]:
             all_trades_best: list[dict] = []
             for sym, df in data.items():
-                all_trades_best.extend(_simulate_trades(df, scanner_fn, sym, regime, args.days, rrr))
+                all_trades_best.extend(_simulate_trades(df, scanner_fn, sym, regime, args.days, rrr, max_hold=mh))
             exit_dist = {}
             for t in all_trades_best:
                 exit_dist[t["exit_why"]] = exit_dist.get(t["exit_why"], 0) + 1
