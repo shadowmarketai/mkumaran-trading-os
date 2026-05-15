@@ -1173,17 +1173,25 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("GWC auto-login scheduling error: %s", e)
 
-    # Start Telegram bot polling (so /health, /kitelogin commands work)
-    try:
-        from mcp_server.telegram_bot import create_bot_application
-        _bot_app = create_bot_application()
-        if _bot_app:
-            await _bot_app.initialize()
-            await _bot_app.start()
-            await _bot_app.updater.start_polling(drop_pending_updates=True)
-            logger.info("Telegram bot polling started")
-    except Exception as e:
-        logger.warning("Telegram bot polling startup skipped: %s", e)
+    # Start Telegram bot polling as a background task — NOT awaited in lifespan.
+    # Awaiting it here blocks the yield, which prevents uvicorn from accepting
+    # connections until polling completes. During rolling deploys the Conflict
+    # error retries can delay this by 30–60s, causing healthcheck failure.
+    async def _start_bot_polling():
+        await asyncio.sleep(5)  # let uvicorn fully bind before polling starts
+        try:
+            from mcp_server.telegram_bot import create_bot_application
+            global _bot_app
+            _bot_app = create_bot_application()
+            if _bot_app:
+                await _bot_app.initialize()
+                await _bot_app.start()
+                await _bot_app.updater.start_polling(drop_pending_updates=True)
+                logger.info("Telegram bot polling started")
+        except Exception as e:
+            logger.warning("Telegram bot polling startup failed: %s", e)
+
+    asyncio.create_task(_start_bot_polling())
 
     # Start RealtimeEngine (WebSocket live market data)
     global _realtime_engine
