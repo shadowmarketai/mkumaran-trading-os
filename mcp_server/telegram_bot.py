@@ -981,7 +981,21 @@ async def cmd_test_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                         _expiries = (_inner.get("data", []) if isinstance(_inner, dict) else _inner) or []
                         lines.append(f"   {_seg}: status={_er.get('status','?')} expiries={len(_expiries) if isinstance(_expiries, list) else _expiries}")
                         if isinstance(_expiries, list) and _expiries:
-                            lines.append(f"   Next: {_expiries[0]}")
+                            _next_exp = str(_expiries[0])
+                            lines.append(f"   Next: {_next_exp}")
+                            # Also probe option_chain with this expiry
+                            try:
+                                _cr = _dhan.client.option_chain(
+                                    under_security_id=int(_sec_id),
+                                    under_exchange_segment=_seg,
+                                    expiry=_next_exp,
+                                )
+                                _cinner = _cr.get("data", {}) if isinstance(_cr, dict) else {}
+                                _raw = (_cinner.get("data", []) if isinstance(_cinner, dict) else _cinner) or []
+                                _remarks = _cr.get("remarks", "")
+                                lines.append(f"   option_chain({_seg}): status={_cr.get('status','?')} rows={len(_raw) if isinstance(_raw, list) else type(_raw).__name__} remarks={str(_remarks)[:60]}")
+                            except Exception as _ce:
+                                lines.append(f"   option_chain({_seg}): ERROR — {str(_ce)[:80]}")
                     except Exception as _ee:
                         lines.append(f"   {_seg}: ERROR — {str(_ee)[:80]}")
             except Exception as probe_err:
