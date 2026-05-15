@@ -149,10 +149,10 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                                     if not opt_data:
                                         continue
                                     parsed.setdefault(strike, {})[out_key] = {
-                                        "oi":     int(opt_data.get("OI", opt_data.get("oi", opt_data.get("openInterest", 0)))),
-                                        "ltp":    float(opt_data.get("LTP", opt_data.get("ltp", opt_data.get("lastTradedPrice", 0)))),
-                                        "volume": int(opt_data.get("volume", opt_data.get("Volume", 0))),
-                                        "iv":     float(opt_data.get("IV", opt_data.get("iv", opt_data.get("impliedVolatility", 0)))),
+                                        "oi":     int(opt_data.get("oi", opt_data.get("OI", opt_data.get("openInterest", 0)))),
+                                        "ltp":    float(opt_data.get("last_price", opt_data.get("LTP", opt_data.get("ltp", 0)))),
+                                        "volume": int(opt_data.get("volume", opt_data.get("previous_volume", opt_data.get("Volume", 0)))),
+                                        "iv":     float(opt_data.get("implied_volatility", opt_data.get("IV", opt_data.get("iv", 0)))),
                                     }
                         if parsed:
                             chain = parsed
