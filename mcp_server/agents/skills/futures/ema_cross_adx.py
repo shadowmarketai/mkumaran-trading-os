@@ -15,9 +15,15 @@ class EMACrossADXSkill(BaseSkill):
     min_bars = 30
     description = "EMA 9/21 crossover confirmed by ADX > 25"
 
+    # OVERRIDE — 365-day backtest May 2025–May 2026: 29.6% WR LONG, 23.8% WR SHORT,
+    # 70% SL hit rate. Re-test scheduled June 13 with fresh 90-day Dhan data.
+    enabled = False
+
     def scan(
         self, df: pd.DataFrame, symbol: str, context: dict[str, Any]
     ) -> dict[str, Any] | None:
+        if not self.enabled:
+            return None
         c = np.asarray(df["close"], dtype=float)
         h = np.asarray(df["high"], dtype=float)
         low = np.asarray(df["low"], dtype=float)

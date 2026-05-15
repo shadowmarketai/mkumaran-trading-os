@@ -53,7 +53,10 @@ class SkillRegistry:
                     if issubclass(cls, BaseSkill) and cls is not BaseSkill:
                         instance = cls()
                         if instance.name.lower() in _DISABLED:
-                            logger.info("Skill disabled: %s", instance.name)
+                            logger.info("Skill disabled via env: %s", instance.name)
+                            continue
+                        if not getattr(instance, "enabled", True):
+                            logger.info("Skill OVERRIDE (disabled in code): %s", instance.name)
                             continue
                         self.skills.append(instance)
                         logger.debug(

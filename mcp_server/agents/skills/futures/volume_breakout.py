@@ -15,9 +15,16 @@ class VolumeBreakoutSkill(BaseSkill):
     min_bars = 21
     description = "Breakout on volume > 2x 20d average with new 20-day high"
 
+    # OVERRIDE — 365-day backtest May 2025–May 2026: 42.1% WR, Sharpe -0.886,
+    # 58% of trades expire at max_hold (breakouts not following through).
+    # Re-test scheduled June 13 with fresh 90-day Dhan data.
+    enabled = False
+
     def scan(
         self, df: pd.DataFrame, symbol: str, context: dict[str, Any]
     ) -> dict[str, Any] | None:
+        if not self.enabled:
+            return None
         c = np.asarray(df["close"], dtype=float)
         h = np.asarray(df["high"], dtype=float)
         low = np.asarray(df["low"], dtype=float)

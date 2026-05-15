@@ -111,8 +111,9 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                         )
                         _cinner = chain_resp.get("data", {}) if isinstance(chain_resp, dict) else {}
                         raw = (_cinner.get("data", []) if isinstance(_cinner, dict) else _cinner) or []
+                        parsed: dict = {}
                         if isinstance(raw, list) and raw:
-                            parsed: dict = {}
+                            # List format: [{strikePrice, optionType, oi, ltp, ...}, ...]
                             for row in raw:
                                 strike = float(row.get("strikePrice", 0))
                                 opt_type = row.get("optionType", "").upper()
@@ -125,6 +126,26 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                                     "volume": int(row.get("volume", row.get("tradedVolume", 0))),
                                     "iv":     float(row.get("iv", row.get("impliedVolatility", 0))),
                                 }
+                        elif isinstance(raw, dict) and raw:
+                            # Dict format: {strike: {"CE": {LTP, OI, IV, ...}, "PE": {...}}}
+                            for strike_str, opts in raw.items():
+                                try:
+                                    strike = float(strike_str)
+                                except (ValueError, TypeError):
+                                    continue
+                                if not isinstance(opts, dict):
+                                    continue
+                                for opt_type in ("CE", "PE"):
+                                    opt_data = opts.get(opt_type, {})
+                                    if not isinstance(opt_data, dict) or not opt_data:
+                                        continue
+                                    parsed.setdefault(strike, {})[opt_type] = {
+                                        "oi":     int(opt_data.get("OI", opt_data.get("oi", opt_data.get("openInterest", 0)))),
+                                        "ltp":    float(opt_data.get("LTP", opt_data.get("ltp", opt_data.get("lastTradedPrice", 0)))),
+                                        "volume": int(opt_data.get("volume", opt_data.get("Volume", 0))),
+                                        "iv":     float(opt_data.get("IV", opt_data.get("iv", opt_data.get("impliedVolatility", 0)))),
+                                    }
+                        if parsed:
                             chain = parsed
                             logger.info("Options chain for %s via Dhan %s: %d strikes",
                                         symbol, seg, len(chain))

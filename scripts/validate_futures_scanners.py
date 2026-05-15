@@ -135,7 +135,7 @@ def _adx(high: np.ndarray, low: np.ndarray, close: np.ndarray,
 # ── Scanner signal functions ──────────────────────────────────────────────────
 
 def _scan_ema_cross_adx(df: pd.DataFrame) -> dict | None:
-    """Mirrors EMACrossADXSkill.scan() exactly."""
+    """Original: EMA 9/21 crossover + ADX > 25. Kept for baseline."""
     if len(df) < 30:
         return None
     c   = df["close"].values.astype(float)
@@ -158,14 +158,76 @@ def _scan_ema_cross_adx(df: pd.DataFrame) -> dict | None:
     return None
 
 
+def _weekly_ema_trend(df: pd.DataFrame) -> int:
+    """Return +1 (weekly bullish) / -1 (weekly bearish) / 0 (no trend) using weekly EMA9/21."""
+    weekly = df.resample("W-FRI", closed="right", label="right")["close"].last().dropna()
+    if len(weekly) < 21:
+        return 0
+    wc = weekly.values.astype(float)
+    we9  = _ema(wc, 9)
+    we21 = _ema(wc, 21)
+    if np.isnan(we9[-1]) or np.isnan(we21[-1]):
+        return 0
+    return 1 if we9[-1] > we21[-1] else -1
+
+
+def _scan_ema_cross_adx_v2(df: pd.DataFrame) -> dict | None:
+    """Redesigned: EMA 9/21 cross + ADX > 30 + weekly EMA trend gate."""
+    if len(df) < 63:  # need 3 months for weekly EMA21
+        return None
+    c   = df["close"].values.astype(float)
+    h   = df["high"].values.astype(float)
+    low = df["low"].values.astype(float)
+
+    e9  = _ema(c, 9)
+    e21 = _ema(c, 21)
+    adx_arr = _adx(h, low, c, 14)
+
+    if np.isnan(e9[-1]) or np.isnan(e21[-1]) or adx_arr[-1] < 25:
+        return None
+
+    weekly_trend = _weekly_ema_trend(df)
+
+    if e9[-1] > e21[-1] and e9[-2] <= e21[-2] and weekly_trend == 1:
+        sl = float(low[-3:].min())
+        return {"direction": "LONG",  "entry": float(c[-1]), "sl": sl}
+    if e9[-1] < e21[-1] and e9[-2] >= e21[-2] and weekly_trend == -1:
+        sl = float(h[-3:].max())
+        return {"direction": "SHORT", "entry": float(c[-1]), "sl": sl}
+    return None
+
+
 def _scan_volume_breakout(df: pd.DataFrame) -> dict | None:
-    """Mirrors VolumeBreakoutSkill.scan() exactly."""
+    """Original: volume > 2x avg + new 20d high. Kept for baseline."""
     if len(df) < 21:
         return None
     c   = df["close"].values.astype(float)
     h   = df["high"].values.astype(float)
     low = df["low"].values.astype(float)
     v   = df["volume"].values.astype(float)
+
+    avg_vol = float(np.mean(v[-21:-1]))
+    if avg_vol <= 0 or v[-1] < 2 * avg_vol:
+        return None
+    high_20 = float(h[-21:-1].max())
+    if c[-1] <= high_20:
+        return None
+    sl = float(low[-3:].min())
+    return {"direction": "LONG", "entry": float(c[-1]), "sl": sl}
+
+
+def _scan_volume_breakout_v2(df: pd.DataFrame) -> dict | None:
+    """Redesigned: volume > 2x avg + new 20d high + ADX > 20 (trending market only)."""
+    if len(df) < 30:
+        return None
+    c   = df["close"].values.astype(float)
+    h   = df["high"].values.astype(float)
+    low = df["low"].values.astype(float)
+    v   = df["volume"].values.astype(float)
+
+    adx_arr = _adx(h, low, c, 14)
+    if adx_arr[-1] < 20:  # skip sideways markets
+        return None
 
     avg_vol = float(np.mean(v[-21:-1]))
     if avg_vol <= 0 or v[-1] < 2 * avg_vol:
@@ -364,17 +426,23 @@ def _metrics(trades: list[dict]) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--days",  type=int,   default=90,
+    parser.add_argument("--days",      type=int,   default=90,
                         help="Lookback trading days (default 90)")
-    parser.add_argument("--rrr",   type=float, nargs="+", default=[1.5, 2.0, 2.5],
+    parser.add_argument("--rrr",       type=float, nargs="+", default=[1.5, 2.0, 2.5],
                         help="RRR values to sweep (default 1.5 2.0 2.5)")
+    parser.add_argument("--no-regime", action="store_true",
+                        help="Disable regime filter (control test — lets SHORT trades fire)")
     args = parser.parse_args()
 
     logger.info("Loading regime map...")
-    regime = _load_regime()
-    bullish_days = sum(1 for v in regime.values() if v)
-    logger.info("Regime: %d days | %d bullish / %d bearish",
-                len(regime), bullish_days, len(regime) - bullish_days)
+    if args.no_regime:
+        regime: dict = {}
+        logger.info("Regime: DISABLED (control test — both LONG and SHORT allowed)")
+    else:
+        regime = _load_regime()
+        bullish_days = sum(1 for v in regime.values() if v)
+        logger.info("Regime: %d days | %d bullish / %d bearish",
+                    len(regime), bullish_days, len(regime) - bullish_days)
 
     logger.info("Fetching daily data for %d symbols...", len(ALL_SYMBOLS))
     data: dict[str, pd.DataFrame] = {}
@@ -424,14 +492,18 @@ def main():
             **best_metrics,
         }
 
-        # Long vs Short breakdown for ema_cross_adx
-        if scanner_name == "ema_cross_adx":
-            for rrr in [best_rrr]:
+        # Long vs Short breakdown for ema_cross_adx; exit distribution for all
+        for rrr in [best_rrr]:
+            all_trades_best: list[dict] = []
+            for sym, df in data.items():
+                all_trades_best.extend(_simulate_trades(df, scanner_fn, sym, regime, args.days, rrr))
+            exit_dist = {}
+            for t in all_trades_best:
+                exit_dist[t["exit_why"]] = exit_dist.get(t["exit_why"], 0) + 1
+            logger.info("    Exit distribution (RRR %.1f): %s", rrr, exit_dist)
+            if scanner_name == "ema_cross_adx":
                 for direction in ("LONG", "SHORT"):
-                    dir_trades: list[dict] = []
-                    for sym, df in data.items():
-                        trades = _simulate_trades(df, scanner_fn, sym, regime, args.days, rrr)
-                        dir_trades.extend(t for t in trades if t["direction"] == direction)
+                    dir_trades = [t for t in all_trades_best if t["direction"] == direction]
                     dm = _metrics(dir_trades)
                     logger.info(
                         "    %s only → trades=%d WR=%.1f%% P&L=₹%.0f",

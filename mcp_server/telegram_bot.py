@@ -993,7 +993,15 @@ async def cmd_test_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                                 _cinner = _cr.get("data", {}) if isinstance(_cr, dict) else {}
                                 _raw = (_cinner.get("data", []) if isinstance(_cinner, dict) else _cinner) or []
                                 _remarks = _cr.get("remarks", "")
-                                lines.append(f"   option_chain({_seg}): status={_cr.get('status','?')} rows={len(_raw) if isinstance(_raw, list) else type(_raw).__name__} remarks={str(_remarks)[:60]}")
+                                if isinstance(_raw, dict):
+                                    _row_info = f"dict({len(_raw)} strikes)"
+                                    _sample_key = next(iter(_raw), None)
+                                    if _sample_key:
+                                        _sample_val = _raw[_sample_key]
+                                        _row_info += f" eg {_sample_key}:{str(_sample_val)[:80]}"
+                                else:
+                                    _row_info = str(len(_raw)) if isinstance(_raw, list) else type(_raw).__name__
+                                lines.append(f"   option_chain({_seg}): status={_cr.get('status','?')} rows={_row_info} remarks={str(_remarks)[:60]}")
                             except Exception as _ce:
                                 lines.append(f"   option_chain({_seg}): ERROR — {str(_ce)[:80]}")
                     except Exception as _ee:
