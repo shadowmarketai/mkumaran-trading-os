@@ -59,19 +59,22 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
         provider = get_provider()
 
         is_index = symbol in INDEX_UNIVERSE
-        # Spot price — try NSE first, indices may need different handling
-        quote = provider.get_quote(symbol, exchange="NSE")
-        spot = quote.get("ltp", 0) if quote else 0
+        # Spot price — try broker quote first; indices often fail NSE_EQ lookup.
+        # We defer "no spot" rejection until after the chain fetch so we can
+        # use last_price embedded in the Dhan /optionchain response itself.
+        spot: float = 0.0
+        try:
+            quote = provider.get_quote(symbol, exchange="NSE")
+            spot = float(quote.get("ltp", 0) or 0) if quote else 0.0
+        except Exception:
+            pass
         if not spot:
-            # Indices may not have NSE_EQ quote — try via NSE India
             try:
                 nse_quote = provider.nse.get_quote(symbol)
-                spot = nse_quote.get("ltp", 0) if nse_quote else 0
+                spot = float(nse_quote.get("ltp", 0) or 0) if nse_quote else 0.0
             except Exception:
                 pass
-        if not spot:
-            logger.debug("Options: no spot price for %s", symbol)
-            return None
+        # spot=0 is acceptable here — will be filled from chain's last_price below
 
         # Hardcoded Dhan security IDs for index underlyings.
         # Matches options_selector.py — scrip cache may be empty on cold start.
@@ -127,7 +130,10 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                                     "iv":     float(row.get("iv", row.get("impliedVolatility", 0))),
                                 }
                         elif isinstance(raw, dict) and raw:
-                            # Dhan format: {"last_price": X, "oc": {strike: {"CE": {...}, "PE": {...}}}}
+                            # Dhan format: {"last_price": X, "oc": {strike: {"ce": {...}, "pe": {...}}}}
+                            # Use last_price from chain as spot fallback for indices
+                            if not spot and raw.get("last_price"):
+                                spot = float(raw["last_price"])
                             strike_dict = raw.get("oc", raw)
                             if not isinstance(strike_dict, dict):
                                 strike_dict = raw
@@ -211,6 +217,11 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                 logger.debug("NSE chain fallback failed for %s: %s", symbol, nse_err)
 
         if not chain:
+            return None
+
+        # Final spot guard — by now last_price from chain should have filled it
+        if not spot:
+            logger.debug("Options: no spot price for %s after chain fetch", symbol)
             return None
 
         # Compute PCR from chain
