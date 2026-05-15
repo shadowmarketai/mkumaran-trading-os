@@ -70,10 +70,11 @@ SCANNERS = {
     "bandwalk_highs": {
         "no": 5, "slug": "copy-bandwalk-with-highs-green-candle-daily-150",
         "type": "BULL", "weight": 2.5, "layer": "Trend", "source": "Chartink",
-        "desc": "Bandwalk: hugging upper BB making new highs with green candle.",
+        "desc": "Bandwalk: upper BB + 5d high + green candle + ADX>25. TIER_2 (48% WR, 5d hold).",
         "pairs_with": ["upswing", "breakout_200dma", "volume_spike"],
         "status": "ACTIVE",
-        "scan_clause": "( {57960} ( latest high >= max( 5 , latest high ) and latest close > latest open and latest high >= latest upper bollinger band( 20 , 2 ) ) )",
+        "max_hold_days": 5,
+        "scan_clause": "( {57960} ( latest high >= max( 5 , latest high ) and latest close > latest open and latest high >= latest upper bollinger band( 20 , 2 ) and latest adx( 14 ) > 25 ) )",
     },
     "llbb_bounce": {
         "no": 6, "slug": "copy-todays-low-bounced-off-llbb-and-green-candle-close-184",
