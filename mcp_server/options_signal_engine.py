@@ -127,16 +127,19 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                                     "iv":     float(row.get("iv", row.get("impliedVolatility", 0))),
                                 }
                         elif isinstance(raw, dict) and raw:
-                            # Dict format: {strike: {"CE": {LTP, OI, IV, ...}, "PE": {...}}}
-                            for strike_str, opts in raw.items():
+                            # Dhan format: {"last_price": X, "oc": {strike: {"CE": {...}, "PE": {...}}}}
+                            strike_dict = raw.get("oc", raw)
+                            if not isinstance(strike_dict, dict):
+                                strike_dict = raw
+                            for strike_str, opts in strike_dict.items():
                                 try:
                                     strike = float(strike_str)
                                 except (ValueError, TypeError):
                                     continue
                                 if not isinstance(opts, dict):
                                     continue
-                                for opt_type in ("CE", "PE"):
-                                    opt_data = opts.get(opt_type, {})
+                                for opt_type, alt_key in (("CE", "callOptions"), ("PE", "putOptions")):
+                                    opt_data = opts.get(opt_type, opts.get(alt_key, {}))
                                     if not isinstance(opt_data, dict) or not opt_data:
                                         continue
                                     parsed.setdefault(strike, {})[opt_type] = {

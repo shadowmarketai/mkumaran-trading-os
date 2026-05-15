@@ -994,11 +994,11 @@ async def cmd_test_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                                 _raw = (_cinner.get("data", []) if isinstance(_cinner, dict) else _cinner) or []
                                 _remarks = _cr.get("remarks", "")
                                 if isinstance(_raw, dict):
-                                    _row_info = f"dict({len(_raw)} strikes)"
+                                    _oc = _raw.get("oc", {}) if "oc" in _raw else _raw
+                                    _n_strikes = len(_oc) if isinstance(_oc, dict) else 0
                                     _sample_key = next(iter(_raw), None)
-                                    if _sample_key:
-                                        _sample_val = _raw[_sample_key]
-                                        _row_info += f" eg {_sample_key}:{str(_sample_val)[:80]}"
+                                    _sample_val = _raw.get(_sample_key, "")
+                                    _row_info = f"dict(oc={_n_strikes} strikes) last_price={_raw.get('last_price','?')} eg {_sample_key}:{str(_sample_val)[:40]}"
                                 else:
                                     _row_info = str(len(_raw)) if isinstance(_raw, list) else type(_raw).__name__
                                 lines.append(f"   option_chain({_seg}): status={_cr.get('status','?')} rows={_row_info} remarks={str(_remarks)[:60]}")
