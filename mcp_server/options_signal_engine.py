@@ -168,7 +168,7 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                 from datetime import date as _date
                 d = _date.today()
                 for _ in range(14):
-                    if d.weekday() == 1:  # Tuesday (post-Sept 2025 weekly expiry)
+                    if d.weekday() == 3:  # Thursday — Nifty weekly expiry day
                         break
                     d += timedelta(days=1)
                 nse_spot, nse_chain = _get_chain_nse(d)

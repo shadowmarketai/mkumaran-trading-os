@@ -963,7 +963,29 @@ async def cmd_test_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 f"   Expiry day:   {'YES 🎯' if nifty_data.get('is_expiry_day') else 'No'}",
             ]
         else:
-            lines += [sep, "🔴 NIFTY chain: no data (Dhan chain fetch failed)"]
+            # Direct Dhan probe to surface the actual error
+            lines += [sep, "🔴 NIFTY chain: no data — probing Dhan directly..."]
+            try:
+                from mcp_server.data_provider import get_provider as _gp
+                from mcp_server.options_selector import _IDX_SEC_IDS
+                _provider = _gp()
+                _dhan = _provider.dhan
+                _sec_id = _IDX_SEC_IDS.get("NIFTY", "13")
+                for _seg in ("IDX_I", "NSE_FNO"):
+                    try:
+                        _er = _dhan.client.expiry_list(
+                            under_security_id=int(_sec_id),
+                            under_exchange_segment=_seg,
+                        )
+                        _inner = _er.get("data", {}) if isinstance(_er, dict) else {}
+                        _expiries = (_inner.get("data", []) if isinstance(_inner, dict) else _inner) or []
+                        lines.append(f"   {_seg}: status={_er.get('status','?')} expiries={len(_expiries) if isinstance(_expiries, list) else _expiries}")
+                        if isinstance(_expiries, list) and _expiries:
+                            lines.append(f"   Next: {_expiries[0]}")
+                    except Exception as _ee:
+                        lines.append(f"   {_seg}: ERROR — {str(_ee)[:80]}")
+            except Exception as probe_err:
+                lines.append(f"   Probe failed: {probe_err}")
     except Exception as e:
         lines += [sep, f"🔴 Chain error: {e}"]
 
