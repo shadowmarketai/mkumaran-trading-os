@@ -1475,6 +1475,84 @@ async def handle_gwc_raw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await update.message.reply_text("💬 Commentary logged to GWC LOG.")
 
 
+async def cmd_paper_log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/paper_log SYMBOL ENTRY SL [SCANNER] — log a TIER_2 paper trade."""
+    if False:  # paper commands open to any authenticated user
+        return
+    args = context.args or []
+    if len(args) < 3:
+        await update.message.reply_text(
+            "Usage: /paper_log SYMBOL ENTRY SL [SCANNER]\n"
+            "Example: /paper_log CROMPTON 302 285 bandwalk_highs"
+        )
+        return
+    symbol = args[0].upper()
+    try:
+        entry = float(args[1])
+        sl    = float(args[2])
+    except ValueError:
+        await update.message.reply_text("ENTRY and SL must be numbers.")
+        return
+    scanner = args[3] if len(args) > 3 else "manual"
+    from mcp_server.sheets_sync import log_paper_trade
+    ok = log_paper_trade(symbol=symbol, scanner=scanner, entry=entry, sl=sl,
+                         rrr=2.0, max_hold_days=5)
+    risk = abs(entry - sl)
+    target = round(entry + 2.0 * risk, 2)
+    if ok:
+        await update.message.reply_text(
+            f"📋 Paper trade logged\n"
+            f"Symbol:  {symbol}\n"
+            f"Scanner: {scanner}\n"
+            f"Entry:   ₹{entry}\n"
+            f"SL:      ₹{sl}\n"
+            f"Target:  ₹{target} (2R)\n"
+            f"Max hold: 5 trading days"
+        )
+    else:
+        await update.message.reply_text("❌ Failed to log — check Sheets config.")
+
+
+async def cmd_paper_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/paper_close SYMBOL EXIT_PRICE — mark an open paper trade as closed."""
+    if False:  # paper commands open to any authenticated user
+        return
+    args = context.args or []
+    if len(args) < 2:
+        await update.message.reply_text("Usage: /paper_close SYMBOL EXIT_PRICE")
+        return
+    symbol = args[0].upper()
+    try:
+        exit_price = float(args[1])
+    except ValueError:
+        await update.message.reply_text("EXIT_PRICE must be a number.")
+        return
+    from mcp_server.sheets_sync import close_paper_trade
+    result = close_paper_trade(symbol=symbol, exit_price=exit_price)
+    await update.message.reply_text(f"📋 {result}")
+
+
+async def cmd_paper_review(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/paper_review — show all open TIER_2 paper trades."""
+    if False:  # paper commands open to any authenticated user
+        return
+    from mcp_server.sheets_sync import get_open_paper_trades
+    trades = get_open_paper_trades()
+    if not trades:
+        await update.message.reply_text("No open paper trades.")
+        return
+    sep = "━" * 24
+    lines = ["📋 Open Paper Trades", sep]
+    for t in trades:
+        lines += [
+            f"📌 {t['symbol']} [{t['scanner']}]",
+            f"Entry ₹{t['entry']} | SL ₹{t['sl']} | Tgt ₹{t['target']}",
+            f"Logged: {t['date']} | Exit by: {t['max_exit']}",
+            sep,
+        ]
+    await update.message.reply_text("\n".join(lines))
+
+
 async def cmd_gwc_learn(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /gwc_learn — analyze GWC LOG patterns and surface insights."""
     await update.message.reply_text("🔍 Analyzing GWC message patterns...")
@@ -1512,6 +1590,9 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("gwc", cmd_gwc))
     app.add_handler(CommandHandler("gwc_learn", cmd_gwc_learn))
     app.add_handler(CommandHandler("test_options", cmd_test_options))
+    app.add_handler(CommandHandler("paper_log", cmd_paper_log))
+    app.add_handler(CommandHandler("paper_close", cmd_paper_close))
+    app.add_handler(CommandHandler("paper_review", cmd_paper_review))
     app.add_handler(CallbackQueryHandler(handle_take_skip_callback, pattern=r"^(take|skip):"))
 
     # Raw text handler — catches all non-command forwarded GWC messages.

@@ -1,6 +1,7 @@
 """Google Sheets auto-sync for MKUMARAN Trading OS."""
 import logging
-from datetime import date
+from datetime import date, timedelta
+from typing import Optional
 
 from mcp_server.config import settings
 
@@ -93,6 +94,118 @@ def sync_watchlist(watchlist_items: list[dict]) -> bool:
     except Exception as e:
         logger.error("Watchlist sync failed: %s", e)
         return False
+
+
+# ── PAPER TRADES tab ──────────────────────────────────────────────────────────
+
+_PAPER_HEADERS = [
+    "Date", "Symbol", "Scanner", "Entry", "SL", "Target",
+    "Max_Exit_Date", "Exit_Date", "Exit_Price", "Result", "Return_%", "Notes",
+]
+
+_PAPER_TAB = "PAPER TRADES"
+
+
+def log_paper_trade(
+    symbol: str,
+    scanner: str,
+    entry: float,
+    sl: float,
+    rrr: float = 2.0,
+    max_hold_days: int = 5,
+    notes: str = "",
+) -> bool:
+    """Append a new paper trade row to the PAPER TRADES tab."""
+    _, sheet = _get_sheets_client()
+    if not sheet:
+        return False
+    try:
+        ws = _get_or_create_worksheet(sheet, _PAPER_TAB, cols=12, header=_PAPER_HEADERS)
+        risk = abs(entry - sl)
+        target = round(entry + rrr * risk, 2)
+        # Skip weekends when computing max exit date
+        exit_date = date.today()
+        days_added = 0
+        while days_added < max_hold_days:
+            exit_date += timedelta(days=1)
+            if exit_date.weekday() < 5:
+                days_added += 1
+        row = [
+            str(date.today()), symbol.upper(), scanner,
+            entry, sl, target,
+            str(exit_date), "", "", "OPEN", "", notes,
+        ]
+        ws.append_row(row)
+        logger.info("Paper trade logged: %s %s entry=%.2f sl=%.2f tgt=%.2f",
+                    scanner, symbol, entry, sl, target)
+        return True
+    except Exception as e:
+        logger.error("Paper trade log failed: %s", e)
+        return False
+
+
+def close_paper_trade(
+    symbol: str,
+    exit_price: float,
+    exit_date: Optional[str] = None,
+) -> str:
+    """Mark an open paper trade as closed. Returns result summary or error."""
+    _, sheet = _get_sheets_client()
+    if not sheet:
+        return "Sheets not configured"
+    try:
+        ws = sheet.worksheet(_PAPER_TAB)
+        rows = ws.get_all_values()
+        if not rows:
+            return "No rows in PAPER TRADES"
+        headers = rows[0]
+        col = {h: i for i, h in enumerate(headers)}
+        for idx, row in enumerate(rows[1:], start=2):
+            if (row[col["Symbol"]].upper() == symbol.upper()
+                    and row[col["Result"]] == "OPEN"):
+                entry = float(row[col["Entry"]])
+                ret_pct = round((exit_price - entry) / entry * 100, 2)
+                result = "WIN" if ret_pct > 0 else "LOSS"
+                ws.update_cell(idx, col["Exit_Date"] + 1, exit_date or str(date.today()))
+                ws.update_cell(idx, col["Exit_Price"] + 1, exit_price)
+                ws.update_cell(idx, col["Result"] + 1, result)
+                ws.update_cell(idx, col["Return_%"] + 1, ret_pct)
+                return f"{symbol} closed {result}: {ret_pct:+.2f}%"
+        return f"No open paper trade found for {symbol}"
+    except Exception as e:
+        logger.error("Paper trade close failed: %s", e)
+        return f"Error: {e}"
+
+
+def get_open_paper_trades() -> list[dict]:
+    """Return all OPEN rows from the PAPER TRADES tab."""
+    _, sheet = _get_sheets_client()
+    if not sheet:
+        return []
+    try:
+        ws = sheet.worksheet(_PAPER_TAB)
+        rows = ws.get_all_values()
+        if len(rows) < 2:
+            return []
+        headers = rows[0]
+        col = {h: i for i, h in enumerate(headers)}
+        open_trades = []
+        for row in rows[1:]:
+            if len(row) > col["Result"] and row[col["Result"]] == "OPEN":
+                open_trades.append({
+                    "date":      row[col["Date"]],
+                    "symbol":    row[col["Symbol"]],
+                    "scanner":   row[col["Scanner"]],
+                    "entry":     float(row[col["Entry"]] or 0),
+                    "sl":        float(row[col["SL"]] or 0),
+                    "target":    float(row[col["Target"]] or 0),
+                    "max_exit":  row[col["Max_Exit_Date"]],
+                    "notes":     row[col["Notes"]],
+                })
+        return open_trades
+    except Exception as e:
+        logger.error("Paper trades fetch failed: %s", e)
+        return []
 
 
 def _get_segment_sheet_name(exchange: str) -> str:
