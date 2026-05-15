@@ -1003,8 +1003,8 @@ async def cmd_test_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                                         _sv = _oc[_sk]
                                         _row_info += f"\n   sample strike {_sk}: keys={list(_sv.keys()) if isinstance(_sv,dict) else type(_sv).__name__}"
                                         if isinstance(_sv, dict):
-                                            _ce = _sv.get("CE", _sv.get("callOptions", {}))
-                                            if isinstance(_ce, dict) and _ce:
+                                            _ce = next((v for k, v in _sv.items() if k.lower() in ("ce", "calloptions") and isinstance(v, dict)), {})
+                                            if _ce:
                                                 _row_info += f"\n   CE keys: {list(_ce.keys())[:8]}"
                                 else:
                                     _row_info = str(len(_raw)) if isinstance(_raw, list) else type(_raw).__name__

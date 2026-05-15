@@ -138,11 +138,17 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
                                     continue
                                 if not isinstance(opts, dict):
                                     continue
-                                for opt_type, alt_key in (("CE", "callOptions"), ("PE", "putOptions")):
-                                    opt_data = opts.get(opt_type, opts.get(alt_key, {}))
-                                    if not isinstance(opt_data, dict) or not opt_data:
+                                for out_key, *in_keys in (
+                                    ("CE", "CE", "ce", "callOptions"),
+                                    ("PE", "PE", "pe", "putOptions"),
+                                ):
+                                    opt_data = next(
+                                        (opts[k] for k in in_keys if k in opts and isinstance(opts[k], dict)),
+                                        {},
+                                    )
+                                    if not opt_data:
                                         continue
-                                    parsed.setdefault(strike, {})[opt_type] = {
+                                    parsed.setdefault(strike, {})[out_key] = {
                                         "oi":     int(opt_data.get("OI", opt_data.get("oi", opt_data.get("openInterest", 0)))),
                                         "ltp":    float(opt_data.get("LTP", opt_data.get("ltp", opt_data.get("lastTradedPrice", 0)))),
                                         "volume": int(opt_data.get("volume", opt_data.get("Volume", 0))),
