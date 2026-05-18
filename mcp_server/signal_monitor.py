@@ -166,7 +166,20 @@ def monitor_open_signals() -> list[dict]:
                 outcome_str = "WIN" if hit == "TARGET_HIT" else "LOSS"
                 exit_reason = "TARGET" if hit == "TARGET_HIT" else "STOPLOSS"
 
-                # 1) Update Signal status in DB
+                # 1a) Expire any OTHER open duplicates for same ticker+direction
+                # immediately — so the next monitor cycle doesn't re-fire them.
+                dupes = session.query(Signal).filter(
+                    Signal.ticker == sig.ticker,
+                    Signal.direction == direction,
+                    Signal.status == "OPEN",
+                    Signal.id != sig.id,
+                ).all()
+                for dup in dupes:
+                    dup.status = "EXPIRED"
+                    logger.info("Dedup: expired duplicate signal %s for %s %s",
+                                dup.id, dup.ticker, direction)
+
+                # 1b) Update Signal status in DB
                 sig.status = hit
                 logger.info(
                     "Signal %s (%s) %s at ₹%.2f | P&L: %.2f%%",
