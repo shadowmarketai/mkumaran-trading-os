@@ -850,6 +850,50 @@ def _price_refresh_once_sync() -> None:
         db.close()
 
 
+async def _dhan_token_refresh_loop() -> None:
+    """Refresh Dhan access token before it expires.
+
+    Checks every 60 minutes. Refreshes when < 2 hours remain so the
+    token is always valid during market hours even if the server runs
+    for days without a restart (e.g. over a weekend).
+    """
+    while True:
+        await asyncio.sleep(3600)  # check every hour
+        try:
+            from mcp_server.dhan_auth import get_dhan_token, _hours_remaining
+            from mcp_server.data_provider import get_provider
+            provider = get_provider()
+            dhan = provider.dhan
+            if not dhan:
+                continue
+            # Read current token expiry from the dhanhq client's context
+            try:
+                current_token = dhan.client.dhan_context.get_access_token()
+            except Exception:
+                current_token = os.environ.get("DHAN_ACCESS_TOKEN", "")
+            hours_left = _hours_remaining(current_token) if current_token else 0.0
+            if hours_left > 2.0:
+                logger.debug("Dhan token OK — %.1fh remaining", hours_left)
+                continue
+            logger.info("Dhan token expiring in %.1fh — refreshing via TOTP", hours_left)
+            new_token = await asyncio.to_thread(get_dhan_token)
+            # Re-login the provider with the fresh token
+            await asyncio.to_thread(dhan.login)
+            logger.info("Dhan token refreshed — valid for %.1fh",
+                        _hours_remaining(new_token))
+            try:
+                from mcp_server.telegram_bot import send_telegram_message
+                await send_telegram_message(
+                    f"🔑 Dhan token auto-refreshed (was {hours_left:.1f}h remaining). "
+                    f"New token valid for {_hours_remaining(new_token):.1f}h.",
+                    force=True,
+                )
+            except Exception:
+                pass
+        except Exception as e:
+            logger.warning("Dhan token refresh loop error: %s", e)
+
+
 async def _price_refresh_loop():
     """Background task: refresh active trade prices every 60s during market hours.
 
@@ -1041,6 +1085,10 @@ async def lifespan(app: FastAPI):
         logger.info("Signal auto-monitor background task started")
     except Exception as e:
         logger.warning("Signal monitor startup skipped: %s", e)
+
+    # Dhan token auto-refresh — checks every hour, refreshes when < 2h remaining
+    asyncio.create_task(_dhan_token_refresh_loop())
+    logger.info("Dhan token refresh loop started (checks hourly)")
 
     # Start live price refresh background task (every 60s during market hours)
     price_task = asyncio.create_task(_price_refresh_loop())
