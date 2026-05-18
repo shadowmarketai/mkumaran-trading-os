@@ -397,7 +397,47 @@ async def _options_signal_loop():
                 from mcp_server.telegram_bot import send_telegram_message
                 from mcp_server.options_signal_engine import format_option_signal_card
 
+                # ── Per-ticker conflict resolution ────────────────────────────
+                # Multiple strategies can fire on the same ticker in one cycle
+                # (e.g. iv_crush=NEUTRAL + oi_wall=LONG + pcr=SHORT on NIFTY).
+                # Sending three conflicting cards is noise. Collapse to one per
+                # ticker using: NEUTRAL > majority direction > highest confidence.
+                grouped: dict[str, list] = {}
                 for sig in signals:
+                    grouped.setdefault(sig["symbol"], []).append(sig)
+
+                resolved: list[dict] = []
+                for sym, group in grouped.items():
+                    if len(group) == 1:
+                        resolved.append(group[0])
+                        continue
+                    directions = [s.get("direction", "NEUTRAL") for s in group]
+                    # 1. NEUTRAL wins (straddle captures both sides)
+                    neutral = [s for s in group if s.get("direction") == "NEUTRAL"]
+                    if neutral:
+                        best = max(neutral, key=lambda s: s.get("confidence", 0))
+                        best["notes"] = (
+                            f"[{len(group)} strategies fired; NEUTRAL chosen over "
+                            + ", ".join(d for d in directions if d != "NEUTRAL") + "]"
+                        )
+                        resolved.append(best)
+                        continue
+                    # 2. Majority direction wins
+                    long_sigs  = [s for s in group if s.get("direction") == "LONG"]
+                    short_sigs = [s for s in group if s.get("direction") == "SHORT"]
+                    if len(long_sigs) > len(short_sigs):
+                        best = max(long_sigs, key=lambda s: s.get("confidence", 0))
+                        resolved.append(best)
+                    elif len(short_sigs) > len(long_sigs):
+                        best = max(short_sigs, key=lambda s: s.get("confidence", 0))
+                        resolved.append(best)
+                    else:
+                        # 3. Equal LONG/SHORT — genuine conflict, skip silently
+                        logger.info("Options conflict on %s — %d LONG vs %d SHORT, skipping",
+                                    sym, len(long_sigs), len(short_sigs))
+                # ─────────────────────────────────────────────────────────────
+
+                for sig in resolved:
                     dedup_key = f"{sig['symbol']}:{sig['pattern']}:{sig.get('direction','')}"
                     if dedup_key in sent_today:
                         continue
