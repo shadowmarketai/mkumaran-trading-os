@@ -1043,6 +1043,43 @@ async def lifespan(app: FastAPI):
     except Exception as stale_err:
         logger.debug("Stale signal cleanup skipped: %s", stale_err)
 
+    # Deduplicate OPEN signals — expire extras when same ticker+direction
+    # has more than one OPEN record. Keeps the oldest (lowest id) as the
+    # canonical record; extras are silently expired. Prevents the monitor
+    # loop from sending repeated SL/TGT alerts for the same position.
+    try:
+        _dedup_db = SessionLocal()
+        try:
+            from sqlalchemy import func as _func
+            open_sigs = (
+                _dedup_db.query(Signal.ticker, Signal.direction,
+                                _func.count(Signal.id).label("cnt"))
+                .filter(Signal.status == "OPEN")
+                .group_by(Signal.ticker, Signal.direction)
+                .having(_func.count(Signal.id) > 1)
+                .all()
+            )
+            expired_dup = 0
+            for row in open_sigs:
+                records = (
+                    _dedup_db.query(Signal)
+                    .filter(Signal.ticker == row.ticker,
+                            Signal.direction == row.direction,
+                            Signal.status == "OPEN")
+                    .order_by(Signal.id)
+                    .all()
+                )
+                for extra in records[1:]:   # keep first (oldest), expire rest
+                    extra.status = "EXPIRED"
+                    expired_dup += 1
+            if expired_dup:
+                _dedup_db.commit()
+                logger.info("Startup: expired %d duplicate OPEN signals", expired_dup)
+        finally:
+            _dedup_db.close()
+    except Exception as dedup_err:
+        logger.debug("Duplicate signal cleanup skipped: %s", dedup_err)
+
     # Force-train the loss predictor at startup if enough closed trades
     # exist and no model is loaded yet. The self-dev loop only runs at
     # 16:00 IST — but the predictor should be ready from boot.
