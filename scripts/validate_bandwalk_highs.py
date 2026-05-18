@@ -93,7 +93,9 @@ def _adx(h: np.ndarray, low: np.ndarray, c: np.ndarray, p: int = 14) -> np.ndarr
     dmm = np.where((low[:-1] - low[1:]) > (h[1:] - h[:-1]),
                    np.maximum(low[:-1] - low[1:], 0.0), 0.0)
     m = len(tr)
-    atr_s = np.zeros(m); dmp_s = np.zeros(m); dmm_s = np.zeros(m)
+    atr_s = np.zeros(m)
+    dmp_s = np.zeros(m)
+    dmm_s = np.zeros(m)
     atr_s[p - 1] = tr[:p].sum()
     dmp_s[p - 1] = dmp[:p].sum()
     dmm_s[p - 1] = dmm[:p].sum()
