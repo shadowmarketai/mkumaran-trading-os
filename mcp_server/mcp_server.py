@@ -897,35 +897,44 @@ async def _dhan_token_refresh_loop() -> None:
     token is always valid during market hours even if the server runs
     for days without a restart (e.g. over a weekend).
     """
+    last_refreshed_at: float = 0.0   # epoch seconds of last successful refresh
     while True:
         await asyncio.sleep(3600)  # check every hour
         try:
-            from mcp_server.dhan_auth import get_dhan_token, _hours_remaining
+            from mcp_server.dhan_auth import (
+                get_dhan_token, _hours_remaining, _load_cached_token,
+            )
+            # Read from disk cache — the cache is always updated after a
+            # successful refresh. Reading from dhan.client.dhan_context
+            # returns the stale token baked into the immutable DhanContext
+            # object at login time, not the latest refreshed value.
+            cached_token = _load_cached_token() or os.environ.get("DHAN_ACCESS_TOKEN", "")
+            hours_left = _hours_remaining(cached_token) if cached_token else 0.0
+
+            # Also skip if we refreshed less than 20h ago (prevents hammering
+            # when cache file is missing or unreadable).
+            import time as _time
+            hours_since_refresh = (_time.time() - last_refreshed_at) / 3600
+
+            if hours_left > 2.0 or hours_since_refresh < 20.0:
+                logger.debug("Dhan token OK — %.1fh remaining (refreshed %.1fh ago)",
+                             hours_left, hours_since_refresh)
+                continue
+
+            logger.info("Dhan token expiring in %.1fh — refreshing via TOTP", hours_left)
             from mcp_server.data_provider import get_provider
             provider = get_provider()
             dhan = provider.dhan
-            if not dhan:
-                continue
-            # Read current token expiry from the dhanhq client's context
-            try:
-                current_token = dhan.client.dhan_context.get_access_token()
-            except Exception:
-                current_token = os.environ.get("DHAN_ACCESS_TOKEN", "")
-            hours_left = _hours_remaining(current_token) if current_token else 0.0
-            if hours_left > 2.0:
-                logger.debug("Dhan token OK — %.1fh remaining", hours_left)
-                continue
-            logger.info("Dhan token expiring in %.1fh — refreshing via TOTP", hours_left)
             new_token = await asyncio.to_thread(get_dhan_token)
-            # Re-login the provider with the fresh token
-            await asyncio.to_thread(dhan.login)
-            logger.info("Dhan token refreshed — valid for %.1fh",
-                        _hours_remaining(new_token))
+            if dhan:
+                await asyncio.to_thread(dhan.login)
+            last_refreshed_at = _time.time()
+            new_hours = _hours_remaining(new_token)
+            logger.info("Dhan token refreshed — valid for %.1fh", new_hours)
             try:
                 from mcp_server.telegram_bot import send_telegram_message
                 await send_telegram_message(
-                    f"🔑 Dhan token auto-refreshed (was {hours_left:.1f}h remaining). "
-                    f"New token valid for {_hours_remaining(new_token):.1f}h.",
+                    f"🔑 Dhan token auto-refreshed. Valid for {new_hours:.1f}h.",
                     force=True,
                 )
             except Exception:
