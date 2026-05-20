@@ -183,6 +183,7 @@ def parse_gwc(text: str) -> Optional[GWCSignal]:
                 "BUY", "SELL", "LONG", "SHORT", "SL", "TGT", "TRG",
                 "TARGET", "STOP", "ALERT", "ENTRY", "AROUND", "AROUNDD",
                 "MORE", "ADD", "AVG", "AVERAGE", "EXIT", "COST",
+                "MICRO", "MINI", "POSITIONAL", "INTRADAY", "SWING",
             }
             words = re.findall(r'\b([A-Z][A-Z0-9]{2,19})\b', upper)
             for w in words:
@@ -199,6 +200,11 @@ def parse_gwc(text: str) -> Optional[GWCSignal]:
 
     # ── Price extraction ──────────────────────────────────────────────────────
     clean = upper.replace(",", "").replace("₹", "").replace("RS.", "")
+    # Expand "X lac/lakh" → actual rupee value before any number extraction.
+    # "3 lac" → "300000", "2.5 lac" → "250000", "2.25 lac" → "225000"
+    def _expand_lac(m: re.Match) -> str:
+        return str(int(float(m.group(1)) * 100_000))
+    clean = re.sub(r'(\d+\.?\d*)\s*(?:LAC|LAKH)S?\b', _expand_lac, clean)
 
     # Entry + add_more: handles "@125/75", "AROUND 80/50", "@55/40" formats.
     # The slash separates the initial entry from the averaging level — NOT two targets.
@@ -220,6 +226,12 @@ def parse_gwc(text: str) -> Optional[GWCSignal]:
         sig.entry = _num(clean, r'CAME\s+(\d+\.?\d*)')
     if sig.entry == 0:
         sig.entry = _num(clean, r'(?:CE|PE)\s+(\d+\.?\d*)')
+    if sig.entry == 0 and sig.exchange == "MCX":
+        # Commodity signals often use bare prices without @ prefix:
+        # "Sell silver micro 270000 sl 3 lac" → entry = 270000
+        m_bare = re.search(r'\b(\d{4,7})\b', clean)
+        if m_bare:
+            sig.entry = float(m_bare.group(1))
 
     # Add more / averaging (explicit keyword, overrides slash-parsed value)
     explicit_add = _num(clean, r'ADD\s*(?:MORE)?\s*(?:@|AT)?\s*(\d+\.?\d*)')
@@ -593,8 +605,17 @@ def classify_gwc_message(text: str) -> tuple[GWCMessageType, dict]:
         upper,
     ))
     has_entry_hint = bool(re.search(r'(?:@|AROUND+|ENTRY)\s*\d+', upper))
+    # Commodity/equity signals often have bare entry prices without @ prefix:
+    # "Sell silver micro 270000 sl 3 lac" — detect instrument name + large number
+    has_commodity  = bool(re.search(
+        r'\b(?:GOLD|SILVER|CRUDE|NATURALGAS|COPPER|ZINC|ALUMINIUM|'
+        r'SILVER\s*MICRO|GOLD\s*MINI|CRUDEOIL)\b',
+        upper,
+    ))
+    # Bare 4-6 digit number after direction word counts as entry hint
+    has_bare_price = bool(re.search(r'\b(?:BUY|SELL|LONG|SHORT)\b.*?\b\d{4,6}\b', upper))
 
-    if has_direction and (has_option or has_entry_hint):
+    if has_direction and (has_option or has_entry_hint or has_commodity or has_bare_price):
         sig = parse_gwc(text)
         if sig is not None:
             extracted["ticker"]    = sig.ticker
