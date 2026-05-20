@@ -143,6 +143,8 @@ def _build_signal_context(
     except Exception:
         nifty_regime = "Nifty Supertrend = unavailable"
 
+    chart_ta = _fetch_chart_summary(ticker)
+    chart_line = f"\n- {chart_ta}" if chart_ta else ""
     return (
         f"SIGNAL FOR ANALYSIS:\n"
         f"- Ticker: {ticker} | Direction: {direction} | Pattern: {pattern}\n"
@@ -154,6 +156,7 @@ def _build_signal_context(
         f"- Sector: {sector_strength} | FII Net: ₹{fii_net:.0f} Cr | Delivery: {delivery_pct:.1f}%\n"
         f"- Pre-filter Confidence: {pre_confidence}% | Boosts: {', '.join(confidence_boosts) if confidence_boosts else 'None'}\n"
         f"- Asset Type: {'Leveraged (NFO/MCX/CDS)' if is_leveraged else 'Equity'}"
+        f"{chart_line}"
     )
 
 
@@ -173,6 +176,94 @@ def _build_memory_context(similar_trades: list[dict]) -> str:
             f"{f' | Lesson: {lesson}' if lesson else ''}"
         )
     return "\n".join(lines)
+
+
+# ── Live chart TA ────────────────────────────────────────────────────
+
+
+def _compute_chart_summary(ticker: str) -> str:
+    """Fetch OHLCV + compute indicators. Runs in a thread — may be slow."""
+    import numpy as np
+    from mcp_server.data_provider import get_provider
+
+    exchange, sym = ("NSE", ticker)
+    if ":" in ticker:
+        exchange, sym = ticker.split(":", 1)
+
+    df = get_provider().get_ohlcv_routed(sym, interval="day", days=60, exchange=exchange)
+    if df is None or len(df) < 25:
+        return ""
+
+    c   = df["close"].values.astype(float)
+    h   = df["high"].values.astype(float)
+    lo  = df["low"].values.astype(float)
+    vol = df["volume"].values.astype(float)
+
+    def _ema(arr: np.ndarray, p: int) -> float:
+        if len(arr) < p:
+            return float("nan")
+        v = float(arr[:p].mean())
+        k = 2.0 / (p + 1)
+        for x in arr[p:]:
+            v = float(x) * k + v * (1 - k)
+        return v
+
+    e9, e21, e55 = _ema(c, 9), _ema(c, 21), _ema(c, min(55, len(c)))
+    if any(v != v for v in (e9, e21, e55)):  # nan check
+        ema_str = "n/a"
+    elif e9 > e21 > e55:
+        ema_str = "bullish (9>21>55)"
+    elif e9 < e21 < e55:
+        ema_str = "bearish (9<21<55)"
+    else:
+        ema_str = "mixed"
+
+    rsi_str = "n/a"
+    if len(c) >= 15:
+        d = np.diff(c[-15:])
+        gain = float(d[d > 0].mean()) if (d > 0).any() else 0.0
+        loss = float(-d[d < 0].mean()) if (d < 0).any() else 0.0
+        rsi_str = f"{100 - 100 / (1 + gain / loss):.0f}" if loss > 0 else "100"
+
+    adx_str = "n/a"
+    if len(c) >= 28:
+        tr  = np.maximum(h[1:] - lo[1:], np.maximum(np.abs(h[1:] - c[:-1]), np.abs(lo[1:] - c[:-1])))
+        dmp = np.where((h[1:] - h[:-1]) > (lo[:-1] - lo[1:]), np.maximum(h[1:] - h[:-1], 0.0), 0.0)
+        dmm = np.where((lo[:-1] - lo[1:]) > (h[1:] - h[:-1]), np.maximum(lo[:-1] - lo[1:], 0.0), 0.0)
+        atr = tr[-14:].mean()
+        dip = 100 * dmp[-14:].mean() / atr if atr > 0 else 0.0
+        dim = 100 * dmm[-14:].mean() / atr if atr > 0 else 0.0
+        dx  = 100 * abs(dip - dim) / (dip + dim) if (dip + dim) > 0 else 0.0
+        adx_str = f"{dx:.0f}"
+
+    vol_str = "n/a"
+    if len(vol) >= 21 and vol[-21:-1].mean() > 0:
+        vol_str = f"{vol[-1] / vol[-21:-1].mean():.1f}x"
+
+    bb_str = "n/a"
+    if len(c) >= 20:
+        w = c[-20:]
+        bb_up = w.mean() + 2 * w.std(ddof=0)
+        bb_str = f"{(c[-1] - bb_up) / bb_up * 100:+.1f}% vs upper"
+
+    return (
+        f"Live TA ({sym}, {len(df)}d): "
+        f"EMA9/21/55={ema_str}, RSI={rsi_str}, ADX~{adx_str}, "
+        f"Vol={vol_str} 20d avg, BB={bb_str}"
+    )
+
+
+def _fetch_chart_summary(ticker: str) -> str:
+    """
+    Compact live TA string for ticker (3s timeout, fail-open).
+    Always returns str — never raises.
+    """
+    import concurrent.futures
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            return ex.submit(_compute_chart_summary, ticker).result(timeout=3)
+    except Exception:
+        return ""
 
 
 # ── Agent calls (each = 1 API call) ────────────────────────────────
