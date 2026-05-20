@@ -183,12 +183,19 @@ def _build_memory_context(similar_trades: list[dict]) -> str:
 
 def _compute_chart_summary(ticker: str) -> str:
     """Fetch OHLCV + compute indicators. Runs in a thread — may be slow."""
+    import re as _re
     import numpy as np
     from mcp_server.data_provider import get_provider
 
     exchange, sym = ("NSE", ticker)
     if ":" in ticker:
         exchange, sym = ticker.split(":", 1)
+    else:
+        # Strip option suffix to get the underlying chart
+        # e.g. "NIFTY 23500PE" → "NIFTY", "ICICIPRULI25JUN1260CE" → "ICICIPRULI"
+        _m = _re.match(r'^([A-Z&]+)\s*\d', ticker.upper())
+        if _m and (ticker.upper().endswith("CE") or ticker.upper().endswith("PE")):
+            sym = _m.group(1).strip()
 
     df = get_provider().get_ohlcv_routed(sym, interval="day", days=60, exchange=exchange)
     if df is None or len(df) < 25:
@@ -414,6 +421,11 @@ def run_debate(
     if similar_trades is None:
         similar_trades = []
 
+    # Fetch live chart data once — shared by skill agents and LLM fallback
+    chart_ta = _fetch_chart_summary(ticker)
+    if chart_ta:
+        logger.info("Chart TA for %s: %s", ticker, chart_ta)
+
     # ── Primary: Use skill-based agents (ZERO API calls) ─────────
     try:
         from mcp_server.skill_agents import run_skill_debate
@@ -422,7 +434,7 @@ def run_debate(
             entry_price=entry_price, stop_loss=stop_loss, target=target,
             mwa_direction=mwa_direction, scanner_count=scanner_count,
             sector_strength=sector_strength, fii_net=fii_net,
-            delivery_pct=delivery_pct,
+            delivery_pct=delivery_pct, chart_ta=chart_ta,
         )
         # Convert to our DebateResult format
         return DebateResult(

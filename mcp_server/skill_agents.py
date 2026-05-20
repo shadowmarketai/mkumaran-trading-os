@@ -19,6 +19,7 @@ ZERO API calls. Pure algorithmic debate.
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -154,13 +155,42 @@ def _get_fired_groups(scanner_results: dict, ticker: str) -> dict:
     return groups
 
 
+# ── Chart TA parser ───────────────────────────────────────────
+
+def _parse_chart_ta(chart_ta: str) -> dict:
+    """Parse compact chart summary string from _fetch_chart_summary into scalars."""
+    result = {"ema": "unknown", "rsi": 50, "adx": 0, "vol_ratio": 1.0, "bb_pct": 0.0, "available": False}
+    if not chart_ta:
+        return result
+    result["available"] = True
+    if "bullish" in chart_ta:
+        result["ema"] = "bullish"
+    elif "bearish" in chart_ta:
+        result["ema"] = "bearish"
+    elif "mixed" in chart_ta:
+        result["ema"] = "mixed"
+    m = re.search(r"RSI=(\d+)", chart_ta)
+    if m:
+        result["rsi"] = int(m.group(1))
+    m = re.search(r"ADX~(\d+)", chart_ta)
+    if m:
+        result["adx"] = int(m.group(1))
+    m = re.search(r"Vol=([\d.]+)x", chart_ta)
+    if m:
+        result["vol_ratio"] = float(m.group(1))
+    m = re.search(r"BB=([+-][\d.]+)%", chart_ta)
+    if m:
+        result["bb_pct"] = float(m.group(1))
+    return result
+
+
 # ── SPECIALIST AGENTS ─────────────────────────────────────────
 
 def _run_specialist(agent_name: str, skill: str, scanner_results: dict,
                      ticker: str, direction: str, fired_groups: dict,
                      mwa_direction: str, scanner_count: int,
                      sector_strength: str, fii_net: float,
-                     delivery_pct: float) -> AgentScore:
+                     delivery_pct: float, chart_ta: str = "") -> AgentScore:
     """Generic specialist agent — checks if its skill-group scanners fired."""
     w = _load_weights()[agent_name]
     is_long = direction.upper() in ("LONG", "BUY")
@@ -226,6 +256,57 @@ def _run_specialist(agent_name: str, skill: str, scanner_results: dict,
             score += w.get("fii_aligned", 5)
             factors.append({"factor": "fii_aligned", "pts": 5, "skill": "Classical"})
         max_score += 11
+
+        # ── Live chart TA scoring (when chart data is available) ──
+        if chart_ta:
+            ta = _parse_chart_ta(chart_ta)
+            if ta["available"]:
+                # For options, direction="BUY PE" = bearish underlying bet.
+                # Map option direction to underlying directional expectation.
+                t_upper = ticker.upper()
+                if t_upper.endswith("PE"):
+                    chart_bullish = not is_long   # BUY PE → want underlying to fall
+                elif t_upper.endswith("CE"):
+                    chart_bullish = is_long        # BUY CE → want underlying to rise
+                else:
+                    chart_bullish = is_long
+
+                # EMA stack alignment with underlying direction
+                ema_pts = w.get("ema_alignment", 10)
+                max_score += ema_pts
+                if (chart_bullish and ta["ema"] == "bullish") or (not chart_bullish and ta["ema"] == "bearish"):
+                    score += ema_pts
+                    factors.append({"factor": "live_ema_aligned", "pts": ema_pts, "skill": "Classical"})
+                elif (chart_bullish and ta["ema"] == "bearish") or (not chart_bullish and ta["ema"] == "bullish"):
+                    score -= ema_pts * 0.5
+                    factors.append({"factor": "live_ema_against", "pts": round(-ema_pts * 0.5, 1), "skill": "Classical"})
+
+                # RSI momentum aligned with underlying direction
+                rsi_pts = w.get("rsi_signal", 8)
+                max_score += rsi_pts
+                if (chart_bullish and ta["rsi"] >= 55) or (not chart_bullish and ta["rsi"] <= 45):
+                    score += rsi_pts
+                    factors.append({"factor": "live_rsi_confirms", "pts": rsi_pts, "rsi": ta["rsi"], "skill": "Classical"})
+                elif (chart_bullish and ta["rsi"] <= 35) or (not chart_bullish and ta["rsi"] >= 65):
+                    score -= rsi_pts * 0.5
+                    factors.append({"factor": "live_rsi_against", "pts": round(-rsi_pts * 0.5, 1), "rsi": ta["rsi"], "skill": "Classical"})
+
+                # Volume surge (direction-agnostic — high volume confirms any move)
+                vol_pts = w.get("volume_surge", 9)
+                max_score += vol_pts
+                if ta["vol_ratio"] >= 1.5:
+                    score += vol_pts
+                    factors.append({"factor": "live_vol_surge", "pts": vol_pts, "vol": f"{ta['vol_ratio']:.1f}x", "skill": "Classical"})
+                elif ta["vol_ratio"] < 0.5:
+                    score -= vol_pts * 0.5
+                    factors.append({"factor": "live_vol_weak", "pts": round(-vol_pts * 0.5, 1), "vol": f"{ta['vol_ratio']:.1f}x", "skill": "Classical"})
+
+                # ADX trending market bonus (confirms momentum in either direction)
+                if ta["adx"] >= 25:
+                    adx_pts = 5.0
+                    max_score += adx_pts
+                    score += adx_pts
+                    factors.append({"factor": "live_adx_trending", "pts": adx_pts, "adx": ta["adx"], "skill": "Classical"})
 
     score = max(0, score)
 
@@ -357,7 +438,7 @@ def run_skill_debate(
     mwa_direction: str = "UNKNOWN", scanner_count: int = 0,
     scanner_results: dict | None = None,
     sector_strength: str = "NEUTRAL", fii_net: float = 0,
-    delivery_pct: float = 0, **kwargs,
+    delivery_pct: float = 0, chart_ta: str = "", **kwargs,
 ) -> DebateResult:
     """Run 8-agent debate — ZERO API calls."""
     sr = scanner_results or {}
@@ -368,7 +449,8 @@ def run_skill_debate(
     for agent_name, skill in AGENTS:
         score = _run_specialist(agent_name, skill, sr, ticker, direction,
                                  fired, mwa_direction, scanner_count,
-                                 sector_strength, fii_net, delivery_pct)
+                                 sector_strength, fii_net, delivery_pct,
+                                 chart_ta=chart_ta)
         agent_scores.append(score)
 
     # Judge
