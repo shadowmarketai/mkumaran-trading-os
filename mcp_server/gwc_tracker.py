@@ -555,6 +555,33 @@ GWC_LOG_HEADERS = [
 ]
 
 
+def split_gwc_signals(text: str) -> list[str]:
+    """
+    Split a multi-signal GWC message into individual signal texts.
+
+    Handles patterns like:
+      "Buy banknifty 53000pe @525 sl 450 tgt 600\nAgain Buy nifty 23500pe @165 sl 140 tgt 200"
+      "Buy crude @200 sl 180 tgt 220\nBuy gold @71000 sl 70500 tgt 72000"
+
+    Returns a list with one element per signal (minimum one element = original text).
+    """
+    # Sentence-start keywords that indicate a new signal
+    _SEP = re.compile(
+        r'(?:^|\n)\s*(?:AGAIN\s+)?(?:BUY|SELL|LONG|SHORT|ALERT\s*:?)\s+',
+        re.IGNORECASE | re.MULTILINE,
+    )
+    parts: list[str] = []
+    matches = list(_SEP.finditer(text))
+    if len(matches) <= 1:
+        return [text.strip()]
+    for i, m in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        segment = text[m.start():end].strip()
+        if segment:
+            parts.append(segment)
+    return parts if parts else [text.strip()]
+
+
 def classify_gwc_message(text: str) -> tuple[GWCMessageType, dict]:
     """
     Classify a raw GWC forwarded message.

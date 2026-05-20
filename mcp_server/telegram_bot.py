@@ -1383,6 +1383,7 @@ async def handle_gwc_raw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             log_to_sheets,
             format_gwc_reply,
             parse_gwc,
+            split_gwc_signals,
             validate_gwc_signal,
         )
     except Exception as imp_err:
@@ -1417,23 +1418,29 @@ async def handle_gwc_raw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # ── Route by type ──────────────────────────────────────────────────────────
     if msg_type == GWCMessageType.SIGNAL:
-        sig = parse_gwc(text)
-        if sig is None:
+        # Split multi-signal messages (e.g. "Buy X...\nAgain Buy Y...")
+        signal_parts = split_gwc_signals(text)
+        parsed_count = 0
+        for part in signal_parts:
+            sig = parse_gwc(part)
+            if sig is None:
+                continue
+            parsed_count += 1
+            await update.message.reply_text("⏳ Signal detected — validating...")
+            validation = validate_gwc_signal(sig)
+            log_to_sheets(
+                sig,
+                verdict=validation.get("verdict", ""),
+                confidence=validation.get("confidence", 0),
+                notes=part[:100],
+            )
+            reply = format_gwc_reply(sig, validation)
+            await update.message.reply_text(reply)
+        if parsed_count == 0:
             await update.message.reply_text(
                 "📊 Logged as signal-like — parse incomplete.\n"
                 "Use /gwc to reprocess with manual entry."
             )
-            return
-        await update.message.reply_text("⏳ Signal detected — validating...")
-        validation = validate_gwc_signal(sig)
-        log_to_sheets(
-            sig,
-            verdict=validation.get("verdict", ""),
-            confidence=validation.get("confidence", 0),
-            notes=text[:100],
-        )
-        reply = format_gwc_reply(sig, validation)
-        await update.message.reply_text(reply)
 
     elif msg_type == GWCMessageType.RESULT:
         price = extracted.get("price", 0)
