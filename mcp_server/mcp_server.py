@@ -893,13 +893,20 @@ def _price_refresh_once_sync() -> None:
 async def _dhan_token_refresh_loop() -> None:
     """Refresh Dhan access token before it expires.
 
-    Checks every 60 minutes. Refreshes when < 2 hours remain so the
-    token is always valid during market hours even if the server runs
-    for days without a restart (e.g. over a weekend).
+    Checks on startup then every 60 minutes. Refreshes when < 2 hours
+    remain so the token is always valid during market hours even if the
+    server runs for days without a restart (e.g. over a weekend).
     """
+    import time as _time
     last_refreshed_at: float = 0.0   # epoch seconds of last successful refresh
+    first_run = True
     while True:
-        await asyncio.sleep(3600)  # check every hour
+        # On startup: check immediately. Thereafter: wait 1 hour.
+        if first_run:
+            first_run = False
+            await asyncio.sleep(10)  # brief pause for other startup tasks
+        else:
+            await asyncio.sleep(3600)
         try:
             from mcp_server.dhan_auth import (
                 get_dhan_token, _hours_remaining, _load_cached_token,
@@ -911,17 +918,20 @@ async def _dhan_token_refresh_loop() -> None:
             cached_token = _load_cached_token() or os.environ.get("DHAN_ACCESS_TOKEN", "")
             hours_left = _hours_remaining(cached_token) if cached_token else 0.0
 
-            # Also skip if we refreshed less than 20h ago (prevents hammering
+            # Skip if refreshed less than 20h ago (prevents hammering
             # when cache file is missing or unreadable).
-            import time as _time
             hours_since_refresh = (_time.time() - last_refreshed_at) / 3600
 
-            if hours_left > 2.0 or hours_since_refresh < 20.0:
+            if hours_left > 2.0 and hours_since_refresh > 0.5:
                 logger.debug("Dhan token OK — %.1fh remaining (refreshed %.1fh ago)",
                              hours_left, hours_since_refresh)
                 continue
 
-            logger.info("Dhan token expiring in %.1fh — refreshing via TOTP", hours_left)
+            if hours_since_refresh < 1.0 and hours_left > 0:
+                # Refreshed very recently and token not yet expired — skip
+                continue
+
+            logger.info("Dhan token %.1fh remaining — refreshing via TOTP", hours_left)
             from mcp_server.data_provider import get_provider
             provider = get_provider()
             dhan = provider.dhan
