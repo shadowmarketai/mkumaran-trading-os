@@ -297,6 +297,51 @@ async def tool_stitch_status():
         return {"status": "error", "error": str(e)}
 
 
+@router.post("/tools/expire_bad_options_signals")
+async def tool_expire_bad_options_signals():
+    """Expire OPEN options signals stored with mixed units (premium SL vs strike entry).
+
+    Identifies bad signals by the unit mismatch signature:
+      entry_price > 2000 (strike/spot scale) AND stop_loss < 2000 (premium scale).
+    Safe to run multiple times — only touches OPEN signals.
+    """
+    from mcp_server.db import SessionLocal
+    from mcp_server.models import Signal, ActiveTrade
+
+    db = SessionLocal()
+    expired_ids = []
+    try:
+        bad = (
+            db.query(Signal)
+            .filter(
+                Signal.status == "OPEN",
+                Signal.entry_price > 2000,
+                Signal.stop_loss < 2000,
+                Signal.stop_loss > 0,
+            )
+            .all()
+        )
+        for sig in bad:
+            sig.status = "EXPIRED"
+            expired_ids.append(sig.id)
+            # Remove from ActiveTrade so dashboard clears it
+            db.query(ActiveTrade).filter(ActiveTrade.signal_id == sig.id).delete()
+
+        db.commit()
+        logger.info("expire_bad_options_signals: expired %d signals %s", len(expired_ids), expired_ids)
+        return {
+            "status": "ok",
+            "expired": len(expired_ids),
+            "signal_ids": expired_ids,
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error("expire_bad_options_signals failed: %s", e)
+        return {"status": "error", "error": str(e)}
+    finally:
+        db.close()
+
+
 @router.post("/tools/stitch_push")
 async def tool_stitch_push(req: StitchPushRequest):
     """Push arbitrary records to Stitch data warehouse."""

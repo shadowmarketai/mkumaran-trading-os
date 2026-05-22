@@ -1562,6 +1562,26 @@ async def cmd_paper_review(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text("\n".join(lines))
 
 
+async def cmd_expire_bad_signals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/expire_bad_signals — expire OPEN options signals with mixed-unit SL/TGT (one-time cleanup)."""
+    await update.message.reply_text("Expiring bad options signals...")
+    try:
+        import httpx
+        base = "http://localhost:8000"
+        resp = httpx.post(f"{base}/tools/expire_bad_options_signals", timeout=15)
+        data = resp.json()
+        if data.get("status") == "ok":
+            n = data.get("expired", 0)
+            ids = data.get("signal_ids", [])
+            await update.message.reply_text(
+                f"Done. Expired {n} bad signal(s).\nIDs: {ids if ids else 'none'}"
+            )
+        else:
+            await update.message.reply_text(f"Error: {data.get('error', 'unknown')}")
+    except Exception as e:
+        await update.message.reply_text(f"Failed: {e}")
+
+
 async def cmd_options_track(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/options_track [days] — forward-track options_scan signals from DB."""
     await update.message.reply_text("📊 Tracking options signals...")
@@ -1769,6 +1789,7 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("paper_close", cmd_paper_close))
     app.add_handler(CommandHandler("paper_review", cmd_paper_review))
     app.add_handler(CommandHandler("options_track", cmd_options_track))
+    app.add_handler(CommandHandler("expire_bad_signals", cmd_expire_bad_signals))
     app.add_handler(CallbackQueryHandler(handle_take_skip_callback, pattern=r"^(take|skip):"))
 
     # Raw text handler — catches all non-command forwarded GWC messages.

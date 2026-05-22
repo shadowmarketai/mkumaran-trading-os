@@ -1567,6 +1567,7 @@ AUTH_PUBLIC_PATHS = {
     "/tools/eod_summary",
     "/tools/reset_sheets",
     "/tools/clear_sheets",
+    "/tools/expire_bad_options_signals",
 }
 AUTH_PUBLIC_PREFIXES = (
     "/assets/", "/docs/", "/redoc/",
