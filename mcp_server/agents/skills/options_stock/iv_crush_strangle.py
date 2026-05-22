@@ -1,4 +1,12 @@
-"""IV crush strangle — sell strangle when IV >= 40 and DTE >= 2."""
+"""
+IV crush strangle — sell strangle when stock ATM IV >= 40 and DTE >= 2.
+
+BACKTEST STATUS: Partial proxy only.
+Nifty VIX never reached 40 in 2024-2026 test period (avg 13.9).
+Individual stock IV (earnings, events) can reach 40-100%+ and is
+fundamentally different from index VIX. Cannot proxy-test with yfinance.
+Disclaimer kept until 60+ live stock-options outcomes are logged.
+"""
 
 from __future__ import annotations
 from typing import Any

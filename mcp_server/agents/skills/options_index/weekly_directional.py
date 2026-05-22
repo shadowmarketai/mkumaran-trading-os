@@ -1,4 +1,12 @@
-"""Weekly directional — PCR-based CE/PE buy with DTE >= 3."""
+"""
+Weekly directional — PCR-based CE/PE buy with DTE >= 3.
+
+BACKTEST STATUS: Cannot validate with free data.
+Requires historical Nifty PCR time-series (not available via yfinance).
+Disclaimer kept until 60+ live signals with outcomes are logged.
+Academic literature: PCR>1.2 has mild bullish edge (~55% WR, 3-5d horizon)
+but effect weakens when VIX is elevated. Treat as confluence input only.
+"""
 
 from __future__ import annotations
 from typing import Any

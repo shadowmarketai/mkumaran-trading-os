@@ -1,4 +1,12 @@
-"""Max-pain magnet — directional when spot is 0.5-2.5% from max pain."""
+"""
+Max-pain magnet — directional CE/PE buy when spot is 0.5-2.5% from max pain.
+
+BACKTEST STATUS: Cannot validate with free data.
+Requires historical NSE option OI by strike to compute max pain.
+Not available via yfinance. Disclaimer kept until 60+ live signals logged.
+Max-pain hypothesis (academic): modest gravitational pull, strongest in
+last 2 days before expiry; effect disappears at DTE > 5.
+"""
 
 from __future__ import annotations
 from typing import Any

@@ -1,4 +1,10 @@
-"""PCR + IV directional — CE/PE buy based on PCR and low IV."""
+"""
+PCR + IV directional — CE/PE buy when PCR>1.2+IV<35 or PCR<0.7.
+
+BACKTEST STATUS: Cannot validate with free data.
+Requires historical stock-level PCR and IV per expiry (not in yfinance).
+Disclaimer kept until 60+ live outcomes logged via Dhan chain data.
+"""
 
 from __future__ import annotations
 from typing import Any
