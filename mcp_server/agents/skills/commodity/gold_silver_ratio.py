@@ -13,6 +13,13 @@ Signal logic:
 
 GOLDPETAL and GOLDGUINEA are 1g and 8g gold derivatives — same underlying
 price action as GOLD. The ratio edge applies equally; no separate backtest needed.
+
+MCX price unit normalisation (v2.2):
+  MCX GOLD is quoted per 10g; MCX SILVER per kg.
+  Raw division gives ~1.0, never reaching 76-88 thresholds.
+  Normalise to per-gram before ratio: GOLD/10 / (SILVER/1000).
+  The per-gram ratio matches the international oz/oz ratio since both
+  units cancel the same 31.1 g/oz factor.
 """
 
 from __future__ import annotations
@@ -36,12 +43,25 @@ _SILVER_FAMILY = frozenset({
 })
 
 
+def _normalised_ratio(g: float, s: float) -> float:
+    """Return per-gram gold/silver ratio regardless of MCX quoting units.
+
+    MCX GOLD is per 10g, MCX SILVER is per kg.
+    If prices look like MCX (g > 1000 and s > 1000), normalise.
+    COMEX prices (g ~2000-5000 /oz, s ~25-80 /oz) divide directly.
+    """
+    if g > 1000 and s > 1000:
+        # MCX: convert both to per-gram first
+        return (g / 10) / (s / 1000)
+    return g / s
+
+
 class GoldSilverRatioSkill(BaseSkill):
     name = "gold_silver_ratio"
     segment = "commodity"
     timeframe = "1D"
     min_bars = 5
-    version = "2.1.0"
+    version = "2.2.0"
     description = (
         "Gold/silver ratio mean-reversion. TIER_1 validated: WR=61-70%, "
         "Sharpe=6.6-9.5 (730-day backtest). SL=3%, RRR=3. "
@@ -62,7 +82,7 @@ class GoldSilverRatioSkill(BaseSkill):
         if s <= 0:
             return None
 
-        ratio = g / s
+        ratio = _normalised_ratio(g, s)
         sym_upper = symbol.upper()
 
         if ratio < 76 and sym_upper in _GOLD_FAMILY:
