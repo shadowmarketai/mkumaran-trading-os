@@ -460,20 +460,48 @@ async def _options_signal_loop():
                         try:
                             strike = sig.get("strike", 0)
                             premium = sig.get("premium_collected") or sig.get("premium_paid") or 0
+                            direction = sig.get("direction", "NEUTRAL")
+                            sl_prem = float(sig.get("sl_premium", float(premium) * 0.5 if premium else 0))
+                            tgt_prem = float(sig.get("target_premium", float(premium) * 2.0 if premium else 0))
+
+                            # Translate option premium SL/TGT to underlying spot terms.
+                            # entry_price is stored as the ATM strike (spot scale). SL/TGT must
+                            # match or the signal_monitor compares spot (~54000) vs premium
+                            # (~232) and fires TARGET_HIT instantly on every options signal.
+                            # ATM delta ≈ 0.5 for index options.
+                            _ATM_DELTA = 0.5
+                            entry_spot = float(strike or premium)
+                            if strike and float(premium) > 0:
+                                sl_pts  = (float(premium) - sl_prem) / _ATM_DELTA
+                                tgt_pts = (tgt_prem - float(premium)) / _ATM_DELTA
+                                if direction == "LONG":
+                                    mon_sl  = round(entry_spot - sl_pts, 2)
+                                    mon_tgt = round(entry_spot + tgt_pts, 2)
+                                else:  # SHORT / BUY PE
+                                    mon_sl  = round(entry_spot + sl_pts, 2)
+                                    mon_tgt = round(entry_spot - tgt_pts, 2)
+                            else:
+                                mon_sl  = round(sl_prem, 2)
+                                mon_tgt = round(tgt_prem, 2)
+
+                            _risk = abs(entry_spot - mon_sl)
+                            _reward = abs(mon_tgt - entry_spot)
+                            _rrr = round(_reward / _risk, 2) if _risk > 0 else 2.0
+
                             _opt_sig = Signal(
                                 signal_date=date.today(),
                                 ticker=sig["symbol"],
                                 exchange="NFO",
                                 asset_class="FNO",
                                 timeframe="intraday",
-                                direction=sig.get("direction", "NEUTRAL"),
+                                direction=direction,
                                 pattern=sig.get("strategy", sig.get("pattern", "OPTIONS")),
-                                entry_price=round(float(strike or premium), 2),
-                                stop_loss=round(float(sig.get("sl_premium", premium * 1.5 if premium else 0)), 2),
-                                target=round(float(sig.get("target_premium", premium * 0.3 if premium else 0)), 2),
-                                rrr=1.5,
+                                entry_price=round(entry_spot, 2),
+                                stop_loss=mon_sl,
+                                target=mon_tgt,
+                                rrr=_rrr,
                                 qty=sig.get("lots", 1) * 50,
-                                risk_amt=round(float(sig.get("sl_premium", premium * 1.5 if premium else 0)), 2),
+                                risk_amt=round(float(premium) - sl_prem, 2),
                                 ai_confidence=50,
                                 tv_confirmed=False,
                                 mwa_score="NEUTRAL",
