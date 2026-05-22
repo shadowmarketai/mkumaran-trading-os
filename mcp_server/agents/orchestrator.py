@@ -26,8 +26,10 @@ async def start_all_agents() -> list[asyncio.Task]:
     from mcp_server.agents.commodity_agent import CommodityAgent
     from mcp_server.agents.forex_agent import ForexAgent
     from mcp_server.agents.futures_agent import FuturesAgent
+    from mcp_server.agents.equity_swing_agent import EquitySwingAgent
 
     agents = [
+        EquitySwingAgent(),
         OptionsIndexAgent(),
         OptionsStockAgent(),
         CommodityAgent(),
@@ -57,8 +59,10 @@ def get_agent_status() -> list[dict[str, Any]]:
     from mcp_server.agents.commodity_agent import CommodityAgent
     from mcp_server.agents.forex_agent import ForexAgent
     from mcp_server.agents.futures_agent import FuturesAgent
+    from mcp_server.agents.equity_swing_agent import EquitySwingAgent
 
     agents = [
+        EquitySwingAgent(),
         OptionsIndexAgent(),
         OptionsStockAgent(),
         CommodityAgent(),
