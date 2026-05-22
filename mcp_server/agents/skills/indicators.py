@@ -87,11 +87,14 @@ def make_signal(
     pattern: str,
     confidence: int = 65,
     rrr_mult: float = 2.0,
+    target: float | None = None,
+    validated: bool = False,
 ) -> dict:
     risk = abs(entry - sl)
     if risk <= 0:
         risk = entry * 0.002
-    target = entry + risk * rrr_mult if direction == "LONG" else entry - risk * rrr_mult
+    if target is None:
+        target = entry + risk * rrr_mult if direction == "LONG" else entry - risk * rrr_mult
     return {
         "ticker": ticker,
         "direction": direction,
@@ -101,4 +104,5 @@ def make_signal(
         "rrr": round(abs(target - entry) / risk, 1),
         "pattern": pattern,
         "confidence": confidence,
+        "validated": validated,
     }
