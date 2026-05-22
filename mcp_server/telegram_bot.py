@@ -1619,65 +1619,107 @@ async def cmd_options_track(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 except Exception:
                     ticker_closes[t] = {}
 
-        # Determine outcomes
+        # Determine outcomes using UNDERLYING price movement.
+        # Options signals store PREMIUM as entry_price (e.g. ₹147 CE premium),
+        # not the underlying index. We track directional correctness instead:
+        #   CE buy / bullish → win if underlying moved +0.5%+ within N days
+        #   PE buy / bearish → win if underlying moved -0.5%+ within N days
+        #   Short straddle  → win if underlying stayed within ±2% until expiry
+        def _underlying_dir(pattern: str, direction: str) -> str:
+            """Map signal to expected underlying direction."""
+            p = (pattern or "").upper()
+            if "SHORT STRADDLE" in p or "STRADDLE SELL" in p:
+                return "NEUTRAL"
+            if " PE" in p or "BEARISH" in p or "PE BUY" in p:
+                return "BEAR"
+            return "BULL"   # CE buy, bullish, or unknown
+
+        def _next_thursday(d: date) -> date:
+            days_ahead = (3 - d.weekday()) % 7 or 7
+            return d + timedelta(days=days_ahead)
+
         outcomes: dict[str, list] = defaultdict(list)
         rows_out = []
         for sig in signals:
             sig_date = sig["signal_date"]
             if isinstance(sig_date, str):
                 sig_date = date.fromisoformat(sig_date)
-            entry = float(sig.get("entry_price") or 0)
-            target = float(sig.get("target") or 0)
-            sl = float(sig.get("stop_loss") or 0)
-            direction = (sig.get("direction") or "NEUTRAL").upper()
             closes = ticker_closes.get(sig["ticker"], {})
-            check_end = sig_date + timedelta(days=look_forward)
+            check_end = min(sig_date + timedelta(days=look_forward), _next_thursday(sig_date))
+            pat_full = sig.get("pattern") or ""
+            underlying_dir = _underlying_dir(pat_full, sig.get("direction") or "")
+
+            # Find signal-day close as reference
+            sig_close = closes.get(sig_date) or next(
+                (closes[d] for d in sorted(closes) if d >= sig_date), None
+            )
 
             outcome = "OPEN"
-            if entry > 0 and direction != "NEUTRAL":
-                for d in sorted(k for k in closes if sig_date < k <= check_end):
-                    price = closes[d]
-                    if direction == "LONG":
-                        if target > entry and price >= target:
-                            outcome = "HIT_TARGET"
+            if sig_close and closes:
+                future_closes = {d: c for d, c in closes.items() if sig_date < d <= check_end}
+                if underlying_dir == "NEUTRAL":
+                    # Straddle sell: win if underlying stayed ±2%
+                    if future_closes:
+                        max_move = max(abs(c / sig_close - 1) for c in future_closes.values())
+                        if check_end <= date.today():
+                            outcome = "WIN" if max_move <= 0.02 else "LOSS"
+                    elif check_end < date.today():
+                        outcome = "EXPIRED"
+                elif underlying_dir == "BULL":
+                    for d in sorted(future_closes):
+                        move = future_closes[d] / sig_close - 1
+                        if move >= 0.005:
+                            outcome = "WIN"
                             break
-                        if sl < entry and price <= sl:
-                            outcome = "HIT_STOP"
+                        if move <= -0.005:
+                            outcome = "LOSS"
                             break
-                    elif direction == "SHORT":
-                        if target < entry and price <= target:
-                            outcome = "HIT_TARGET"
+                    if outcome == "OPEN" and check_end < date.today():
+                        outcome = "EXPIRED"
+                else:  # BEAR
+                    for d in sorted(future_closes):
+                        move = future_closes[d] / sig_close - 1
+                        if move <= -0.005:
+                            outcome = "WIN"
                             break
-                        if sl > entry and price >= sl:
-                            outcome = "HIT_STOP"
+                        if move >= 0.005:
+                            outcome = "LOSS"
                             break
-                if outcome == "OPEN" and check_end < date.today():
-                    outcome = "EXPIRED"
+                    if outcome == "OPEN" and check_end < date.today():
+                        outcome = "EXPIRED"
 
-            pat = (sig.get("pattern") or "")[:25]
+            pat = pat_full[:25]
             outcomes[pat].append(outcome)
             rows_out.append((str(sig_date)[:10], sig["ticker"], pat,
-                             direction[:4], outcome))
+                             underlying_dir[:4], outcome))
 
         sep = "━" * 28
         lines = [f"📊 Options Signal Track ({look_forward}d window)", sep,
                  f"Signals since {since}: {len(signals)}", ""]
 
-        # Per-strategy table
+        # Per-strategy table (WIN/LOSS/OPEN)
         lines.append("Strategy Results:")
         for pat, outs in sorted(outcomes.items()):
             n = len(outs)
-            hits = outs.count("HIT_TARGET")
-            stops = outs.count("HIT_STOP")
-            wr = f"{hits/n*100:.0f}%" if n else "—"
-            lines.append(f"  {pat[:22]:<22} n={n} T={hits} S={stops} WR={wr}")
+            wins   = outs.count("WIN")
+            losses = outs.count("LOSS")
+            open_  = outs.count("OPEN")
+            closed = wins + losses
+            wr = f"{wins/closed*100:.0f}%" if closed else "open"
+            lines.append(f"  {pat[:22]:<22} n={n} W={wins} L={losses} O={open_} WR={wr}")
 
         total = len(signals)
-        total_hits = sum(1 for r in rows_out if r[4] == "HIT_TARGET")
-        total_stops = sum(1 for r in rows_out if r[4] == "HIT_STOP")
+        total_wins = sum(1 for r in rows_out if r[4] == "WIN")
+        total_loss = sum(1 for r in rows_out if r[4] == "LOSS")
+        total_open = sum(1 for r in rows_out if r[4] == "OPEN")
+        closed_total = total_wins + total_loss
+        overall_wr = f"{total_wins/closed_total*100:.0f}%" if closed_total else "all open"
         lines += [sep,
-                  f"Total: {total} | Target: {total_hits} | Stop: {total_stops} | "
-                  f"WR: {total_hits/total*100:.0f}%" if total else "No data"]
+                  f"Total: {total} | Win: {total_wins} | Loss: {total_loss} | "
+                  f"Open: {total_open} | WR: {overall_wr}",
+                  "",
+                  "WIN = underlying moved 0.5%+ in signal direction",
+                  "Straddle WIN = stayed within ±2% until expiry"]
 
         await update.message.reply_text("\n".join(lines))
 
