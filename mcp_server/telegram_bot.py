@@ -1566,18 +1566,34 @@ async def cmd_expire_bad_signals(update: Update, context: ContextTypes.DEFAULT_T
     """/expire_bad_signals — expire OPEN options signals with mixed-unit SL/TGT (one-time cleanup)."""
     await update.message.reply_text("Expiring bad options signals...")
     try:
-        import httpx
-        base = "http://localhost:8000"
-        resp = httpx.post(f"{base}/tools/expire_bad_options_signals", timeout=15)
-        data = resp.json()
-        if data.get("status") == "ok":
-            n = data.get("expired", 0)
-            ids = data.get("signal_ids", [])
-            await update.message.reply_text(
-                f"Done. Expired {n} bad signal(s).\nIDs: {ids if ids else 'none'}"
+        from mcp_server.db import SessionLocal
+        from mcp_server.models import Signal, ActiveTrade
+
+        db = SessionLocal()
+        expired_ids = []
+        try:
+            bad = (
+                db.query(Signal)
+                .filter(
+                    Signal.status == "OPEN",
+                    Signal.entry_price > 2000,
+                    Signal.stop_loss < 2000,
+                    Signal.stop_loss > 0,
+                )
+                .all()
             )
-        else:
-            await update.message.reply_text(f"Error: {data.get('error', 'unknown')}")
+            for sig in bad:
+                sig.status = "EXPIRED"
+                expired_ids.append(sig.id)
+                db.query(ActiveTrade).filter(ActiveTrade.signal_id == sig.id).delete()
+            db.commit()
+        finally:
+            db.close()
+
+        n = len(expired_ids)
+        await update.message.reply_text(
+            f"Done. Expired {n} bad signal(s).\nIDs: {expired_ids if expired_ids else 'none'}"
+        )
     except Exception as e:
         await update.message.reply_text(f"Failed: {e}")
 
