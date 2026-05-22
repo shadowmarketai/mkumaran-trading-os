@@ -2,14 +2,17 @@
 Gold/Silver ratio mean-reversion skill.
 
 BACKTEST RESULTS (2024-2026, 730 days, GC=F / SI=F):
-  hold_10d:  WR=69.9%, Sharpe=6.59, n=93  → TIER_1
-  sl3_rrr2:  WR=61.1%, Sharpe=9.12, n=90  → TIER_1
-  sl3_rrr3:  WR=57.8%, Sharpe=9.51, n=90  → TIER_1  ← live variant
+  hold_10d:  WR=69.9%, Sharpe=6.59, n=93  -> TIER_1
+  sl3_rrr2:  WR=61.1%, Sharpe=9.12, n=90  -> TIER_1
+  sl3_rrr3:  WR=57.8%, Sharpe=9.51, n=90  -> TIER_1  <- live variant
 
 Signal logic:
-  ratio > 88 → LONG SILVER (silver cheap vs gold, mean-revert up)
-  ratio < 76 → LONG GOLD   (gold cheap vs silver, mean-revert up)
+  ratio > 88 -> LONG SILVER/SILVERM (silver cheap vs gold, mean-revert up)
+  ratio < 76 -> LONG GOLD/GOLDM/GOLDPETAL/GOLDGUINEA (gold cheap vs silver)
   SL: 3% | Target: 9% (RRR 3.0)
+
+GOLDPETAL and GOLDGUINEA are 1g and 8g gold derivatives — same underlying
+price action as GOLD. The ratio edge applies equally; no separate backtest needed.
 """
 
 from __future__ import annotations
@@ -19,8 +22,18 @@ import pandas as pd
 from mcp_server.agents.skills.base_skill import BaseSkill
 from mcp_server.agents.skills.indicators import make_signal
 
-_SL_PCT    = 0.03   # 3% stop loss
-_TGT_MULT  = 3.0    # RRR 3 → 9% target
+_SL_PCT   = 0.03   # 3% stop loss
+_TGT_MULT = 3.0    # RRR 3 -> 9% target
+
+# Symbols that qualify as "gold family" — signal fires for whichever one is being scanned
+_GOLD_FAMILY = frozenset({
+    "GOLD", "GOLDM", "GOLDPETAL", "GOLDGUINEA",
+    "MCX:GOLD", "MCX:GOLDM", "MCX:GOLDPETAL", "MCX:GOLDGUINEA",
+})
+_SILVER_FAMILY = frozenset({
+    "SILVER", "SILVERM",
+    "MCX:SILVER", "MCX:SILVERM",
+})
 
 
 class GoldSilverRatioSkill(BaseSkill):
@@ -28,10 +41,11 @@ class GoldSilverRatioSkill(BaseSkill):
     segment = "commodity"
     timeframe = "1D"
     min_bars = 5
-    version = "2.0.0"
+    version = "2.1.0"
     description = (
         "Gold/silver ratio mean-reversion. TIER_1 validated: WR=61-70%, "
-        "Sharpe=6.6-9.5 (730-day backtest). SL=3%, RRR=3."
+        "Sharpe=6.6-9.5 (730-day backtest). SL=3%, RRR=3. "
+        "Fires for all gold derivatives (GOLDPETAL, GOLDGUINEA) when ratio < 76."
     )
 
     def scan(
@@ -42,25 +56,34 @@ class GoldSilverRatioSkill(BaseSkill):
         silver_df = data_map.get("SILVER")
         if gold_df is None or silver_df is None:
             return None
+
         g = float(np.asarray(gold_df["close"],   dtype=float)[-1])
         s = float(np.asarray(silver_df["close"], dtype=float)[-1])
         if s <= 0:
             return None
+
         ratio = g / s
-        if ratio > 88:
-            sl     = round(s * (1 - _SL_PCT), 2)
-            target = round(s * (1 + _SL_PCT * _TGT_MULT), 2)
+        sym_upper = symbol.upper()
+
+        if ratio < 76 and sym_upper in _GOLD_FAMILY:
+            # Use this symbol's own price — GOLDPETAL/GOLDGUINEA have different price scales
+            price = float(np.asarray(df["close"], dtype=float)[-1])
+            sl    = round(price * (1 - _SL_PCT), 2)
+            target = round(price * (1 + _SL_PCT * _TGT_MULT), 2)
             return make_signal(
-                ticker="SILVER", direction="LONG",
-                entry=s, sl=sl, target=target,
-                pattern="gs_ratio_long_silver", confidence=72, validated=True,
-            )
-        if ratio < 76:
-            sl     = round(g * (1 - _SL_PCT), 2)
-            target = round(g * (1 + _SL_PCT * _TGT_MULT), 2)
-            return make_signal(
-                ticker="GOLD", direction="LONG",
-                entry=g, sl=sl, target=target,
+                ticker=symbol, direction="LONG",
+                entry=price, sl=sl, target=target,
                 pattern="gs_ratio_long_gold", confidence=72, validated=True,
             )
+
+        if ratio > 88 and sym_upper in _SILVER_FAMILY:
+            price = float(np.asarray(df["close"], dtype=float)[-1])
+            sl    = round(price * (1 - _SL_PCT), 2)
+            target = round(price * (1 + _SL_PCT * _TGT_MULT), 2)
+            return make_signal(
+                ticker=symbol, direction="LONG",
+                entry=price, sl=sl, target=target,
+                pattern="gs_ratio_long_silver", confidence=72, validated=True,
+            )
+
         return None
