@@ -45,7 +45,7 @@ class EMACrossADXSkill(BaseSkill):
                 entry=float(c[-1]),
                 sl=sl,
                 pattern="ema21_55_bull_adx",
-                confidence=65,
+                confidence=65, validated=True,
             )
         if e21[-1] < e55[-1] and e21[-2] >= e55[-2]:
             sl = round(float(c[-1]) + 1.5 * cur_atr, 2)
@@ -54,7 +54,7 @@ class EMACrossADXSkill(BaseSkill):
                 direction="SHORT",
                 entry=float(c[-1]),
                 sl=sl,
-                pattern="ema21_55_bear_adx",
+                pattern="ema21_55_bear_adx", validated=True,
                 confidence=65,
             )
         return None

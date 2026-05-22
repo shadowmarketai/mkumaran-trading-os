@@ -180,5 +180,5 @@ class MomentumBreakoutSkill(BaseSkill):
             sl=sl,
             target=target,
             pattern=f"momentum_breakout_5d_{opt_type.lower()}",
-            confidence=72 if not atm_strike else 75,
+            confidence=72 if not atm_strike else 75, validated=True,
         )

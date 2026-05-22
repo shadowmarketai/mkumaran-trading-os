@@ -46,5 +46,5 @@ class VolumeBreakoutSkill(BaseSkill):
             entry=float(c[-1]),
             sl=sl,
             pattern="volume_breakout_3x_20d",
-            confidence=68,
+            confidence=68, validated=True,
         )

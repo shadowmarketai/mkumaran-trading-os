@@ -1,4 +1,11 @@
-"""Volume spike — volume > 2x 10-day average."""
+"""
+Volume spike — volume > 2x 10-day average + green candle.
+
+BACKTEST (730-day, Nifty 100, daily): OVERRIDE on all RRR variants.
+  RRR 1.5: WR=43.1%, Sharpe=-0.379 → OVERRIDE
+  RRR 2.0: WR=40.6%, Sharpe=-0.303 → OVERRIDE
+Disabled. Volume alone without breakout has no edge standalone.
+"""
 
 from __future__ import annotations
 from typing import Any
@@ -13,6 +20,7 @@ class VolumeSpikeSkill(BaseSkill):
     segment = "equity_swing"
     timeframe = "1D"
     min_bars = 12
+    enabled = False  # OVERRIDE — backtest: Sharpe -0.38 at best, no standalone edge
     description = "Volume spike above 2x 10-day average with bullish close"
 
     def scan(

@@ -38,5 +38,5 @@ class ATRBreakoutSkill(BaseSkill):
             entry=float(c[-1]),
             sl=sl,
             pattern="atr_breakout_20d",
-            confidence=67,
+            confidence=67, validated=True,
         )
