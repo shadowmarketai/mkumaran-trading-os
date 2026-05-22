@@ -1562,6 +1562,130 @@ async def cmd_paper_review(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text("\n".join(lines))
 
 
+async def cmd_options_track(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/options_track [days] — forward-track options_scan signals from DB."""
+    await update.message.reply_text("📊 Tracking options signals...")
+    try:
+        from datetime import date, timedelta
+        from collections import defaultdict
+        from mcp_server.db import SessionLocal
+        from sqlalchemy import text
+
+        look_forward = int(context.args[0]) if context.args else 10
+        since = date.today() - timedelta(days=30)
+
+        session = SessionLocal()
+        try:
+            rows = session.execute(text("""
+                SELECT id, signal_date, ticker, pattern, direction,
+                       entry_price, stop_loss, target, status
+                FROM signals
+                WHERE source = 'options_scan'
+                  AND signal_date >= :since
+                ORDER BY signal_date DESC, id DESC
+            """), {"since": since.isoformat()}).fetchall()
+            signals = [dict(r._mapping) for r in rows]
+        finally:
+            session.close()
+
+        if not signals:
+            await update.message.reply_text(
+                f"No options_scan signals found since {since}.\n"
+                "Options scan runs every 10 min during market hours."
+            )
+            return
+
+        # Fetch underlying closes via yfinance
+        import yfinance as yf
+        INDEX_YF = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK",
+                    "FINNIFTY": "NIFTY_FIN_SERVICE.NS", "MIDCPNIFTY": "NIFTY_MIDCAP_SELECT.NS"}
+
+        ticker_closes: dict = {}
+        for sig in signals:
+            t = sig["ticker"]
+            if t not in ticker_closes:
+                yf_sym = INDEX_YF.get(t, t + ".NS")
+                try:
+                    df = yf.download(yf_sym, start=(since - timedelta(days=3)).isoformat(),
+                                     end=(date.today() + timedelta(days=1)).isoformat(),
+                                     auto_adjust=True, progress=False)
+                    if not df.empty:
+                        closes_col = df["Close"]
+                        if hasattr(closes_col, "columns"):
+                            closes_col = closes_col.iloc[:, 0]
+                        ticker_closes[t] = {d.date(): float(c) for d, c in closes_col.items()}
+                    else:
+                        ticker_closes[t] = {}
+                except Exception:
+                    ticker_closes[t] = {}
+
+        # Determine outcomes
+        outcomes: dict[str, list] = defaultdict(list)
+        rows_out = []
+        for sig in signals:
+            sig_date = sig["signal_date"]
+            if isinstance(sig_date, str):
+                sig_date = date.fromisoformat(sig_date)
+            entry = float(sig.get("entry_price") or 0)
+            target = float(sig.get("target") or 0)
+            sl = float(sig.get("stop_loss") or 0)
+            direction = (sig.get("direction") or "NEUTRAL").upper()
+            closes = ticker_closes.get(sig["ticker"], {})
+            check_end = sig_date + timedelta(days=look_forward)
+
+            outcome = "OPEN"
+            if entry > 0 and direction != "NEUTRAL":
+                for d in sorted(k for k in closes if sig_date < k <= check_end):
+                    price = closes[d]
+                    if direction == "LONG":
+                        if target > entry and price >= target:
+                            outcome = "HIT_TARGET"
+                            break
+                        if sl < entry and price <= sl:
+                            outcome = "HIT_STOP"
+                            break
+                    elif direction == "SHORT":
+                        if target < entry and price <= target:
+                            outcome = "HIT_TARGET"
+                            break
+                        if sl > entry and price >= sl:
+                            outcome = "HIT_STOP"
+                            break
+                if outcome == "OPEN" and check_end < date.today():
+                    outcome = "EXPIRED"
+
+            pat = (sig.get("pattern") or "")[:25]
+            outcomes[pat].append(outcome)
+            rows_out.append((str(sig_date)[:10], sig["ticker"], pat,
+                             direction[:4], outcome))
+
+        sep = "━" * 28
+        lines = [f"📊 Options Signal Track ({look_forward}d window)", sep,
+                 f"Signals since {since}: {len(signals)}", ""]
+
+        # Per-strategy table
+        lines.append("Strategy Results:")
+        for pat, outs in sorted(outcomes.items()):
+            n = len(outs)
+            hits = outs.count("HIT_TARGET")
+            stops = outs.count("HIT_STOP")
+            wr = f"{hits/n*100:.0f}%" if n else "—"
+            lines.append(f"  {pat[:22]:<22} n={n} T={hits} S={stops} WR={wr}")
+
+        total = len(signals)
+        total_hits = sum(1 for r in rows_out if r[4] == "HIT_TARGET")
+        total_stops = sum(1 for r in rows_out if r[4] == "HIT_STOP")
+        lines += [sep,
+                  f"Total: {total} | Target: {total_hits} | Stop: {total_stops} | "
+                  f"WR: {total_hits/total*100:.0f}%" if total else "No data"]
+
+        await update.message.reply_text("\n".join(lines))
+
+    except Exception as exc:
+        logger.error("options_track failed: %s", exc)
+        await update.message.reply_text(f"❌ Error: {exc}")
+
+
 async def cmd_gwc_learn(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /gwc_learn — analyze GWC LOG patterns and surface insights."""
     await update.message.reply_text("🔍 Analyzing GWC message patterns...")
@@ -1602,6 +1726,7 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("paper_log", cmd_paper_log))
     app.add_handler(CommandHandler("paper_close", cmd_paper_close))
     app.add_handler(CommandHandler("paper_review", cmd_paper_review))
+    app.add_handler(CommandHandler("options_track", cmd_options_track))
     app.add_handler(CallbackQueryHandler(handle_take_skip_callback, pattern=r"^(take|skip):"))
 
     # Raw text handler — catches all non-command forwarded GWC messages.
