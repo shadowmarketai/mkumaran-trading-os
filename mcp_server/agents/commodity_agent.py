@@ -33,7 +33,7 @@ class CommodityAgent(BaseAgent):
     card_emoji = "\U0001f4b0"
     card_title = "COMMODITY Signal"
 
-    UNIVERSE = ["GOLD", "GOLDM", "SILVER", "SILVERM", "CRUDEOIL", "NATURALGAS"]
+    UNIVERSE = ["GOLD", "GOLDM", "GOLDPETAL", "GOLDGUINEA", "SILVER", "SILVERM", "CRUDEOIL", "NATURALGAS"]
 
     def __init__(self):
         super().__init__()
