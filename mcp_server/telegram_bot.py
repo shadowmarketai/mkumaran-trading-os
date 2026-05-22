@@ -979,7 +979,9 @@ async def cmd_test_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                         )
                         _inner = _er.get("data", {}) if isinstance(_er, dict) else {}
                         _expiries = (_inner.get("data", []) if isinstance(_inner, dict) else _inner) or []
-                        lines.append(f"   {_seg}: status={_er.get('status','?')} expiries={len(_expiries) if isinstance(_expiries, list) else _expiries}")
+                        _rem = _er.get("remarks", {})
+                        _err_msg = (_rem.get("error_message") or _rem.get("error_code") or str(_rem))[:60] if isinstance(_rem, dict) else str(_rem)[:60]
+                        lines.append(f"   {_seg}: status={_er.get('status','?')} expiries={len(_expiries) if isinstance(_expiries, list) else _expiries} | {_err_msg}")
                         if isinstance(_expiries, list) and _expiries:
                             _next_exp = str(_expiries[0])
                             lines.append(f"   Next: {_next_exp}")
