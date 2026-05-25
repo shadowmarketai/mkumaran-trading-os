@@ -67,29 +67,32 @@ def _load_nifty500_symbols() -> list[str]:
 def _load_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str, dict]:
     """Load daily close prices from ohlcv_cache; yfinance for gaps."""
     import yfinance as yf
-    from sqlalchemy import text
-    from mcp_server.db import engine
 
     prices: dict[str, dict] = {}
 
-    logger.info("Loading prices from ohlcv_cache for %d symbols...", len(symbols))
-    with engine.connect() as conn:
-        for sym in symbols:
-            rows = conn.execute(
-                text(
-                    "SELECT bar_date, close FROM ohlcv_cache "
-                    "WHERE ticker=:s AND interval='1d' "
-                    "AND bar_date BETWEEN :s0 AND :e "
-                    "AND close IS NOT NULL AND close > 0 "
-                    "ORDER BY bar_date"
-                ),
-                {"s": sym, "s0": start_str, "e": end_str},
-            ).fetchall()
-            if rows:
-                prices[sym] = {
-                    (r.bar_date.date() if hasattr(r.bar_date, "date") else r.bar_date): float(r.close)
-                    for r in rows
-                }
+    try:
+        from sqlalchemy import text
+        from mcp_server.db import engine
+        logger.info("Loading prices from ohlcv_cache for %d symbols...", len(symbols))
+        with engine.connect() as conn:
+            for sym in symbols:
+                rows = conn.execute(
+                    text(
+                        "SELECT bar_date, close FROM ohlcv_cache "
+                        "WHERE ticker=:s AND interval='1d' "
+                        "AND bar_date BETWEEN :s0 AND :e "
+                        "AND close IS NOT NULL AND close > 0 "
+                        "ORDER BY bar_date"
+                    ),
+                    {"s": sym, "s0": start_str, "e": end_str},
+                ).fetchall()
+                if rows:
+                    prices[sym] = {
+                        (r.bar_date.date() if hasattr(r.bar_date, "date") else r.bar_date): float(r.close)
+                        for r in rows
+                    }
+    except Exception as db_err:
+        logger.warning("DB unavailable (%s) — using yfinance for all symbols", db_err.__class__.__name__)
 
     in_db = len(prices)
     missing = [s for s in symbols if s not in prices or len(prices[s]) < 100]

@@ -74,25 +74,28 @@ def _load_symbols() -> list[str]:
 
 def _load_all_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str, dict[date, float]]:
     import yfinance as yf
-    from sqlalchemy import text
-    from mcp_server.db import engine
 
     prices: dict[str, dict[date, float]] = {}
-    logger.info("Loading %d symbols from ohlcv_cache...", len(symbols))
-    with engine.connect() as conn:
-        for sym in symbols:
-            rows = conn.execute(
-                text("SELECT bar_date, close FROM ohlcv_cache "
-                     "WHERE ticker=:s AND interval='1d' "
-                     "AND bar_date BETWEEN :s0 AND :e "
-                     "AND close IS NOT NULL AND close > 0 ORDER BY bar_date"),
-                {"s": sym, "s0": start_str, "e": end_str},
-            ).fetchall()
-            if len(rows) >= MIN_DATA_DAYS:
-                prices[sym] = {
-                    (r.bar_date.date() if hasattr(r.bar_date, "date") else r.bar_date): float(r.close)
-                    for r in rows
-                }
+    try:
+        from sqlalchemy import text
+        from mcp_server.db import engine
+        logger.info("Loading %d symbols from ohlcv_cache...", len(symbols))
+        with engine.connect() as conn:
+            for sym in symbols:
+                rows = conn.execute(
+                    text("SELECT bar_date, close FROM ohlcv_cache "
+                         "WHERE ticker=:s AND interval='1d' "
+                         "AND bar_date BETWEEN :s0 AND :e "
+                         "AND close IS NOT NULL AND close > 0 ORDER BY bar_date"),
+                    {"s": sym, "s0": start_str, "e": end_str},
+                ).fetchall()
+                if len(rows) >= MIN_DATA_DAYS:
+                    prices[sym] = {
+                        (r.bar_date.date() if hasattr(r.bar_date, "date") else r.bar_date): float(r.close)
+                        for r in rows
+                    }
+    except Exception as db_err:
+        logger.warning("DB unavailable (%s) — using yfinance for all symbols", db_err.__class__.__name__)
 
     missing = [s for s in symbols if s not in prices]
     logger.info("DB: %d | yfinance: %d", len(prices), len(missing))
