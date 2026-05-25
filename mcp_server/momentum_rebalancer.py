@@ -1,12 +1,15 @@
 """
 MKUMARAN Trading OS - Live Monthly Momentum Rebalancer (Nifty 500)
 
-Strategy: Pure 12-month trailing return momentum (TIER_1 validated).
+Strategy: 12-month trailing return momentum with 1-month skip (TIER_1 validated).
 Universe: Nifty 500 (~504 symbols from data/nifty500.json).
 Rebalance: Monthly. Hold top 20% of eligible stocks by ret_12m.
 
-Validation reference: reports/momentum_nifty500_YYYY-MM-DD.md
-  CAGR 41.7%, Sharpe 1.43, Alpha +10.7pp vs EW, WinRate 56.2%
+1-month skip: ranks on price[t-30] / price[t-282] to avoid short-term mean
+reversion. Backtest confirms +4.7pp WinRate improvement vs no-skip variant.
+
+Validation reference: reports/momentum_nifty500_2026-05-25.md (--skip-days 30)
+  CAGR 42.1%, Sharpe 1.41, Alpha +10.9pp vs EW, WinRate 60.9%
 
 NOTE: RRMS gate is NOT applied here. This is a portfolio-level strategy
 with equal-weight sizing across N positions. RRMS gates single-trade risk
@@ -32,14 +35,16 @@ logger = logging.getLogger(__name__)
 
 # ── Constants matching the validated backtest exactly ─────────
 # NOTE: LOOKBACK_CALENDAR_DAYS is subtracted as calendar days (not trading
-# days) to match the backtest's lookback_date calculation exactly:
-#   lookback_date = rank_date - timedelta(days=252)
-LOOKBACK_CALENDAR_DAYS: int = 252
+# days) to match the backtest's lookback_date calculation:
+#   rank_date    = today - SKIP_CALENDAR_DAYS          (1-month skip)
+#   lookback_date = rank_date - LOOKBACK_CALENDAR_DAYS  (price 282 days ago)
+SKIP_CALENDAR_DAYS: int = 30        # 1-month skip: avoids short-term mean reversion
+LOOKBACK_CALENDAR_DAYS: int = 252   # lookback window from rank_date
 TOP_QUINTILE_PCT: int = 20          # top 20% of eligible stocks
 PRICE_TOLERANCE_DAYS: int = 10      # tolerance window for date-based lookup
 
-# Data fetch: go back 15 months to have ample data for the 252-day lookback
-DATA_FETCH_MONTHS: int = 15
+# Data fetch covers today - 460d, well beyond the 282-day lookback
+DATA_FETCH_DAYS: int = 460
 
 BROKERAGE_PER_ORDER: Decimal = Decimal("20.0")
 STT_SELL_PCT: Decimal = Decimal("0.001")
@@ -183,16 +188,7 @@ def fetch_all_prices(
     Load 15 months of daily prices (DB cache first, yfinance fallback).
     Returns ({ticker: {date: close}}, error_list).
     """
-    # Go back DATA_FETCH_MONTHS calendar months for the data start
-    start_date = date(
-        today.year - (1 if today.month <= DATA_FETCH_MONTHS - 12 else 0),
-        (today.month - (DATA_FETCH_MONTHS - 12)) % 12 or 12
-        if today.month <= DATA_FETCH_MONTHS - 12
-        else today.month - (DATA_FETCH_MONTHS - 12),
-        1,
-    )
-    # Simpler: subtract 460 calendar days (> 15 months) to cover any month length
-    start_date = today - timedelta(days=460)
+    start_date = today - timedelta(days=DATA_FETCH_DAYS)
     start_str = _date_to_str(start_date)
     end_str = _date_to_str(today)
 
@@ -354,7 +350,9 @@ def compute_rebalance_plan(
     tickers = load_nifty500()
     prices, errors = fetch_all_prices(tickers, today)
 
-    ranked_all, n_eligible = rank_by_12m_return(prices, rank_date=today)
+    # 1-month skip: rank on price[today-30] / price[today-282]
+    rank_date = today - timedelta(days=SKIP_CALENDAR_DAYS)
+    ranked_all, n_eligible = rank_by_12m_return(prices, rank_date=rank_date)
     top_stocks = top_quintile(ranked_all, n_eligible)
     n_portfolio = len(top_stocks)
 
@@ -449,7 +447,7 @@ def _cli_main() -> None:
     from mcp_server.config import settings
 
     parser = argparse.ArgumentParser(
-        description="Monthly momentum rebalancer (Nifty 500, 252-day trailing return)"
+        description="Monthly momentum rebalancer (Nifty 500, 1-month skip, 252-day trailing return)"
     )
     parser.add_argument("--portfolio-value", type=float, default=None)
     parser.add_argument("--dry-run", action="store_true", help="Do NOT save state")
