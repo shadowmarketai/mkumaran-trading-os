@@ -211,7 +211,7 @@ def main() -> None:
         f"| NO DECISION | {len(no_decision)} | - | - | - | n/a |",
         f"| ALL SIGNALS | {s_all['n']} | {s_all['hits']} | {s_all['stops']} | {s_all['decided']} | {s_all['win_rate']} |",
     ]
-    out.write_text("\n".join(lines))
+    out.write_text("\n".join(lines, encoding='utf-8'))
     logger.info("Report saved: %s", out)
 
 

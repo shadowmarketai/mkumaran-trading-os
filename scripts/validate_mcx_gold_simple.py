@@ -261,7 +261,7 @@ def main() -> None:
     out = Path("reports") / f"mcx_gold_simple_{date.today()}.md"
     out.parent.mkdir(exist_ok=True)
     out.write_text(
-        f"# MCX Gold Simple SMA{args.sma_period} — {date.today()}\n"
+        f"# MCX Gold Simple SMA{args.sma_period} — {date.today(, encoding='utf-8')}\n"
         f"| Metric | Value |\n|---|---|\n"
         f"| Trades | {m['n_trades']} |\n"
         f"| Excess CAGR | {m['excess_cagr']*100:.1f}% |\n"

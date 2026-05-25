@@ -264,7 +264,7 @@ def load_earnings_calendar(from_date: date, to_date: date) -> tuple[dict[date, l
 
     EARNINGS_CACHE.parent.mkdir(parents=True, exist_ok=True)
     EARNINGS_CACHE.write_text(json.dumps({
-        "fetched_from": from_date.isoformat(),
+        "fetched_from": from_date.isoformat(, encoding='utf-8'),
         "fetched_to":   to_date.isoformat(),
         "is_exact":     is_exact,
         "events":       {str(k): v for k, v in result.items()},
@@ -671,7 +671,7 @@ def write_comparison_report(
                     )
                 )
 
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+    output_path.write_text("\n".join(lines, encoding='utf-8'), encoding="utf-8")
     logger.info("Comparison report: %s", output_path)
 
 

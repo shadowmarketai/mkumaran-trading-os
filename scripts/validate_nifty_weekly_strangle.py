@@ -975,7 +975,7 @@ def write_markdown_report(results: dict, output_path: Path) -> None:
         "_Criteria committed 2026-05-02 before any Nifty validation was run._",
     ]
 
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+    output_path.write_text("\n".join(lines, encoding='utf-8'), encoding="utf-8")
     logger.info("Markdown report written: %s", output_path)
 
 
@@ -1189,7 +1189,7 @@ def main() -> None:
     json_path = output_dir / f"nifty_weekly_strangle_validation_{run_date_str}.json"
     md_path   = output_dir / f"nifty_weekly_strangle_validation_{run_date_str}.md"
 
-    json_path.write_text(json.dumps(results, indent=2, default=str), encoding="utf-8")
+    json_path.write_text(json.dumps(results, indent=2, default=str, encoding='utf-8'), encoding="utf-8")
     logger.info("JSON results: %s", json_path)
     write_markdown_report(results, md_path)
 

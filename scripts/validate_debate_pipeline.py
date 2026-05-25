@@ -229,7 +229,7 @@ def _load_ckpt(path: Path):
 
 def _save_ckpt(path: Path, result: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(result, default=str, indent=2))
+    path.write_text(json.dumps(result, default=str, indent=2, encoding='utf-8'))
 
 
 # ── Per-ticker runner ─────────────────────────────────────────────────
@@ -510,7 +510,7 @@ def write_report(agg: dict, results: list[dict], path: Path, config: dict) -> No
                 f" {f'{sh_t:.2f}' if sh_t is not None else '—'} |"
             )
 
-    path.write_text("\n".join(lines))
+    path.write_text("\n".join(lines, encoding='utf-8'))
     logger.info("Report written: %s", path)
 
 

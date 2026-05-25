@@ -689,7 +689,7 @@ def write_report(pair_results: list[dict], output_path: Path) -> None:
         "_Criteria committed 2026-05-02, before any backtest run._",
     ]
 
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+    output_path.write_text("\n".join(lines, encoding='utf-8'), encoding="utf-8")
     logger.info("Report written: %s", output_path)
 
 
@@ -851,7 +851,7 @@ def main() -> None:
             return obj.isoformat()
         raise TypeError(f"not serializable: {type(obj)}")
 
-    json_path.write_text(json.dumps(pair_results, indent=2, default=_serial), encoding="utf-8")
+    json_path.write_text(json.dumps(pair_results, indent=2, default=_serial, encoding='utf-8'), encoding="utf-8")
     logger.info("JSON written: %s", json_path)
 
     write_report(pair_results, md_path)

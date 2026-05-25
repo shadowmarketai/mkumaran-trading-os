@@ -681,7 +681,7 @@ def main() -> None:
                     f"{str(t['exit_date'])[:10]} | {t['entry_rsi']:.0f} | "
                     f"{t['bars_held']} | {t['ret_pct']:+.2f}% | {t['exit_reason']} |"
                 )
-            out.write_text("\n".join(lines))
+            out.write_text("\n".join(lines, encoding='utf-8'))
             logger.info("[%s] Report saved: %s", tf, out)
 
     # ── Summary comparison table ────────────────────────────────────────────

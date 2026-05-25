@@ -159,7 +159,7 @@ def _load_checkpoint(path: Path) -> dict | None:
 
 def _save_checkpoint(path: Path, result: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(result, default=str, indent=2))
+    path.write_text(json.dumps(result, default=str, indent=2, encoding='utf-8'))
 
 
 # ── Single-job runner ───────────────────────────────────────────────
@@ -440,7 +440,7 @@ def write_comparison_md(aggs: list[dict], output_path: Path) -> None:
         "then re-run this harness with `--strategy pos_5ema`\n"
     )
 
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+    output_path.write_text("\n".join(lines, encoding='utf-8'), encoding="utf-8")
     logger.info("Comparison table → %s", output_path)
 
 
@@ -547,7 +547,7 @@ def main() -> None:
 
         # Save per-strategy summary JSON
         summary_path = reports_dir / f"{strategy}_{interval}_summary.json"
-        summary_path.write_text(json.dumps(agg, default=str, indent=2))
+        summary_path.write_text(json.dumps(agg, default=str, indent=2, encoding='utf-8'))
         logger.info("Saved %s", summary_path)
 
         aggs.append(agg)

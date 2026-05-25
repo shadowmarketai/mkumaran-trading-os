@@ -261,7 +261,7 @@ def write_report(df, corrs: dict, sector_df, rule: dict, output_path: Path) -> N
             f"| {row['ticker']} | {pf_str} | {mc} | {sector} | {vol} | {adv} | {beta} |"
         )
 
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+    output_path.write_text("\n".join(lines, encoding='utf-8'), encoding="utf-8")
     logger.info("Report → %s", output_path)
 
 
