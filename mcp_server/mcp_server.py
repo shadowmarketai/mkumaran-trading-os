@@ -358,6 +358,63 @@ async def _nifty_strangle_loop():
             await asyncio.sleep(300)
 
 
+async def _monthly_rebalance_loop() -> None:
+    """Monthly momentum rebalance reminder loop (TIER_1 Nifty500 strategy).
+
+    Fires on the first NSE trading day of each calendar month at or after
+    10:00 IST. Sends a Telegram reminder so the user runs /rebalance to
+    review the plan and confirm saving state.
+    """
+    from mcp_server.market_calendar import now_ist, is_market_holiday, is_weekend
+    from datetime import date as _date, timedelta as _td
+
+    logger.info("Monthly rebalance reminder loop started")
+    last_notified_month: str = ""  # YYYY-MM guard prevents duplicate alerts
+
+    while True:
+        try:
+            now = now_ist()
+            today = now.date()
+            month_key = today.strftime("%Y-%m")
+
+            # Only act at or after 10:00 IST (prices settled post-open)
+            if now.hour < 10:
+                await asyncio.sleep(300)
+                continue
+
+            # Already sent reminder this month
+            if last_notified_month == month_key:
+                await asyncio.sleep(3600)
+                continue
+
+            # Find first NSE trading day of this month
+            first_td = _date(today.year, today.month, 1)
+            for _ in range(10):
+                if not is_weekend(first_td) and not is_market_holiday("NSE", first_td):
+                    break
+                first_td += _td(days=1)
+
+            if today != first_td:
+                await asyncio.sleep(3600)
+                continue
+
+            # First trading day of month, post-10:00 — send reminder
+            last_notified_month = month_key
+            logger.info("Sending monthly rebalance reminder for %s", today)
+            from mcp_server.telegram_bot import send_telegram_message
+            await send_telegram_message(
+                f"Monthly momentum rebalance due ({today}) — run /rebalance to see "
+                f"the Nifty500 TIER_1 plan and confirm.",
+                force=True,
+            )
+        except asyncio.CancelledError:
+            break
+        except Exception as _err:
+            logger.error("Monthly rebalance loop error: %s", _err)
+
+        await asyncio.sleep(3600)
+
+
 async def _options_signal_loop():
     """Background task: scan for pure options strategies every 10 min during F&O hours."""
     if not getattr(settings, "OPTION_SIGNALS_ENABLED", True):
@@ -1247,6 +1304,10 @@ async def lifespan(app: FastAPI):
         "Nifty strangle signal loop started (enabled=%s)",
         getattr(settings, "NIFTY_STRANGLE_ENABLED", True),
     )
+
+    # Start monthly momentum rebalance reminder (first trading day of each month, 10:00 IST)
+    asyncio.create_task(_monthly_rebalance_loop())
+    logger.info("Monthly rebalance reminder loop started")
 
     # Start all dedicated segment agents (Options Index, Options Stock,
     # Commodity, Forex, Futures) — each with its own scan loop, market

@@ -44,6 +44,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/check \u2014 Manually check all open signals for SL/TGT hit now\n"
         "/test_options \u2014 Live diagnostic: Dhan chain, VIX, per-strategy dry-run\n"
         "/dhantoken <JWT> \u2014 Refresh Dhan token (needed for chain data)\n"
+        "\n\U0001f4c8 Momentum Portfolio (TIER_1 Nifty500):\n"
+        "/rebalance [value] \u2014 Monthly rebalance plan + Confirm/Cancel\n"
         "\n\U0001f464 Account:\n"
         "/login email password \u2014 Link your account\n"
         "/segments \u2014 View/toggle trading segments\n"
@@ -1857,6 +1859,118 @@ async def cmd_gwc_learn(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(f"❌ Analysis failed: {exc}")
 
 
+async def cmd_rebalance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /rebalance [portfolio_value_inr].
+
+    Computes the monthly Nifty 500 momentum rebalance plan (TIER_1 validated,
+    252-calendar-day trailing return, top 20% quintile). Presents ENTER/EXIT/HOLD
+    diff with Confirm/Cancel inline buttons. Confirm saves state to
+    data/momentum_portfolio_live.json; Cancel discards.
+
+    Fetch takes ~60-90s (500 yfinance batch downloads). The command sends an
+    immediate acknowledgement then edits it once the plan is ready.
+    """
+    from decimal import Decimal
+
+    # Owner-only
+    if settings.TELEGRAM_CHAT_ID:
+        try:
+            chat_id_int = int(settings.TELEGRAM_CHAT_ID)
+            if chat_id_int > 0 and update.effective_user.id != chat_id_int:
+                await update.message.reply_text("Not authorized.")
+                return
+        except (ValueError, TypeError):
+            pass
+
+    if context.args:
+        try:
+            pv = Decimal(context.args[0].replace(",", ""))
+        except Exception:
+            await update.message.reply_text("Usage: /rebalance [portfolio_value_inr]")
+            return
+    else:
+        pv = settings.MOMENTUM_PORTFOLIO_VALUE
+
+    status_msg = await update.message.reply_text(
+        "Computing monthly rebalance plan...\n"
+        "Fetching 500 Nifty500 symbols via yfinance (~60-90s). Please wait."
+    )
+
+    try:
+        from mcp_server.momentum_rebalancer import compute_rebalance_plan, format_telegram_message
+        loop = asyncio.get_event_loop()
+        plan = await loop.run_in_executor(None, compute_rebalance_plan, pv)
+    except Exception as exc:
+        logger.error("Rebalance plan computation failed: %s", exc)
+        await status_msg.edit_text(f"Rebalance failed: {exc}")
+        return
+
+    # Store plan keyed by chat_id — replaced on next /rebalance call
+    chat_id = str(update.effective_chat.id)
+    context.bot_data[f"rebalance_plan_{chat_id}"] = plan
+
+    text = format_telegram_message(plan)
+    if len(text) > 3900:
+        text = text[:3900] + "\n...(truncated)"
+    text += "\n\nSave this rebalance state to portfolio?"
+
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Confirm - Save State", callback_data="rebalance:confirm"),
+        InlineKeyboardButton("Cancel", callback_data="rebalance:cancel"),
+    ]])
+    await status_msg.edit_text(text=text, reply_markup=keyboard, parse_mode="Markdown")
+
+
+async def handle_rebalance_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Confirm / Cancel inline buttons from /rebalance."""
+    query = update.callback_query
+
+    # Owner-only
+    try:
+        chat_id_int = int(settings.TELEGRAM_CHAT_ID)
+        if chat_id_int > 0 and query.from_user.id != chat_id_int:
+            await query.answer("Not authorized")
+            return
+    except (ValueError, TypeError):
+        pass
+
+    chat_id = str(query.message.chat_id)
+    plan_key = f"rebalance_plan_{chat_id}"
+    plan = context.bot_data.get(plan_key)
+    action = query.data  # "rebalance:confirm" or "rebalance:cancel"
+
+    original = query.message.text or ""
+    prompt_suffix = "\n\nSave this rebalance state to portfolio?"
+    base_text = original.replace(prompt_suffix, "")
+
+    if action == "rebalance:confirm":
+        if plan is None:
+            await query.answer("Plan expired or already saved.")
+            await query.edit_message_reply_markup(reply_markup=None)
+            return
+        try:
+            from mcp_server.momentum_rebalancer import save_state
+            save_state(plan)
+            context.bot_data.pop(plan_key, None)
+            await query.answer("Saved!")
+            await query.edit_message_text(
+                text=base_text + f"\n\nState saved — {plan.rebalance_date}.",
+                reply_markup=None,
+            )
+            logger.info("Rebalance state saved for %s via Telegram", plan.rebalance_date)
+        except Exception as exc:
+            logger.error("save_state failed: %s", exc)
+            await query.answer("Save failed — check server logs")
+    else:
+        context.bot_data.pop(plan_key, None)
+        await query.answer("Cancelled")
+        await query.edit_message_text(
+            text=base_text + "\n\nCancelled — state not saved.",
+            reply_markup=None,
+        )
+
+
 def create_bot_application() -> Application:
     """Create and configure the Telegram bot application."""
     if not settings.TELEGRAM_BOT_TOKEN:
@@ -1889,7 +2003,9 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("expire_bad_signals", cmd_expire_bad_signals))
     app.add_handler(CommandHandler("results", cmd_results))
     app.add_handler(CommandHandler("check", cmd_check))
+    app.add_handler(CommandHandler("rebalance", cmd_rebalance))
     app.add_handler(CallbackQueryHandler(handle_take_skip_callback, pattern=r"^(take|skip):"))
+    app.add_handler(CallbackQueryHandler(handle_rebalance_callback, pattern=r"^rebalance:"))
 
     # Raw text handler — catches all non-command forwarded GWC messages.
     # Must be registered AFTER all CommandHandlers so commands take priority.
@@ -1909,5 +2025,5 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("mystats", cmd_mystats))
     app.add_handler(CommandHandler("plan", cmd_plan))
 
-    logger.info("Telegram bot configured with 26 command handlers + TAKE/SKIP callback + raw text handler")
+    logger.info("Telegram bot configured with 27 command handlers + TAKE/SKIP + rebalance callbacks + raw text handler")
     return app
