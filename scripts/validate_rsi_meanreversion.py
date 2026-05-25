@@ -552,7 +552,7 @@ def main() -> None:
             f"| {t['sym']} | {str(t['entry_date'])[:10]} | {str(t['exit_date'])[:10]} "
             f"| {t['entry_rsi']:.1f} | {t['trading_days']} | {t['ret_pct']:+.2f}% | {t['exit_reason']} |"
         )
-    out.write_text("\n".join(lines, encoding='utf-8'))
+    out.write_text("\n".join(lines), encoding='utf-8')
     logger.info("Report saved: %s", out)
 
 

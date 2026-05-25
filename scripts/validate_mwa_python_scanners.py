@@ -567,7 +567,7 @@ def main() -> None:
             f"| {name} | {m['n']} | {m['cagr']*100:+.1f}% | {m['sharpe']:.2f} "
             f"| {m['max_dd']*100:.1f}% | {m['win_rate']*100:.1f}% | **{v}** |"
         )
-    out.write_text("\n".join(lines, encoding='utf-8'), encoding="utf-8")
+    out.write_text("\n".join(lines), encoding='utf-8')
     logger.info("Report saved: %s", out)
 
     try:

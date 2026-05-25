@@ -486,7 +486,7 @@ def main() -> None:
         lines.append(f"| {t['sym']} | {str(t['entry_date'])[:10]} | "
                      f"{str(t['exit_date'])[:10]} | {t['entry_rsi']:.0f} | "
                      f"{t['bars_held']} | {t['ret_pct']:+.2f}% | {t['exit_reason']} |")
-    out.write_text("\n".join(lines, encoding='utf-8'))
+    out.write_text("\n".join(lines), encoding='utf-8')
     logger.info("Report saved: %s", out)
 
 

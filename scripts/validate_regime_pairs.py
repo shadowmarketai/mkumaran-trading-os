@@ -655,7 +655,7 @@ def main() -> None:
         f"## Universe Verdict: **{universe_verdict}**",
         f"**Action:** {universe_action}",
     ]
-    out.write_text("\n".join(lines, encoding='utf-8'))
+    out.write_text("\n".join(lines), encoding='utf-8')
     logger.info("Report saved: %s", out)
 
 

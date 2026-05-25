@@ -598,7 +598,7 @@ def main() -> None:
             else:
                 lines.append(f"| {rrr} | {conf} | {m['n']} | {m['wr']*100:.1f}% "
                               f"| {m['sharpe']:.2f} | **{v}** |")
-    out.write_text("\n".join(lines, encoding='utf-8'))
+    out.write_text("\n".join(lines), encoding='utf-8')
     print()
     print(f"Report saved → {out}")
     print(sep)

@@ -671,7 +671,7 @@ def write_comparison_report(
                     )
                 )
 
-    output_path.write_text("\n".join(lines, encoding='utf-8'), encoding="utf-8")
+    output_path.write_text("\n".join(lines), encoding='utf-8')
     logger.info("Comparison report: %s", output_path)
 
 

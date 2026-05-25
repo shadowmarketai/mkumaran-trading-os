@@ -527,7 +527,7 @@ def main() -> None:
             f"| {rec['universe_ret']} | {rec['excess_vs_universe']} "
             f"| {rec['cost_pct']} | {rec['n_portfolio']} |"
         )
-    out.write_text("\n".join(lines, encoding='utf-8'))
+    out.write_text("\n".join(lines), encoding='utf-8')
     logger.info("Report saved: %s", out)
 
 

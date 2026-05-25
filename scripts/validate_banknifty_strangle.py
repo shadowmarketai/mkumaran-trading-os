@@ -1098,7 +1098,7 @@ def write_markdown_report(
         "_These criteria were committed on 2026-04-29 before any validation results were seen._",
     ]
 
-    output_path.write_text("\n".join(lines, encoding='utf-8'), encoding="utf-8")
+    output_path.write_text("\n".join(lines), encoding='utf-8')
     logger.info("Markdown report written: %s", output_path)
 
 
@@ -1304,7 +1304,7 @@ def main() -> None:
     json_path = output_dir / f"banknifty_{expiry_type}_strangle_validation_{run_date_str}.json"
     md_path   = output_dir / f"banknifty_{expiry_type}_strangle_validation_{run_date_str}.md"
 
-    json_path.write_text(json.dumps(results, indent=2, default=str, encoding='utf-8'), encoding="utf-8")
+    json_path.write_text(json.dumps(results, indent=2, default=str), encoding="utf-8")
     logger.info("JSON results written: %s", json_path)
 
     write_markdown_report(results, md_path)

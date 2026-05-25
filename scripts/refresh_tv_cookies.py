@@ -113,7 +113,7 @@ def _merge_env(env_path: Path, sid: str, sid_sign: str) -> None:
         for key in missing:
             new_lines.append(f"{key}={updates[key]}")
 
-    env_path.write_text("\n".join(new_lines, encoding='utf-8') + "\n", encoding="utf-8")
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
     print(f"[+] Wrote {len(updates)} keys to {env_path}")
 
 

@@ -196,7 +196,7 @@ def _load_checkpoint(path: Path):
 
 def _save_checkpoint(path: Path, result: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(result, default=str, indent=2, encoding='utf-8'))
+    path.write_text(json.dumps(result, default=str, indent=2), encoding='utf-8')
 
 
 # ── Per-ticker signal generation + filtering ────────────────────────
@@ -524,7 +524,7 @@ def write_report(agg: dict, results: list[dict], output_path: Path, config: dict
             f"| {_f(sh_r)} | {_f(dd_r, '.1f', '%')} |"
         )
 
-    output_path.write_text("\n".join(lines, encoding='utf-8'), encoding="utf-8")
+    output_path.write_text("\n".join(lines), encoding='utf-8')
     logger.info("Report → %s", output_path)
 
 

@@ -313,7 +313,7 @@ def main() -> None:
     ]
     for rec in monthly_records:
         lines.append(f"| {rec['date']} | {rec['top']} | {rec['net_ret']} | {rec['nifty_ret']} | {rec['excess']} |")
-    out.write_text("\n".join(lines, encoding='utf-8'))
+    out.write_text("\n".join(lines), encoding='utf-8')
     logger.info("Report saved: %s", out)
 
     try:

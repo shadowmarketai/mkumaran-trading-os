@@ -228,7 +228,7 @@ def main() -> None:
         stops = outcomes.count("HIT_STOP")
         wr = f"{hits/n*100:.0f}%" if n else "n/a"
         lines.append(f"| {pat} | {n} | {hits} | {stops} | {wr} |")
-    out.write_text("\n".join(lines, encoding='utf-8'))
+    out.write_text("\n".join(lines), encoding='utf-8')
     logger.info("Report saved: %s", out)
 
 
