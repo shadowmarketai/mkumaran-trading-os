@@ -238,6 +238,11 @@ class Settings:
     MWA_MAX_SIGNALS_PER_DAY: int = int(os.getenv("MWA_MAX_SIGNALS_PER_DAY", "0"))  # 0 = unlimited
     MWA_MIN_CONFIDENCE: int = int(os.getenv("MWA_MIN_CONFIDENCE", "70"))  # was 50 → 15% win rate
 
+    # Momentum Portfolio Rebalancer (TIER_1 validated — Nifty 500, 12m trailing return)
+    # Set MOMENTUM_PORTFOLIO_VALUE to the INR amount you want to deploy.
+    # RRMS gate is NOT applied — this is portfolio-level equal-weight sizing.
+    MOMENTUM_PORTFOLIO_VALUE: Decimal = to_money(os.getenv("MOMENTUM_PORTFOLIO_VALUE", "500000"))
+
     # Intraday signals (ORB, VWAP, 5m momentum) — separate pipeline from MWA
     # daily-swing. Default false so turning this on is an explicit opt-in.
     # IMPORTANT: run scripts/validate_intraday_scanners.py first. run_scan()
