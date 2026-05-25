@@ -40,6 +40,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/gwc_learn \u2014 Pattern insights from forwarded messages\n"
         "Or just forward any GWC WhatsApp message directly \u2014 auto-classified & logged\n"
         "\n\U0001f3af Options Scanner:\n"
+        "/results [N] \u2014 Show last N closed signals with P&L (default 20)\n"
+        "/check \u2014 Manually check all open signals for SL/TGT hit now\n"
         "/test_options \u2014 Live diagnostic: Dhan chain, VIX, per-strategy dry-run\n"
         "/dhantoken <JWT> \u2014 Refresh Dhan token (needed for chain data)\n"
         "\n\U0001f464 Account:\n"
@@ -1140,6 +1142,85 @@ async def cmd_gwc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(reply)
 
 
+async def cmd_results(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show recent closed signals with P&L from DB (/results [N])."""
+    try:
+        limit = int(context.args[0]) if context.args else 20
+        limit = min(max(limit, 1), 50)
+    except (ValueError, IndexError):
+        limit = 20
+
+    from mcp_server.models import Signal, Outcome
+    session = SessionLocal()
+    try:
+        rows = (
+            session.query(Signal, Outcome)
+            .join(Outcome, Outcome.signal_id == Signal.id)
+            .order_by(Outcome.exit_date.desc(), Outcome.id.desc())
+            .limit(limit)
+            .all()
+        )
+        open_count = session.query(Signal).filter(Signal.status == "OPEN").count()
+
+        if not rows:
+            await update.message.reply_text(
+                f"No closed signals yet.\nCurrently OPEN: {open_count}\n\nUse /check to trigger the monitor."
+            )
+            return
+
+        wins = sum(1 for _, o in rows if o.outcome == "WIN")
+        losses = sum(1 for _, o in rows if o.outcome == "LOSS")
+        total_pnl = sum(float(o.pnl_amount or 0) for _, o in rows)
+        wr = wins / max(wins + losses, 1) * 100
+
+        lines = [
+            f"\U0001f4ca Results (last {len(rows)}) | Open: {open_count}",
+            "━" * 24,
+            f"W: {wins}  L: {losses}  WR: {wr:.0f}%  P&L: ₹{total_pnl:,.0f}",
+            "━" * 24,
+        ]
+        for sig, out in rows[:15]:
+            emoji = "\U0001f7e2" if out.outcome == "WIN" else "\U0001f534"
+            pnl = float(out.pnl_amount or 0)
+            sign = "+" if pnl >= 0 else ""
+            reason = (out.exit_reason or out.outcome or "")[:6]
+            lines.append(
+                f"{emoji} {sig.ticker} {sig.direction} | {reason} | {sign}₹{pnl:,.0f} ({out.exit_date})"
+            )
+
+        await update.message.reply_text("\n".join(lines))
+    finally:
+        session.close()
+
+
+async def cmd_check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Manually trigger signal monitor — check all OPEN signals for SL/TGT hit."""
+    from mcp_server.models import Signal
+    session = SessionLocal()
+    open_count = session.query(Signal).filter(Signal.status == "OPEN").count()
+    session.close()
+
+    await update.message.reply_text(f"⏳ Checking {open_count} open signal(s) against live prices...")
+
+    try:
+        from mcp_server.signal_monitor import monitor_open_signals, _send_close_alert
+        closed = await asyncio.to_thread(monitor_open_signals)
+        if not closed:
+            await update.message.reply_text(
+                f"✅ Checked {open_count} signal(s) — none hit SL/TGT yet.\nUse /results to see history."
+            )
+        else:
+            for c in closed:
+                try:
+                    await _send_close_alert(c)
+                except Exception as tg_err:
+                    logger.warning("check alert failed: %s", tg_err)
+            await update.message.reply_text(f"✅ {len(closed)} signal(s) closed. Alerts sent above.")
+    except Exception as e:
+        logger.error("cmd_check error: %s", e)
+        await update.message.reply_text(f"❌ Monitor error: {e}")
+
+
 async def send_telegram_message(
     text: str,
     exchange: str = "NSE",
@@ -1806,6 +1887,8 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("paper_review", cmd_paper_review))
     app.add_handler(CommandHandler("options_track", cmd_options_track))
     app.add_handler(CommandHandler("expire_bad_signals", cmd_expire_bad_signals))
+    app.add_handler(CommandHandler("results", cmd_results))
+    app.add_handler(CommandHandler("check", cmd_check))
     app.add_handler(CallbackQueryHandler(handle_take_skip_callback, pattern=r"^(take|skip):"))
 
     # Raw text handler — catches all non-command forwarded GWC messages.
@@ -1826,5 +1909,5 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("mystats", cmd_mystats))
     app.add_handler(CommandHandler("plan", cmd_plan))
 
-    logger.info("Telegram bot configured with 24 command handlers + TAKE/SKIP callback + raw text handler")
+    logger.info("Telegram bot configured with 26 command handlers + TAKE/SKIP callback + raw text handler")
     return app

@@ -133,23 +133,50 @@ def monitor_open_signals() -> list[dict]:
                 # Live-feed prices arrive as float; cross into the money zone
                 # at the ORM boundary so all downstream math is exact.
                 ltp = provider.get_ltp(fetch_ticker)
-                if ltp and ltp > 0:
-                    current_price = to_money(ltp)
-                else:
-                    df = get_stock_data(fetch_ticker, period="1d", interval="1d", force_refresh=True)
-                    if df is None or df.empty:
-                        logger.debug("Monitor: no data for %s", fetch_ticker)
-                        continue
-                    current_price = to_money(df["close"].iloc[-1])
+                direction = sig.direction or "BUY"
                 entry_price = to_money(sig.entry_price or 0)
                 stop_loss = to_money(sig.stop_loss or 0)
                 target = to_money(sig.target or 0)
-                direction = sig.direction or "BUY"
 
                 if entry_price <= 0 or stop_loss <= 0 or target <= 0:
                     continue
 
-                hit = _check_signal_hit(direction, current_price, entry_price, stop_loss, target)
+                if ltp and ltp > 0:
+                    current_price = to_money(ltp)
+                    hit = _check_signal_hit(direction, current_price, entry_price, stop_loss, target)
+                else:
+                    # No live LTP — fall back to daily OHLCV.
+                    # Use the day's HIGH and LOW so intraday SL/TGT hits are
+                    # detected even when the closing price stays within range.
+                    df = get_stock_data(fetch_ticker, period="2d", interval="1d", force_refresh=True)
+                    if df is None or df.empty:
+                        logger.warning("Monitor: no price data for %s — skipped this cycle", fetch_ticker)
+                        continue
+                    row = df.iloc[-1]
+                    current_price = to_money(float(row["close"]))
+                    day_high = to_money(float(row.get("high", float(row["close"]))))
+                    day_low = to_money(float(row.get("low", float(row["close"]))))
+
+                    # Conservative order: check SL first (assume SL hit before TGT
+                    # when both are breached on the same candle).
+                    if direction in ("BUY", "LONG"):
+                        if day_low <= stop_loss:
+                            hit = "SL_HIT"
+                            current_price = stop_loss  # exit at SL
+                        elif day_high >= target:
+                            hit = "TARGET_HIT"
+                            current_price = target  # exit at TGT
+                        else:
+                            hit = None
+                    else:  # SELL / SHORT
+                        if day_high >= stop_loss:
+                            hit = "SL_HIT"
+                            current_price = stop_loss
+                        elif day_low <= target:
+                            hit = "TARGET_HIT"
+                            current_price = target
+                        else:
+                            hit = None
                 if hit is None:
                     # Update ActiveTrade current price (Numeric column, accepts Decimal)
                     active = session.query(ActiveTrade).filter(
