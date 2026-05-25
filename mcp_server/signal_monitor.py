@@ -75,9 +75,11 @@ def _calc_pnl(
     if direction in ("BUY", "LONG"):
         pnl_pct = (exit_p - entry) / entry * 100
         pnl_rs = exit_p - entry
-    else:
+    elif direction in ("SELL", "SHORT"):
         pnl_pct = (entry - exit_p) / entry * 100
         pnl_rs = entry - exit_p
+    else:
+        return zero, zero
     return round_paise(pnl_pct), round_paise(pnl_rs)
 
 
@@ -121,6 +123,12 @@ def monitor_open_signals() -> list[dict]:
                     # Silently close the duplicate without sending another alert
                     sig.status = "EXPIRED"
                     session.commit()
+                    continue
+
+                # Skip non-directional signals — can't determine SL/TGT hit
+                direction_check = sig.direction or ""
+                if direction_check not in ("BUY", "LONG", "SELL", "SHORT"):
+                    logger.debug("Monitor: skipping %s (direction=%s)", ticker_raw, direction_check)
                     continue
 
                 # Build fetch ticker with exchange prefix if not present
@@ -168,7 +176,7 @@ def monitor_open_signals() -> list[dict]:
                             current_price = target  # exit at TGT
                         else:
                             hit = None
-                    else:  # SELL / SHORT
+                    elif direction in ("SELL", "SHORT"):
                         if day_high >= stop_loss:
                             hit = "SL_HIT"
                             current_price = stop_loss
@@ -177,6 +185,10 @@ def monitor_open_signals() -> list[dict]:
                             current_price = target
                         else:
                             hit = None
+                    else:
+                        # NEUTRAL or unknown — skip; not a directional signal
+                        logger.debug("Monitor: skipping non-directional signal %s (%s)", sig.ticker, direction)
+                        hit = None
                 if hit is None:
                     # Update ActiveTrade current price (Numeric column, accepts Decimal)
                     active = session.query(ActiveTrade).filter(
