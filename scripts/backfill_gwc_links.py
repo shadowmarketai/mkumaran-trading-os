@@ -59,7 +59,7 @@ def run_backfill(live: bool) -> None:
     try:
         col_date   = header.index("Date")
         col_type   = header.index("Type")
-        col_raw    = header.index("Raw Text")
+        col_raw    = header.index("Raw Message")
         col_linked = header.index("Linked Signal")
     except ValueError as exc:
         logger.error("GWC LOG header missing column: %s", exc)
