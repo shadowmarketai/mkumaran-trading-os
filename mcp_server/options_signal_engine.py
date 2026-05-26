@@ -337,6 +337,8 @@ def strategy_iv_crush(data: dict, **_kw: Any) -> dict[str, Any] | None:
 
 def strategy_cheap_premium(data: dict, **_kw: Any) -> dict[str, Any] | None:
     """IV low → buy options cheap. Expect volatility expansion."""
+    if data.get("days_to_expiry", 0) < 1:
+        return None  # 0DTE: premium SL distance = 1×premium in spot points, hit instantly by gamma
     threshold = 12 if data["symbol"] in INDEX_UNIVERSE else 20
     if data["atm_iv"] > threshold or data["atm_iv"] <= 0:
         return None
@@ -471,6 +473,8 @@ def strategy_max_pain_magnet(data: dict, **_kw: Any) -> dict[str, Any] | None:
 
 def strategy_oi_wall(data: dict, **_kw: Any) -> dict[str, Any] | None:
     """Highest OI strike acts as support/resistance → directional bias."""
+    if data.get("days_to_expiry", 0) < 1:
+        return None  # 0DTE: directional buys have SL = 1×premium in spot — triggered by normal gamma moves
     chain = data["chain"]
     if not chain:
         return None
