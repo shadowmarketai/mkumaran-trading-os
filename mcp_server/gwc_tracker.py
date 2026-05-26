@@ -24,7 +24,7 @@ import logging
 import re
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -730,17 +730,47 @@ def log_raw_to_sheets(
         return False
 
 
-def link_gwc_outcome_from_message(text: str, extracted: dict) -> str:
+def _extract_underlying(text: str) -> str:
+    """Extract the underlying instrument name from a GWC message."""
+    upper = text.upper()
+    # Order matters: BANKNIFTY/FINNIFTY before NIFTY (substring collision)
+    for name in (
+        "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "NIFTY",
+        "SENSEX", "BANKEX",
+        "CRUDEOIL", "NATURALGAS", "GOLD", "SILVER",
+        "COPPER", "ZINC", "ALUMINIUM",
+    ):
+        if name in upper:
+            return name
+    # Stock ticker before CE/PE strike (e.g. "LT 4000 CE")
+    m = re.search(r'\b([A-Z]{2,10})\s*\d{4,6}\s*(?:CE|PE)\b', upper)
+    if m:
+        return m.group(1)
+    return ""
+
+
+def link_gwc_outcome_from_message(
+    text: str,
+    extracted: dict,
+    as_of_date: Optional[date] = None,
+) -> str:
     """
-    For a RESULT message, find the open GWC TRACKER row whose T1/T2 matches
-    the price (within 2%), update its status, and return a description.
-    Returns empty string if no match found.
+    For a RESULT message, find the open GWC TRACKER row and update its status.
+    Returns a human-readable description of the match, or "" if no match found.
+
+    as_of_date anchors the 2-day search window (default: today). Pass the LOG
+    row's date when running a historical backfill.
     """
-    price = extracted.get("price", 0)
-    if not price:
+    price      = extracted.get("price", 0)
+    res_type   = extracted.get("type", "")
+    msg_ticker = _extract_underlying(text)
+
+    if not price and not msg_ticker:
         return ""
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    ref_date    = as_of_date or date.today()
+    yesterday   = ref_date - timedelta(days=1)
+    valid_dates = {ref_date.strftime("%Y-%m-%d"), yesterday.strftime("%Y-%m-%d")}
 
     try:
         from mcp_server.sheets_sync import _get_sheets_client
@@ -755,61 +785,90 @@ def link_gwc_outcome_from_message(text: str, extracted: dict) -> str:
 
         header = rows[0]
         try:
-            col_date   = header.index("Date")   + 1
-            col_ticker = header.index("Ticker") + 1
-            col_t1     = header.index("T1")     + 1
-            col_t2     = header.index("T2")     + 1
-            col_status = header.index("Status") + 1
-            col_dir    = header.index("Direction") + 1
+            col_date   = header.index("Date")       + 1
+            col_ticker = header.index("Ticker")     + 1
+            col_dir    = header.index("Direction")  + 1
+            col_entry  = header.index("Entry")      + 1
+            col_t1     = header.index("T1")         + 1
+            col_t2     = header.index("T2")         + 1
+            col_status = header.index("Status")     + 1
             col_exit   = header.index("Exit Price") + 1
+            col_notes  = header.index("Notes")      + 1
         except ValueError:
             return ""
 
-        col_entry = header.index("Entry") + 1 if "Entry" in header else 0
-        col_notes = header.index("Notes") + 1 if "Notes" in header else 0
+        col_pnl = header.index("P&L %") + 1 if "P&L %" in header else 0
 
         for i, row in enumerate(rows[1:], start=2):
-            if len(row) < max(col_date, col_ticker, col_t1, col_t2, col_status) - 1:
+            needed = max(col_date, col_ticker, col_t1, col_t2, col_status, col_notes)
+            if len(row) < needed:
                 continue
             if row[col_status - 1] != "OPEN":
                 continue
-            if row[col_date - 1] != today:
+            if row[col_date - 1] not in valid_dates:
                 continue
 
+            # Skip embedded-signal placeholders to avoid circular false-positives
+            notes_cell = row[col_notes - 1] if len(row) >= col_notes else ""
+            if "[embedded in result message]" in notes_cell.lower():
+                continue
+
+            row_ticker = row[col_ticker - 1].upper()
+            # Ticker pre-filter: skip rows that clearly belong to a different instrument
+            if msg_ticker and row_ticker:
+                if msg_ticker not in row_ticker and row_ticker not in msg_ticker:
+                    continue
+
+            direction = row[col_dir - 1].upper() if len(row) >= col_dir else ""
+
             try:
-                t1 = float(row[col_t1 - 1]) if row[col_t1 - 1] else 0.0
-                t2 = float(row[col_t2 - 1]) if row[col_t2 - 1] else 0.0
+                t1    = float(row[col_t1 - 1])    if row[col_t1 - 1]                              else 0.0
+                t2    = float(row[col_t2 - 1])    if row[col_t2 - 1]                              else 0.0
+                entry = float(row[col_entry - 1]) if len(row) >= col_entry and row[col_entry - 1] else 0.0
             except ValueError:
                 continue
 
             matched = ""
-            if t1 > 0 and abs(t1 - price) / t1 < 0.02:
-                matched = "TARGET1"
-            elif t2 > 0 and abs(t2 - price) / t2 < 0.02:
-                matched = "TARGET2"
+            pnl_pct = ""
 
-            # Hero zero fallback: no T1/T2 set — match by ticker+date only.
-            # If result price > entry it's a win; if below entry it expired.
-            if not matched and t1 == 0 and t2 == 0 and col_entry:
-                notes_cell = row[col_notes - 1] if col_notes and len(row) >= col_notes else ""
-                if "HERO_ZERO" in notes_cell.upper():
-                    try:
-                        entry = float(row[col_entry - 1]) if row[col_entry - 1] else 0.0
-                    except ValueError:
-                        entry = 0.0
-                    if entry > 0:
-                        matched = "TARGET1" if price > entry else "EXPIRED"
+            if price:
+                is_buy = direction in ("BUY", "LONG")
+                # Generous ±5% window: "price close to T1" counts as a hit
+                if t1 > 0:
+                    hit = (price >= t1 * 0.95) if is_buy else (price <= t1 * 1.05)
+                    if hit:
+                        matched = "TARGET1"
+                if not matched and t2 > 0:
+                    hit = (price >= t2 * 0.95) if is_buy else (price <= t2 * 1.05)
+                    if hit:
+                        matched = "TARGET2"
+
+                if matched and entry > 0:
+                    pnl_pct = (
+                        f"{(price - entry) / entry * 100:.1f}"
+                        if is_buy
+                        else f"{(entry - price) / entry * 100:.1f}"
+                    )
+            else:
+                # No price extracted: link by ticker + explicit target-hit keyword
+                if res_type in ("target_hit", "profit_book") and msg_ticker:
+                    matched = "TARGET1"
 
             if matched:
-                ticker    = row[col_ticker - 1]
-                direction = row[col_dir - 1]
+                ticker = row[col_ticker - 1]
                 ws.update_cell(i, col_status, matched)
-                ws.update_cell(i, col_exit,   price)
+                if price:
+                    ws.update_cell(i, col_exit, price)
+                if pnl_pct and col_pnl:
+                    ws.update_cell(i, col_pnl, pnl_pct)
                 logger.info(
-                    "GWC auto-linked: %s %s → %s (price=%.1f)",
-                    ticker, direction, matched, price,
+                    "GWC auto-linked: %s %s -> %s (price=%.1f pnl=%s%%)",
+                    ticker, direction, matched, price or 0, pnl_pct or "?",
                 )
-                return f"{ticker} {direction} → {matched}"
+                desc = f"{ticker} {direction} -> {matched}"
+                if pnl_pct:
+                    desc += f" ({pnl_pct}%)"
+                return desc
 
         return ""
     except Exception as exc:
@@ -898,14 +957,49 @@ def get_gwc_learn_insights() -> str:
                 f"  Matched to signal: {linked_count} ({link_rate:.0f}%)",
             ]
 
-        if total_signals > 0 and linked_count > 0:
-            win_est = linked_count / total_signals * 100
-            lines += [
-                "",
-                f"Win Rate Estimate: ~{win_est:.0f}%",
-                f"  ({linked_count} target hits / {total_signals} signals logged)",
-                "  Counts only auto-linked target arrivals.",
-            ]
+        # ── TRACKER actual outcomes ────────────────────────────────────────────
+        try:
+            tracker_ws   = sheet.worksheet("GWC TRACKER")
+            tracker_rows = tracker_ws.get_all_values()
+            if len(tracker_rows) > 1:
+                t_header = tracker_rows[0]
+                t_data   = tracker_rows[1:]
+                t_col_status = t_header.index("Status") if "Status" in t_header else -1
+                t_col_pnl    = t_header.index("P&L %")  if "P&L %"  in t_header else -1
+
+                if t_col_status >= 0:
+                    status_counts = Counter(
+                        row[t_col_status] for row in t_data
+                        if len(row) > t_col_status and row[t_col_status]
+                    )
+                    wins   = status_counts.get("TARGET1", 0) + status_counts.get("TARGET2", 0)
+                    losses = status_counts.get("SL_HIT",  0) + status_counts.get("EXPIRED", 0)
+                    open_  = status_counts.get("OPEN",    0)
+                    closed = wins + losses
+
+                    pnl_vals: list[float] = []
+                    if t_col_pnl >= 0:
+                        for row in t_data:
+                            if len(row) > t_col_pnl and row[t_col_pnl]:
+                                try:
+                                    pnl_vals.append(float(row[t_col_pnl]))
+                                except ValueError:
+                                    pass
+
+                    lines += ["", "GWC TRACKER Outcomes:"]
+                    lines.append(f"  Win  (T1/T2): {wins}")
+                    lines.append(f"  Loss (SL/Exp): {losses}")
+                    lines.append(f"  Open: {open_}")
+                    if closed > 0:
+                        real_wr = wins / closed * 100
+                        lines.append(f"  Real Win Rate: {real_wr:.0f}%  ({wins}/{closed} closed)")
+                    else:
+                        lines.append("  Real Win Rate: n/a (no closed trades yet)")
+                    if pnl_vals:
+                        avg_pnl = sum(pnl_vals) / len(pnl_vals)
+                        lines.append(f"  Avg P&L %: {avg_pnl:.1f}%")
+        except Exception:
+            pass  # TRACKER tab may not exist yet
 
         lines += [
             "",
