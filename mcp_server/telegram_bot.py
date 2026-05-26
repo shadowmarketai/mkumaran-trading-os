@@ -46,6 +46,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/dhantoken <JWT> \u2014 Refresh Dhan token (needed for chain data)\n"
         "\n\U0001f4c8 Momentum Portfolio (TIER_1 Nifty500):\n"
         "/rebalance [value] \u2014 Monthly rebalance plan + Confirm/Cancel\n"
+        "\n\U0001f4ca 52-Week Breakout (TIER_2 paper trading):\n"
+        "/breakout_run [--dry-run] \u2014 Run daily entry+exit for 52w breakout\n"
+        "/paper_review \u2014 Show all open paper positions\n"
         "\n\U0001f464 Account:\n"
         "/login email password \u2014 Link your account\n"
         "/segments \u2014 View/toggle trading segments\n"
@@ -1645,6 +1648,30 @@ async def cmd_paper_review(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text("\n".join(lines))
 
 
+async def cmd_breakout_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/breakout_run [--dry-run] — run the 52-week breakout paper trade manager (owner only)."""
+    chat_id = update.effective_chat.id
+    if str(chat_id) != str(settings.TELEGRAM_OWNER_CHAT_ID):
+        await update.message.reply_text("Owner only.")
+        return
+
+    dry_run = "--dry-run" in (context.args or [])
+    await update.message.reply_text(
+        f"Running 52W Breakout paper {'(dry-run) ' if dry_run else ''}manager..."
+    )
+    try:
+        import asyncio
+        from datetime import date as _date
+        from scripts.run_52w_breakout_paper import run as _run_breakout
+
+        loop = asyncio.get_event_loop()
+        report = await loop.run_in_executor(None, _run_breakout, _date.today(), dry_run)
+        await update.message.reply_text(report[:4000])
+    except Exception as exc:
+        logger.exception("Breakout run failed: %s", exc)
+        await update.message.reply_text(f"Error: {exc}")
+
+
 async def cmd_expire_bad_signals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/expire_bad_signals — expire OPEN options signals with mixed-unit SL/TGT (one-time cleanup)."""
     await update.message.reply_text("Expiring bad options signals...")
@@ -2004,6 +2031,7 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("results", cmd_results))
     app.add_handler(CommandHandler("check", cmd_check))
     app.add_handler(CommandHandler("rebalance", cmd_rebalance))
+    app.add_handler(CommandHandler("breakout_run", cmd_breakout_run))
     app.add_handler(CallbackQueryHandler(handle_take_skip_callback, pattern=r"^(take|skip):"))
     app.add_handler(CallbackQueryHandler(handle_rebalance_callback, pattern=r"^rebalance:"))
 

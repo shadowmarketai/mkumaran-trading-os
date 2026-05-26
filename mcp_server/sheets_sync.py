@@ -148,8 +148,14 @@ def close_paper_trade(
     symbol: str,
     exit_price: float,
     exit_date: Optional[str] = None,
+    reason: str = "",
+    scanner_filter: str = "",
 ) -> str:
-    """Mark an open paper trade as closed. Returns result summary or error."""
+    """Mark an open paper trade as closed. Returns result summary or error.
+
+    reason: exit reason appended to Notes (e.g. "TRAIL_STOP", "HARD_STOP", "TIME").
+    scanner_filter: if set, only close a row whose Scanner column matches.
+    """
     _, sheet = _get_sheets_client()
     if not sheet:
         return "Sheets not configured"
@@ -161,16 +167,24 @@ def close_paper_trade(
         headers = rows[0]
         col = {h: i for i, h in enumerate(headers)}
         for idx, row in enumerate(rows[1:], start=2):
-            if (row[col["Symbol"]].upper() == symbol.upper()
-                    and row[col["Result"]] == "OPEN"):
-                entry = float(row[col["Entry"]])
-                ret_pct = round((exit_price - entry) / entry * 100, 2)
-                result = "WIN" if ret_pct > 0 else "LOSS"
-                ws.update_cell(idx, col["Exit_Date"] + 1, exit_date or str(date.today()))
-                ws.update_cell(idx, col["Exit_Price"] + 1, exit_price)
-                ws.update_cell(idx, col["Result"] + 1, result)
-                ws.update_cell(idx, col["Return_%"] + 1, ret_pct)
-                return f"{symbol} closed {result}: {ret_pct:+.2f}%"
+            if row[col["Symbol"]].upper() != symbol.upper():
+                continue
+            if row[col["Result"]] != "OPEN":
+                continue
+            if scanner_filter and row[col["Scanner"]] != scanner_filter:
+                continue
+            entry = float(row[col["Entry"]])
+            ret_pct = round((exit_price - entry) / entry * 100, 2)
+            result = "WIN" if ret_pct > 0 else "LOSS"
+            ws.update_cell(idx, col["Exit_Date"] + 1, exit_date or str(date.today()))
+            ws.update_cell(idx, col["Exit_Price"] + 1, exit_price)
+            ws.update_cell(idx, col["Result"] + 1, result)
+            ws.update_cell(idx, col["Return_%"] + 1, ret_pct)
+            if reason and "Notes" in col:
+                existing = row[col["Notes"]] if len(row) > col["Notes"] else ""
+                note_str = f"{existing} [{reason}]".strip() if existing else f"[{reason}]"
+                ws.update_cell(idx, col["Notes"] + 1, note_str)
+            return f"{symbol} closed {result}: {ret_pct:+.2f}% [{reason or 'manual'}]"
         return f"No open paper trade found for {symbol}"
     except Exception as e:
         logger.error("Paper trade close failed: %s", e)
