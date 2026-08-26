@@ -31,12 +31,12 @@ logger = logging.getLogger(__name__)
 
 
 def run_backfill(live: bool) -> None:
-    from mcp_server.sheets_sync import _get_sheets_client
     from mcp_server.gwc_tracker import (
-        classify_gwc_message,
         GWCMessageType,
+        classify_gwc_message,
         link_gwc_outcome_from_message,
     )
+    from mcp_server.sheets_sync import _get_sheets_client
 
     _, sheet = _get_sheets_client()
     if not sheet:

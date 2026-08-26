@@ -11,12 +11,12 @@ Replaces 60-second REST polling with sub-second WebSocket push.
 """
 
 import json
-import time
 import logging
 import threading
-from datetime import datetime
-from typing import Callable, Optional
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 try:
     import redis as _redis_lib
@@ -103,7 +103,7 @@ class TickCache:
         else:
             self._memory[key] = data
 
-    def get_ltp(self, symbol: str) -> Optional[float]:
+    def get_ltp(self, symbol: str) -> float | None:
         key = f"tick:{symbol.replace('NSE:', '')}"
         try:
             if self._available and self.r:
@@ -114,7 +114,7 @@ class TickCache:
         except Exception:
             return None
 
-    def get_tick(self, symbol: str) -> Optional[dict]:
+    def get_tick(self, symbol: str) -> dict | None:
         key = f"tick:{symbol.replace('NSE:', '')}"
         try:
             if self._available and self.r:
@@ -159,10 +159,10 @@ class GoodwillWebSocket:
 
     WS_URL = "wss://api.gwcindia.in/v1/websocket"
 
-    def __init__(self, cache: TickCache, on_tick: Optional[Callable] = None):
+    def __init__(self, cache: TickCache, on_tick: Callable | None = None):
         self.cache = cache
         self.on_tick = on_tick
-        self.access_token: Optional[str] = None
+        self.access_token: str | None = None
         self.ws = None
         self.subscribed: list = []
         self.connected = False
@@ -197,7 +197,7 @@ class GoodwillWebSocket:
             logger.warning("Goodwill login failed: %s", e)
         return False
 
-    def _parse_tick(self, raw: dict) -> Optional[Tick]:
+    def _parse_tick(self, raw: dict) -> Tick | None:
         try:
             symbol = raw.get("symbol", raw.get("sym", ""))
             ltp = float(raw.get("lp", raw.get("ltp", 0)))
@@ -308,7 +308,7 @@ class GoodwillWebSocket:
 class AngelWebSocket:
     """Angel SmartAPI WebSocket — fallback if Goodwill WS fails."""
 
-    def __init__(self, cache: TickCache, on_tick: Optional[Callable] = None):
+    def __init__(self, cache: TickCache, on_tick: Callable | None = None):
         self.cache = cache
         self.on_tick = on_tick
         self.ws = None
@@ -321,7 +321,10 @@ class AngelWebSocket:
             from SmartApi.SmartWebSocketV2 import SmartWebSocketV2
 
             # Reuse existing angel_auth for TOTP login + token caching
-            from mcp_server.angel_auth import get_authenticated_angel, _load_cached_token
+            from mcp_server.angel_auth import (
+                _load_cached_token,
+                get_authenticated_angel,
+            )
             client = get_authenticated_angel()
 
             cached = _load_cached_token()
@@ -439,14 +442,10 @@ class PositionMonitor:
             self.positions[symbol]["pnl"] = round(pnl, 2)
 
         # Check Stop Loss
-        if pos["direction"] == "LONG" and ltp <= pos["sl"]:
-            self._trigger_exit(pos, ltp, "STOP_LOSS", pnl)
-        elif pos["direction"] == "SHORT" and ltp >= pos["sl"]:
+        if pos["direction"] == "LONG" and ltp <= pos["sl"] or pos["direction"] == "SHORT" and ltp >= pos["sl"]:
             self._trigger_exit(pos, ltp, "STOP_LOSS", pnl)
         # Check Target
-        elif pos["direction"] == "LONG" and ltp >= pos["target"]:
-            self._trigger_exit(pos, ltp, "TARGET_HIT", pnl)
-        elif pos["direction"] == "SHORT" and ltp <= pos["target"]:
+        elif pos["direction"] == "LONG" and ltp >= pos["target"] or pos["direction"] == "SHORT" and ltp <= pos["target"]:
             self._trigger_exit(pos, ltp, "TARGET_HIT", pnl)
 
     def _trigger_exit(self, pos: dict, exit_price: float,
@@ -482,8 +481,8 @@ class PositionMonitor:
     def _send_telegram_alert(self, msg: str):
         """Send via existing send_telegram_message (async), using _fire_and_forget."""
         try:
-            from mcp_server.telegram_bot import send_telegram_message
             from mcp_server.mcp_server import _fire_and_forget
+            from mcp_server.telegram_bot import send_telegram_message
             _fire_and_forget(send_telegram_message(msg, force=True))
         except Exception as e:
             logger.warning("Telegram alert failed: %s", e)
@@ -540,7 +539,7 @@ class CandleBuilder:
         "60minute": 3600,
     }
 
-    def __init__(self, on_candle_close: Optional[Callable] = None):
+    def __init__(self, on_candle_close: Callable | None = None):
         self.on_candle_close = on_candle_close
         self._candles: dict = {}
 
@@ -599,7 +598,7 @@ class CandleBuilder:
                 c["volume"] = tick.volume
 
     def get_latest_candle(self, symbol: str,
-                          interval: str = "5minute") -> Optional[dict]:
+                          interval: str = "5minute") -> dict | None:
         sym_key = f"{symbol}_{interval}"
         candles = self._candles.get(sym_key, {})
         if candles:
@@ -631,8 +630,8 @@ class RealtimeEngine:
         self.cache = TickCache(host=redis_host, port=redis_port)
         self.monitor = PositionMonitor(self.cache)
         self.candles = CandleBuilder(on_candle_close=self._on_candle_close)
-        self.gwc_ws: Optional[GoodwillWebSocket] = None
-        self.angel_ws: Optional[AngelWebSocket] = None
+        self.gwc_ws: GoodwillWebSocket | None = None
+        self.angel_ws: AngelWebSocket | None = None
         self._active = False
         self._subscribed_symbols: list = []
 
@@ -656,6 +655,7 @@ class RealtimeEngine:
     def _run_smc_on_candle(self, symbol: str, candle: dict):
         try:
             import pandas as pd
+
             from mcp_server.smart_money_concepts import CRTEngine
             crt = CRTEngine()
             row = pd.Series(candle)
@@ -672,9 +672,10 @@ class RealtimeEngine:
     def _load_active_trades(self):
         """Load open positions from DB and register them with PositionMonitor."""
         try:
+            from sqlalchemy.orm import joinedload
+
             from mcp_server.db import SessionLocal
             from mcp_server.models import ActiveTrade
-            from sqlalchemy.orm import joinedload
             db = SessionLocal()
             try:
                 trades = db.query(ActiveTrade).options(
@@ -721,7 +722,7 @@ class RealtimeEngine:
         except Exception as e:
             logger.warning("Could not load watchlist: %s", e)
 
-    def start(self, extra_symbols: Optional[list] = None):
+    def start(self, extra_symbols: list | None = None):
         """Start the real-time engine (blocking WebSocket connect)."""
         self._active = True
 
@@ -786,7 +787,7 @@ class RealtimeEngine:
 
     # ── Convenience methods ──────────────────────────────────────────────────
 
-    def get_ltp(self, symbol: str) -> Optional[float]:
+    def get_ltp(self, symbol: str) -> float | None:
         return self.cache.get_ltp(symbol.replace("NSE:", ""))
 
     def get_multiple_ltps(self, symbols: list) -> dict:
@@ -796,5 +797,5 @@ class RealtimeEngine:
         return self.monitor.get_positions_summary()
 
     def get_latest_candle(self, symbol: str,
-                          interval: str = "15minute") -> Optional[dict]:
+                          interval: str = "15minute") -> dict | None:
         return self.candles.get_latest_candle(symbol.replace("NSE:", ""), interval)

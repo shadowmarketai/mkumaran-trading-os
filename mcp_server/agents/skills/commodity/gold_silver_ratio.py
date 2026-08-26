@@ -23,9 +23,12 @@ MCX price unit normalisation (v2.2):
 """
 
 from __future__ import annotations
+
 from typing import Any
+
 import numpy as np
 import pandas as pd
+
 from mcp_server.agents.skills.base_skill import BaseSkill
 from mcp_server.agents.skills.indicators import make_signal
 

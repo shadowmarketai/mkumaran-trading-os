@@ -124,7 +124,7 @@ def run_ticker(
         return cached
 
     try:
-        from mcp_server.backtester import run_backtest, DEFAULT_SLIPPAGE_PCT
+        from mcp_server.backtester import DEFAULT_SLIPPAGE_PCT, run_backtest
 
         result = run_backtest(
             ticker=ticker,
@@ -212,7 +212,7 @@ def write_report(
     path: Path,
 ) -> None:
     lines = [
-        "# PSU-Excluded All-Engines — {}".format(date.today()),
+        f"# PSU-Excluded All-Engines — {date.today()}",
         "",
         "## Engine Summary",
         "",
@@ -267,7 +267,7 @@ def write_report(
             reverse=True,
         )[:5]
         if top:
-            lines.append("### {}".format(eng_name))
+            lines.append(f"### {eng_name}")
             lines.append("| Ticker | Trades | PF | WR |")
             lines.append("|---|---|---|---|")
             for r in top:
@@ -276,8 +276,8 @@ def write_report(
                 lines.append("| {} | {} | {} | {} |".format(
                     r["ticker"],
                     r.get("total_trades", 0),
-                    "{:.2f}".format(pf_t) if pf_t is not None else "—",
-                    "{:.0f}%".format(wr_t) if wr_t is not None else "—",
+                    f"{pf_t:.2f}" if pf_t is not None else "—",
+                    f"{wr_t:.0f}%" if wr_t is not None else "—",
                 ))
             lines.append("")
 
@@ -346,7 +346,7 @@ def main() -> None:
 
     engine_summaries = [aggregate_engine(all_results[e["name"]], e) for e in engines]
 
-    report_path = reports_dir / "psu_all_engines_{}.md".format(date.today())
+    report_path = reports_dir / f"psu_all_engines_{date.today()}.md"
     write_report(engine_summaries, all_results, report_path)
 
     print("\n" + "="*70)

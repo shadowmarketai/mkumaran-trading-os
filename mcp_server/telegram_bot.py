@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import re
+
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -405,8 +406,9 @@ async def cmd_dhantoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         client_id = "?"
 
     try:
-        from mcp_server.data_provider import get_provider
         from dhanhq import DhanContext, dhanhq
+
+        from mcp_server.data_provider import get_provider
         provider = get_provider()
         provider.dhan.client = dhanhq(DhanContext(client_id, token))
         provider.dhan.logged_in = True
@@ -806,7 +808,7 @@ async def cmd_signal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if ai_confidence >= 50:
         try:
             from mcp_server.db import SessionLocal
-            from mcp_server.models import Signal, ActiveTrade
+            from mcp_server.models import ActiveTrade, Signal
             from mcp_server.telegram_receiver import record_signal_to_sheets
 
             db = SessionLocal()
@@ -1055,8 +1057,12 @@ async def cmd_test_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     lines += [sep, "Strategy Results:"]
     if nifty_data:
         from mcp_server.options_signal_engine import (
-            strategy_iv_crush, strategy_cheap_premium, strategy_pcr_extreme,
-            strategy_expiry_day, strategy_max_pain_magnet, strategy_oi_wall,
+            strategy_cheap_premium,
+            strategy_expiry_day,
+            strategy_iv_crush,
+            strategy_max_pain_magnet,
+            strategy_oi_wall,
+            strategy_pcr_extreme,
             strategy_vix_spike,
         )
         strategies = [
@@ -1138,7 +1144,12 @@ async def cmd_gwc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("⏳ Parsing and validating GWC signal...")
 
     try:
-        from mcp_server.gwc_tracker import parse_gwc, validate_gwc_signal, log_to_sheets, format_gwc_reply
+        from mcp_server.gwc_tracker import (
+            format_gwc_reply,
+            log_to_sheets,
+            parse_gwc,
+            validate_gwc_signal,
+        )
     except Exception as imp_err:
         await update.message.reply_text(f"❌ Import error: {imp_err}")
         return
@@ -1179,7 +1190,7 @@ async def cmd_results(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     except (ValueError, IndexError):
         limit = 20
 
-    from mcp_server.models import Signal, Outcome
+    from mcp_server.models import Outcome, Signal
     session = SessionLocal()
     try:
         rows = (
@@ -1232,7 +1243,7 @@ async def cmd_check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"⏳ Checking {open_count} open signal(s) against live prices...")
 
     try:
-        from mcp_server.signal_monitor import monitor_open_signals, _send_close_alert
+        from mcp_server.signal_monitor import _send_close_alert, monitor_open_signals
         closed = await asyncio.to_thread(monitor_open_signals)
         if not closed:
             await update.message.reply_text(
@@ -1420,8 +1431,8 @@ async def handle_take_skip_callback(update: Update, context: ContextTypes.DEFAUL
     decision = "TAKE" if action == "take" else "SKIP"
 
     from mcp_server.db import SessionLocal
-    from mcp_server.models import Signal
     from mcp_server.market_calendar import now_ist
+    from mcp_server.models import Signal
 
     db = SessionLocal()
     try:
@@ -1490,10 +1501,10 @@ async def handle_gwc_raw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         from mcp_server.gwc_tracker import (
             GWCMessageType,
             classify_gwc_message,
+            format_gwc_reply,
             link_gwc_outcome_from_message,
             log_raw_to_sheets,
             log_to_sheets,
-            format_gwc_reply,
             parse_gwc,
             split_gwc_signals,
             validate_gwc_signal,
@@ -1686,6 +1697,7 @@ async def cmd_breakout_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     try:
         import asyncio
         from datetime import date as _date
+
         from scripts.run_52w_breakout_paper import run as _run_breakout
 
         loop = asyncio.get_event_loop()
@@ -1701,7 +1713,7 @@ async def cmd_expire_bad_signals(update: Update, context: ContextTypes.DEFAULT_T
     await update.message.reply_text("Expiring bad options signals...")
     try:
         from mcp_server.db import SessionLocal
-        from mcp_server.models import Signal, ActiveTrade
+        from mcp_server.models import ActiveTrade, Signal
 
         db = SessionLocal()
         expired_ids = []
@@ -1736,10 +1748,12 @@ async def cmd_options_track(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     """/options_track [days] — forward-track options_scan signals from DB."""
     await update.message.reply_text("📊 Tracking options signals...")
     try:
-        from datetime import date, timedelta
         from collections import defaultdict
-        from mcp_server.db import SessionLocal
+        from datetime import date, timedelta
+
         from sqlalchemy import text
+
+        from mcp_server.db import SessionLocal
 
         look_forward = int(context.args[0]) if context.args else 10
         since = date.today() - timedelta(days=30)
@@ -1948,7 +1962,10 @@ async def cmd_rebalance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
     try:
-        from mcp_server.momentum_rebalancer import compute_rebalance_plan, format_telegram_message
+        from mcp_server.momentum_rebalancer import (
+            compute_rebalance_plan,
+            format_telegram_message,
+        )
         loop = asyncio.get_event_loop()
         plan = await loop.run_in_executor(None, compute_rebalance_plan, pv)
     except Exception as exc:
@@ -2065,8 +2082,14 @@ def create_bot_application() -> Application:
 
     # SaaS multi-user commands
     from mcp_server.telegram_saas import (
-        cmd_user_login, cmd_segments, cmd_alerts, cmd_setkey,
-        cmd_mykeys, cmd_removekey, cmd_mystats, cmd_plan,
+        cmd_alerts,
+        cmd_mykeys,
+        cmd_mystats,
+        cmd_plan,
+        cmd_removekey,
+        cmd_segments,
+        cmd_setkey,
+        cmd_user_login,
     )
     app.add_handler(CommandHandler("login", cmd_user_login))
     app.add_handler(CommandHandler("segments", cmd_segments))

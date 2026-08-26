@@ -14,7 +14,6 @@ from mcp_server.backtest_validation import (
     walk_forward_analysis,
 )
 
-
 # ── Monte Carlo ────────────────────────────────────────────────
 
 def test_monte_carlo_flags_too_few_trades():

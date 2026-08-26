@@ -8,10 +8,11 @@ Tests for the 5 Critical Fixes (Phase 1–5).
 5. Order Manager: safety limits, kill switch
 """
 
+from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
 import pytest
-from unittest.mock import patch
 
 # ============================================================
 # Helpers
@@ -107,8 +108,9 @@ class TestValidatorFailSafe:
 
     def test_no_api_key_blocks_signal(self):
         """Missing API key should BLOCK, not approve."""
-        from mcp_server.validator import validate_signal
         import os
+
+        from mcp_server.validator import validate_signal
         old_key = os.environ.get("ANTHROPIC_API_KEY")
         os.environ.pop("ANTHROPIC_API_KEY", None)
 
@@ -135,8 +137,8 @@ class TestValidatorFailSafe:
 
     def test_invalid_api_key_blocks_signal(self):
         """Invalid API key format should BLOCK."""
-        from mcp_server.validator import validate_signal
         from mcp_server.config import settings
+        from mcp_server.validator import validate_signal
         original = settings.ANTHROPIC_API_KEY
         settings.ANTHROPIC_API_KEY = "bad-key-123"
 
@@ -156,7 +158,10 @@ class TestValidatorFailSafe:
 
     def test_status_constants_exist(self):
         from mcp_server.validator import (
-            STATUS_VALIDATED, STATUS_FAILED, STATUS_SKIPPED, STATUS_BLOCKED,
+            STATUS_BLOCKED,
+            STATUS_FAILED,
+            STATUS_SKIPPED,
+            STATUS_VALIDATED,
         )
         assert STATUS_VALIDATED == "VALIDATED"
         assert STATUS_FAILED == "FAILED"
@@ -172,13 +177,13 @@ class TestFOModuleRewrite:
 
     def test_no_kite_returns_status(self):
         """No Kite = explicit STATUS_NO_KITE, not fake data."""
-        from mcp_server.fo_module import get_oi_change, STATUS_NO_KITE
+        from mcp_server.fo_module import STATUS_NO_KITE, get_oi_change
         result = get_oi_change(kite=None)
         assert result["status"] == STATUS_NO_KITE
         assert "message" in result
 
     def test_no_kite_pcr_status(self):
-        from mcp_server.fo_module import get_pcr, STATUS_NO_KITE
+        from mcp_server.fo_module import STATUS_NO_KITE, get_pcr
         result = get_pcr(kite=None)
         assert result["status"] == STATUS_NO_KITE
         assert result["pcr"] == 0
@@ -200,7 +205,7 @@ class TestFOModuleRewrite:
         assert "components" in result
 
     def test_status_constants(self):
-        from mcp_server.fo_module import STATUS_LIVE, STATUS_NO_KITE, STATUS_ERROR
+        from mcp_server.fo_module import STATUS_ERROR, STATUS_LIVE, STATUS_NO_KITE
         assert STATUS_LIVE == "LIVE"
         assert STATUS_NO_KITE == "NO_KITE"
         assert STATUS_ERROR == "ERROR"
@@ -323,7 +328,7 @@ class TestOrderManagerSafety:
         assert MAX_OPEN_POSITIONS == 5
 
     def test_kill_switch_triggers_at_3pct(self):
-        from mcp_server.order_manager import KillSwitchState, DAILY_LOSS_LIMIT_PCT
+        from mcp_server.order_manager import DAILY_LOSS_LIMIT_PCT, KillSwitchState
         ks = KillSwitchState(starting_capital=100000)
         # Lose 3.1% of capital
         ks.realized_pnl = -3100

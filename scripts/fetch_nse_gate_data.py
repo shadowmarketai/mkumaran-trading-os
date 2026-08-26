@@ -402,7 +402,7 @@ def main() -> None:
     print("\nFiles:")
     for fname in ["nifty50_earnings_manual.csv", "fii_fno_historical.csv"]:
         p = DATA_DIR / fname
-        status = "{} rows".format(sum(1 for _ in open(p)) - 1) if p.exists() else "MISSING"
+        status = f"{sum(1 for _ in open(p)) - 1} rows" if p.exists() else "MISSING"
         print(f"  {p}: {status}")
 
     print("\nIf both files have sufficient rows, run:")

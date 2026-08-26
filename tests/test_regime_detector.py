@@ -13,7 +13,6 @@ from mcp_server.regime_detector import (
     gate_strategy,
 )
 
-
 # ── Frame builders ────────────────────────────────────────────
 
 

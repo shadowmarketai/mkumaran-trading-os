@@ -77,12 +77,13 @@ def _load_symbols() -> list[str]:
 
 
 def _load_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str, dict]:
-    import yfinance as yf
     import pandas as pd
+    import yfinance as yf
 
     prices: dict[str, dict] = {}
     try:
         from sqlalchemy import text
+
         from mcp_server.db import engine
         with engine.connect() as conn:
             for sym in symbols:
@@ -142,8 +143,8 @@ def _load_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str, 
 
 
 def _load_nifty(start_str: str, end_str: str) -> dict[date, float]:
-    import yfinance as yf
     import pandas as pd
+    import yfinance as yf
     try:
         raw = yf.download("^NSEI", start=start_str, end=end_str,
                           auto_adjust=True, progress=False)

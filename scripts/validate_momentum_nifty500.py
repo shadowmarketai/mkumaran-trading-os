@@ -73,6 +73,7 @@ def _load_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str, 
 
     try:
         from sqlalchemy import text
+
         from mcp_server.db import engine
         logger.info("Loading prices from ohlcv_cache for %d symbols...", len(symbols))
         with engine.connect() as conn:

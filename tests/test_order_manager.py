@@ -1,16 +1,16 @@
 """Tests for OrderManager — trailing SL, partial exit, market hours, portfolio risk."""
 
-import pytest
+from datetime import date
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
-from datetime import date
+
+import pytest
 
 from mcp_server.order_manager import (
-    OrderManager,
-    KillSwitchState,
     MAX_OPEN_POSITIONS,
+    KillSwitchState,
+    OrderManager,
 )
-
 
 # ── Fixtures ─────────────────────────────────────────────────
 

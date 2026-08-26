@@ -115,8 +115,8 @@ def _load_mwa_series(days: int):
       False = Nifty below 200 EMA → MWA bearish → skip all signals
     """
     try:
-        import yfinance as yf
         import pandas as pd
+        import yfinance as yf
 
         period = "5y" if days > 1095 else "4y"
         df = yf.download(MWA_TICKER, period=period, progress=False, auto_adjust=True)
@@ -299,9 +299,12 @@ def run_ticker(
             return cached
 
     try:
-        from mcp_server.backtester import _simulate_trades, _calculate_metrics
+        from mcp_server.backtester import (
+            DEFAULT_SLIPPAGE_PCT,
+            _calculate_metrics,
+            _simulate_trades,
+        )
         from mcp_server.nse_scanner import get_stock_data
-        from mcp_server.backtester import DEFAULT_SLIPPAGE_PCT
 
         period = "3y" if days <= 1095 else "5y"
         data = get_stock_data(ticker, period=period)

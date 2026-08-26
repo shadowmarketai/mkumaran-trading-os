@@ -20,7 +20,6 @@ from mcp_server.tax_exporter import (
     _tax_on_trade,
 )
 
-
 # ── _fy_date_range ────────────────────────────────────────────
 
 
@@ -125,42 +124,42 @@ def test_costs_dict_has_all_keys():
 
 
 def test_tax_on_loss_is_zero():
-    assert _tax_on_trade(Decimal("-500"), "STCG_EQUITY") == Decimal("0")
+    assert _tax_on_trade(Decimal(-500), "STCG_EQUITY") == Decimal(0)
 
 
 def test_tax_stcg_rate():
-    tax = _tax_on_trade(Decimal("10000"), "STCG_EQUITY")
-    assert tax == round(Decimal("10000") * STCG_RATE, 2)
+    tax = _tax_on_trade(Decimal(10000), "STCG_EQUITY")
+    assert tax == round(Decimal(10000) * STCG_RATE, 2)
 
 
 def test_tax_ltcg_with_exemption():
     # Net gain = 200,000; exemption = 125,000; taxable = 75,000
-    tax = _tax_on_trade(Decimal("200000"), "LTCG_EQUITY")
-    expected = round((Decimal("200000") - LTCG_EXEMPTION) * LTCG_RATE, 2)
+    tax = _tax_on_trade(Decimal(200000), "LTCG_EQUITY")
+    expected = round((Decimal(200000) - LTCG_EXEMPTION) * LTCG_RATE, 2)
     assert tax == expected
 
 
 def test_tax_ltcg_under_exemption_is_zero():
-    tax = _tax_on_trade(Decimal("100000"), "LTCG_EQUITY")
-    assert tax == Decimal("0")
+    tax = _tax_on_trade(Decimal(100000), "LTCG_EQUITY")
+    assert tax == Decimal(0)
 
 
 def test_tax_fno_at_30pct():
-    tax = _tax_on_trade(Decimal("50000"), "FNO")
-    assert tax == round(Decimal("50000") * Decimal("0.30"), 2)
+    tax = _tax_on_trade(Decimal(50000), "FNO")
+    assert tax == round(Decimal(50000) * Decimal("0.30"), 2)
 
 
 def test_tax_intraday_at_30pct():
-    tax = _tax_on_trade(Decimal("20000"), "INTRADAY_EQUITY")
-    assert tax == round(Decimal("20000") * Decimal("0.30"), 2)
+    tax = _tax_on_trade(Decimal(20000), "INTRADAY_EQUITY")
+    assert tax == round(Decimal(20000) * Decimal("0.30"), 2)
 
 
 # ── TaxTrade ──────────────────────────────────────────────────
 
 
 def _sample_trade(category: str = "STCG_EQUITY") -> TaxTrade:
-    charges = _costs(Decimal("1000"), Decimal("1100"), 10, "NSE", category)
-    gross = Decimal("1000")
+    charges = _costs(Decimal(1000), Decimal(1100), 10, "NSE", category)
+    gross = Decimal(1000)
     net = gross - charges["total_charges"]
     return TaxTrade(
         signal_id=1,
@@ -172,8 +171,8 @@ def _sample_trade(category: str = "STCG_EQUITY") -> TaxTrade:
         exit_date=date(2025, 9, 1),
         days_held=92,
         qty=10,
-        entry_price=Decimal("1000"),
-        exit_price=Decimal("1100"),
+        entry_price=Decimal(1000),
+        exit_price=Decimal(1100),
         gross_pnl=gross,
         charges=charges,
         net_pnl=net,
@@ -277,7 +276,7 @@ def test_stcg_rate_is_20pct():
 
 
 def test_ltcg_exemption_is_1_25_lakh():
-    assert LTCG_EXEMPTION == Decimal("125000")
+    assert LTCG_EXEMPTION == Decimal(125000)
 
 
 def test_ltcg_days_is_365():

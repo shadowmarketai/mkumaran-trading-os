@@ -129,9 +129,10 @@ CREATE TABLE IF NOT EXISTS backfill_progress_options (
 
 def _load_scrip_master():
     """Download and cache Dhan scrip master CSV."""
-    import pandas as pd
     import io
     import urllib.request
+
+    import pandas as pd
 
     url = "https://images.dhan.co/api-data/api-scrip-master.csv"
     try:
@@ -480,8 +481,9 @@ def main() -> None:
     )
 
     # Connect DB
-    from mcp_server.db import SessionLocal
     from sqlalchemy import text as _text
+
+    from mcp_server.db import SessionLocal
 
     session = SessionLocal()
     try:

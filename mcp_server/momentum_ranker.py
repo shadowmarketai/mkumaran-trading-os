@@ -11,15 +11,13 @@ All factors min-max normalized to [0,1] across the full universe before weightin
 
 import json
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-
-from mcp_server.market_calendar import now_ist
-from typing import Optional
 
 import numpy as np
 
-from mcp_server.nse_scanner import get_stock_data, _get_nse_universe
+from mcp_server.market_calendar import now_ist
+from mcp_server.nse_scanner import _get_nse_universe, get_stock_data
 from mcp_server.portfolio_risk import get_sector
 
 logger = logging.getLogger(__name__)
@@ -45,7 +43,7 @@ class MomentumStock:
     ret_6m: float
     ret_12m: float
     volatility: float
-    prev_rank: Optional[int] = None
+    prev_rank: int | None = None
 
 
 @dataclass
@@ -66,7 +64,7 @@ class MomentumPortfolio:
 
 # ── Score Calculation ───────────────────────────────────────
 
-def calculate_momentum_score(ticker: str) -> Optional[dict]:
+def calculate_momentum_score(ticker: str) -> dict | None:
     """
     Calculate raw momentum factors for a single ticker.
 
@@ -224,7 +222,7 @@ def generate_rebalance_signals(
 
 # ── Portfolio Persistence ───────────────────────────────────
 
-def get_momentum_portfolio() -> Optional[dict]:
+def get_momentum_portfolio() -> dict | None:
     """Load saved momentum portfolio from JSON file."""
     if not PORTFOLIO_FILE.exists():
         return None

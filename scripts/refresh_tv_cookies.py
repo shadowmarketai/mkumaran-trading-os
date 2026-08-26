@@ -52,7 +52,7 @@ def _launch_browser_and_wait(timeout: int) -> tuple[str, str]:
         page.goto(LOGIN_URL)
         print(
             "[*] Log in to TradingView in the browser window.\n"
-            "    Polling for session cookies every 2s (timeout {}s)...".format(timeout)
+            f"    Polling for session cookies every 2s (timeout {timeout}s)..."
         )
 
         deadline = time.time() + timeout

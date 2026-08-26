@@ -13,7 +13,6 @@ Integrates with MWA scoring system.
 """
 
 import logging
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -31,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 def _detect_trading_range(
     df: pd.DataFrame, min_bars: int = 20
-) -> Optional[dict]:
+) -> dict | None:
     """
     Detect if price is in a trading range (consolidation).
 
@@ -165,7 +164,7 @@ class WyckoffEngine:
 
     # ── 1. Accumulation Phase ────────────────────────────────
 
-    def detect_accumulation(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_accumulation(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect Wyckoff Accumulation.
 
@@ -210,7 +209,7 @@ class WyckoffEngine:
 
     # ── 2. Distribution Phase ────────────────────────────────
 
-    def detect_distribution(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_distribution(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect Wyckoff Distribution.
 
@@ -253,7 +252,7 @@ class WyckoffEngine:
 
     # ── 3. Spring ────────────────────────────────────────────
 
-    def detect_spring(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_spring(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect Wyckoff Spring (false breakdown).
 
@@ -288,7 +287,7 @@ class WyckoffEngine:
 
     # ── 4. Upthrust ──────────────────────────────────────────
 
-    def detect_upthrust(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_upthrust(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect Wyckoff Upthrust (false breakout).
 
@@ -320,7 +319,7 @@ class WyckoffEngine:
 
     # ── 5. Sign of Strength / Sign of Weakness ───────────────
 
-    def detect_sos_sow(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_sos_sow(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect Sign of Strength (SOS) or Sign of Weakness (SOW).
 
@@ -366,7 +365,7 @@ class WyckoffEngine:
 
     # ── 6. Test after Spring/Upthrust ────────────────────────
 
-    def detect_test(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_test(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect Test after Spring or Upthrust.
 

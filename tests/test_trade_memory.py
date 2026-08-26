@@ -3,9 +3,7 @@
 import json
 import os
 
-
-from mcp_server.trade_memory import TradeRecord, TradeMemory
-
+from mcp_server.trade_memory import TradeMemory, TradeRecord
 
 # ── TradeRecord ─────────────────────────────────────────────────
 

@@ -13,7 +13,6 @@ Integrates with MWA scoring system.
 """
 
 import logging
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -123,7 +122,7 @@ class VSAEngine:
 
     def detect_no_demand_supply(
         self, df: pd.DataFrame
-    ) -> Optional[PatternResult]:
+    ) -> PatternResult | None:
         """
         Detect No Demand or No Supply bars.
 
@@ -165,7 +164,7 @@ class VSAEngine:
 
     def detect_stopping_volume(
         self, df: pd.DataFrame
-    ) -> Optional[PatternResult]:
+    ) -> PatternResult | None:
         """
         Detect Stopping Volume.
 
@@ -217,7 +216,7 @@ class VSAEngine:
 
     def detect_climactic_volume(
         self, df: pd.DataFrame
-    ) -> Optional[PatternResult]:
+    ) -> PatternResult | None:
         """
         Detect Climactic Volume (blow-off / selling climax).
 
@@ -274,7 +273,7 @@ class VSAEngine:
 
     def detect_effort_vs_result(
         self, df: pd.DataFrame
-    ) -> Optional[PatternResult]:
+    ) -> PatternResult | None:
         """
         Detect Effort vs Result divergence.
 
@@ -314,7 +313,7 @@ class VSAEngine:
 
     # ── 5. VSA Trap (Upthrust / Spring variant) ──────────────
 
-    def detect_vsa_trap(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_vsa_trap(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect VSA Upthrust/Spring with volume confirmation.
 
@@ -374,7 +373,7 @@ class VSAEngine:
 
     # ── 6. Test Bar ──────────────────────────────────────────
 
-    def detect_test_bar(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_test_bar(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect VSA Test Bar.
 

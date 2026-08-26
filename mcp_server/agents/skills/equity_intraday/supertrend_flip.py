@@ -1,14 +1,6 @@
 """Supertrend flip — direction change on 15m bars."""
 
-from __future__ import annotations
-from typing import Any
-import numpy as np
-import pandas as pd
-from mcp_server.agents.skills.base_skill import BaseSkill
-from mcp_server.agents.skills.indicators import atr, make_signal
-
-
-class SupertrendFlipSkill(BaseSkill):
+from __future__ import annotationsfrom typing import Anyimport numpy as npimport pandas as pdfrom mcp_server.agents.skills.base_skill import BaseSkillfrom mcp_server.agents.skills.indicators import atr, make_signalclass SupertrendFlipSkill(BaseSkill):
     name = "supertrend_flip"
     enabled = False  # OVERRIDE � backtest: WR=44.0% Sharpe=-2.23 � 80% EOD exits, signal fires too late
     segment = "equity_intraday"

@@ -65,8 +65,8 @@ TIER2_WR      = 0.50
 
 
 def _load_prices(tickers: dict[str, str], start_str: str, end_str: str) -> dict[str, dict[date, float]]:
-    import yfinance as yf
     import pandas as pd
+    import yfinance as yf
     all_syms = list(tickers.values()) + ["^NSEI"]
     try:
         raw = yf.download(all_syms, start=start_str, end=end_str,

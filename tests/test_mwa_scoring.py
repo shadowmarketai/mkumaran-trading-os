@@ -1,7 +1,7 @@
 from mcp_server.mwa_scoring import (
     calculate_mwa_score,
-    get_promoted_stocks,
     detect_signal_chains,
+    get_promoted_stocks,
 )
 
 

@@ -33,7 +33,7 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
-from mcp_server.momentum_rebalancer import _cli_main  # noqa: E402
+from mcp_server.momentum_rebalancer import _cli_main
 
 if __name__ == "__main__":
     _cli_main()

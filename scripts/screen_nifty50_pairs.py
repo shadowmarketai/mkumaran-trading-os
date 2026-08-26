@@ -51,6 +51,7 @@ def _fetch_prices(symbols: list[str], start: str, end: str) -> dict[str, dict]:
     import pandas as pd
     import yfinance as yf
     from sqlalchemy import text
+
     from mcp_server.db import engine
 
     prices: dict[str, dict] = {}

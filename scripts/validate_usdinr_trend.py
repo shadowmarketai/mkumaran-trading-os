@@ -63,6 +63,7 @@ def _load_usdinr(start_str: str, end_str: str) -> dict[date, float]:
 
     try:
         from sqlalchemy import text
+
         from mcp_server.db import engine
         with engine.connect() as conn:
             rows = conn.execute(

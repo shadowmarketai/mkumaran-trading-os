@@ -1,12 +1,11 @@
 """Tests for Sector Picker: NSE_SECTOR_MAP and SectorPicker helpers."""
 
 from mcp_server.sector_picker import (
-    NSE_SECTOR_MAP,
-    fetch_stock_fundamentals,
-    SectorPicker,
     BAIN_PROMPT,
+    NSE_SECTOR_MAP,
+    SectorPicker,
+    fetch_stock_fundamentals,
 )
-
 
 # ── NSE_SECTOR_MAP ──────────────────────────────────────────
 

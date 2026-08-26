@@ -9,14 +9,14 @@
 #   result = picker.analyse(ticker="NSE:TATASTEEL")
 #   -> Returns: "ADD NSE:TATASTEEL" or "CONSIDER NSE:JSWSTEEL INSTEAD -- reason"
 
-import re
 import logging
+import re
 import time
-import requests
+from datetime import timedelta
+
 import anthropic
 import pandas as pd
-from datetime import timedelta
-from typing import Optional
+import requests
 
 from mcp_server.config import settings
 from mcp_server.market_calendar import now_ist
@@ -142,7 +142,7 @@ def fetch_rrms_setup(ticker: str, kite) -> dict:
     """
     try:
         from mcp_server.rrms_engine import RRMSEngine
-        from mcp_server.swing_detector import find_swing_low, find_swing_high
+        from mcp_server.swing_detector import find_swing_high, find_swing_low
 
         engine  = RRMSEngine()
         token   = kite.ltp(ticker)[ticker]["instrument_token"]
@@ -248,7 +248,7 @@ class SectorPicker:
         self.delay   = delay_between_requests
         self.client  = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
-    def get_sector_peers(self, ticker: str) -> Optional[dict]:
+    def get_sector_peers(self, ticker: str) -> dict | None:
         """Get sector and peers for a ticker. Returns None if not mapped."""
         return NSE_SECTOR_MAP.get(ticker)
 
@@ -279,10 +279,10 @@ class SectorPicker:
         for d in all_data:
             marker = " <- REQUESTED" if d["ticker"] == ticker else ""
             table += (
-                f"{d['ticker']:15} | {str(d['market_cap']):10} | {str(d['pe']):6} | "
-                f"{str(d['roe']):6} | {str(d['roce']):6} | {str(d['debt_equity']):5} | "
-                f"{str(d['promoter_holding']):9} | {str(d['fii_holding']):6} | "
-                f"{str(d['revenue_growth_3y']):12} | {str(d['pat_margin']):10}"
+                f"{d['ticker']:15} | {d['market_cap']!s:10} | {d['pe']!s:6} | "
+                f"{d['roe']!s:6} | {d['roce']!s:6} | {d['debt_equity']!s:5} | "
+                f"{d['promoter_holding']!s:9} | {d['fii_holding']!s:6} | "
+                f"{d['revenue_growth_3y']!s:12} | {d['pat_margin']!s:10}"
                 f"{marker}\n"
             )
 
@@ -299,7 +299,7 @@ class SectorPicker:
                 setup  = fetch_rrms_setup(t, self.kite)
                 marker = " <- REQUESTED" if t == ticker else ""
                 table += (
-                    f"{t:15} | {str(round(setup['rrr'], 1)):6} | "
+                    f"{t:15} | {round(setup['rrr'], 1)!s:6} | "
                     f"{'YES' if setup['within_2pct'] else 'No':18} | "
                     f"{setup['setup_grade']}{marker}\n"
                 )

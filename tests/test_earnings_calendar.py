@@ -2,12 +2,11 @@
 
 from mcp_server.earnings_calendar import (
     ALERT_DAYS_BEFORE,
+    JPMORGAN_PROMPT,
     NSE_HEADERS,
     _sent_alerts,
     format_earnings_telegram,
-    JPMORGAN_PROMPT,
 )
-
 
 # ── Config Constants ─────────────────────────────────────────
 

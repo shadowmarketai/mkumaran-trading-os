@@ -12,7 +12,6 @@ from mcp_server.broker_reconciler import (
     _normalise_gwc,
 )
 
-
 # ── _norm_ticker ─────────────────────────────────────────────
 
 

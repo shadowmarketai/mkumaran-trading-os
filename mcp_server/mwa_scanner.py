@@ -11,11 +11,12 @@ CURRENT COUNT (source of truth — README/TRADING/CLAUDE reconciled to this):
   Commodity / FnO)
 """
 
+import json
 import logging
 import os
 import re
 import time
-import json
+
 import requests
 
 from mcp_server.market_calendar import now_ist
@@ -1554,8 +1555,9 @@ class MWAScanner:
         """
         try:
             # ── Step 1: hit the main screener page to establish session ──
-            from bs4 import BeautifulSoup
             from urllib.parse import unquote
+
+            from bs4 import BeautifulSoup
 
             r = self.session.get(f"{self.BASE}/screener/", timeout=15)
             logger.info("[CHARTINK] Session init: status=%d, len=%d, cookies=%s",
@@ -1855,10 +1857,10 @@ class MWAScanner:
 
         try:
             from mcp_server.technical_scanners import (
-                scan_supertrend,
-                scan_bb_breakout_bull,
                 scan_bb_breakout_bear,
+                scan_bb_breakout_bull,
                 scan_bb_breakout_bull_weekly,
+                scan_supertrend,
             )
             if stock_data and _should_run("supertrend_buy"):
                 st_result = scan_supertrend(stock_data)
@@ -1913,9 +1915,7 @@ class MWAScanner:
                             continue
                         intraday_pct = ((c - o) / o) * 100
                         vs_prev_pct = ((c - pc) / pc) * 100
-                        if mom_dir == "bull" and intraday_pct >= mom_pct and vs_prev_pct > 0:
-                            hits.append(ticker.replace("NSE:", ""))
-                        elif mom_dir == "bear" and intraday_pct <= mom_pct and vs_prev_pct < 0:
+                        if mom_dir == "bull" and intraday_pct >= mom_pct and vs_prev_pct > 0 or mom_dir == "bear" and intraday_pct <= mom_pct and vs_prev_pct < 0:
                             hits.append(ticker.replace("NSE:", ""))
                     results[mom_key] = hits
                     if hits:
@@ -1951,22 +1951,38 @@ class MWAScanner:
         # SMC scanners (require stock_data with OHLCV DataFrames)
         try:
             from mcp_server.smc_engine import (
-                scan_bos_bull, scan_bos_bear,
-                scan_choch_bull, scan_choch_bear,
-                scan_bullish_ob, scan_bearish_ob,
-                scan_bullish_fvg, scan_bearish_fvg,
-                scan_liquidity_sweep_bull, scan_liquidity_sweep_bear,
-                scan_discount_zone, scan_premium_zone,
-                scan_breaker_block_bull, scan_breaker_block_bear,
-                scan_mitigation_block_bull, scan_mitigation_block_bear,
-                scan_ifvg_bull, scan_ifvg_bear,
-                scan_mss_bull, scan_mss_bear,
-                scan_ote_bull, scan_ote_bear,
-                scan_inducement_bull, scan_inducement_bear,
-                scan_ce_bull, scan_ce_bear,
-                scan_erl_bull, scan_erl_bear,
-                scan_fake_breakout_bull, scan_fake_breakout_bear,
-                scan_ema_pullback_bull, scan_ema_pullback_bear,
+                scan_bearish_fvg,
+                scan_bearish_ob,
+                scan_bos_bear,
+                scan_bos_bull,
+                scan_breaker_block_bear,
+                scan_breaker_block_bull,
+                scan_bullish_fvg,
+                scan_bullish_ob,
+                scan_ce_bear,
+                scan_ce_bull,
+                scan_choch_bear,
+                scan_choch_bull,
+                scan_discount_zone,
+                scan_ema_pullback_bear,
+                scan_ema_pullback_bull,
+                scan_erl_bear,
+                scan_erl_bull,
+                scan_fake_breakout_bear,
+                scan_fake_breakout_bull,
+                scan_ifvg_bear,
+                scan_ifvg_bull,
+                scan_inducement_bear,
+                scan_inducement_bull,
+                scan_liquidity_sweep_bear,
+                scan_liquidity_sweep_bull,
+                scan_mitigation_block_bear,
+                scan_mitigation_block_bull,
+                scan_mss_bear,
+                scan_mss_bull,
+                scan_ote_bear,
+                scan_ote_bull,
+                scan_premium_zone,
             )
             if stock_data:
                 smc_scanners = {
@@ -2030,8 +2046,14 @@ class MWAScanner:
         # Wyckoff scanners
         try:
             from mcp_server.wyckoff_engine import (
-                scan_accumulation, scan_distribution, scan_spring, scan_upthrust,
-                scan_sos, scan_sow, scan_test_bull, scan_test_bear,
+                scan_accumulation,
+                scan_distribution,
+                scan_sos,
+                scan_sow,
+                scan_spring,
+                scan_test_bear,
+                scan_test_bull,
+                scan_upthrust,
             )
             if stock_data:
                 wyckoff_scanners = {
@@ -2065,10 +2087,14 @@ class MWAScanner:
         # VSA scanners
         try:
             from mcp_server.vsa_engine import (
-                scan_no_supply, scan_no_demand,
-                scan_stopping_vol_bull, scan_stopping_vol_bear,
-                scan_selling_climax, scan_buying_climax,
-                scan_effort_bull, scan_effort_bear,
+                scan_buying_climax,
+                scan_effort_bear,
+                scan_effort_bull,
+                scan_no_demand,
+                scan_no_supply,
+                scan_selling_climax,
+                scan_stopping_vol_bear,
+                scan_stopping_vol_bull,
             )
             if stock_data:
                 vsa_scanners = {
@@ -2102,9 +2128,12 @@ class MWAScanner:
         # Harmonic scanners
         try:
             from mcp_server.harmonic_engine import (
-                scan_harmonic_gartley_bull, scan_harmonic_gartley_bear,
-                scan_harmonic_bat_bull, scan_harmonic_bat_bear,
-                scan_harmonic_any_bull, scan_harmonic_any_bear,
+                scan_harmonic_any_bear,
+                scan_harmonic_any_bull,
+                scan_harmonic_bat_bear,
+                scan_harmonic_bat_bull,
+                scan_harmonic_gartley_bear,
+                scan_harmonic_gartley_bull,
             )
             if stock_data:
                 harmonic_scanners = {
@@ -2136,10 +2165,14 @@ class MWAScanner:
         # Forex (CDS) scanners
         try:
             from mcp_server.forex_scanners import (
-                scan_cds_ema_crossover, scan_cds_ema_crossover_bear,
-                scan_cds_rsi_oversold, scan_cds_rsi_overbought,
-                scan_cds_bb_squeeze, scan_cds_bb_squeeze_bear,
-                scan_cds_carry_trade, scan_cds_dxy_divergence,
+                scan_cds_bb_squeeze,
+                scan_cds_bb_squeeze_bear,
+                scan_cds_carry_trade,
+                scan_cds_dxy_divergence,
+                scan_cds_ema_crossover,
+                scan_cds_ema_crossover_bear,
+                scan_cds_rsi_overbought,
+                scan_cds_rsi_oversold,
             )
             if stock_data:
                 forex_scanners = {
@@ -2174,10 +2207,14 @@ class MWAScanner:
         # Commodity (MCX) scanners
         try:
             from mcp_server.commodity_scanners import (
-                scan_mcx_ema_crossover, scan_mcx_ema_crossover_bear,
-                scan_mcx_rsi_oversold, scan_mcx_rsi_overbought,
-                scan_mcx_gold_silver_ratio, scan_mcx_gold_silver_ratio_bear,
-                scan_mcx_crude_momentum, scan_mcx_metal_strength,
+                scan_mcx_crude_momentum,
+                scan_mcx_ema_crossover,
+                scan_mcx_ema_crossover_bear,
+                scan_mcx_gold_silver_ratio,
+                scan_mcx_gold_silver_ratio_bear,
+                scan_mcx_metal_strength,
+                scan_mcx_rsi_overbought,
+                scan_mcx_rsi_oversold,
             )
             if stock_data:
                 commodity_scanners = {
@@ -2212,14 +2249,22 @@ class MWAScanner:
         # F&O (NFO) scanners — indices (121-128) + F&O stocks (129-136)
         try:
             from mcp_server.nfo_scanners import (
-                scan_nfo_ema_crossover, scan_nfo_ema_crossover_bear,
-                scan_nfo_rsi_oversold, scan_nfo_rsi_overbought,
-                scan_nfo_vol_squeeze_bull, scan_nfo_vol_squeeze_bear,
-                scan_nfo_range_breakout_bull, scan_nfo_range_breakdown_bear,
-                scan_nfo_stk_ema_crossover, scan_nfo_stk_ema_crossover_bear,
-                scan_nfo_stk_rsi_oversold, scan_nfo_stk_rsi_overbought,
-                scan_nfo_stk_vol_squeeze_bull, scan_nfo_stk_vol_squeeze_bear,
-                scan_nfo_stk_range_breakout_bull, scan_nfo_stk_range_breakdown_bear,
+                scan_nfo_ema_crossover,
+                scan_nfo_ema_crossover_bear,
+                scan_nfo_range_breakdown_bear,
+                scan_nfo_range_breakout_bull,
+                scan_nfo_rsi_overbought,
+                scan_nfo_rsi_oversold,
+                scan_nfo_stk_ema_crossover,
+                scan_nfo_stk_ema_crossover_bear,
+                scan_nfo_stk_range_breakdown_bear,
+                scan_nfo_stk_range_breakout_bull,
+                scan_nfo_stk_rsi_overbought,
+                scan_nfo_stk_rsi_oversold,
+                scan_nfo_stk_vol_squeeze_bear,
+                scan_nfo_stk_vol_squeeze_bull,
+                scan_nfo_vol_squeeze_bear,
+                scan_nfo_vol_squeeze_bull,
             )
             if stock_data:
                 nfo_scanners = {
@@ -2267,10 +2312,14 @@ class MWAScanner:
         # RL scanners
         try:
             from mcp_server.rl_engine import (
-                scan_rl_trend_bull, scan_rl_trend_bear,
-                scan_rl_vwap_bull, scan_rl_vwap_bear,
-                scan_rl_momentum_bull, scan_rl_momentum_bear,
-                scan_rl_optimal_entry_bull, scan_rl_optimal_entry_bear,
+                scan_rl_momentum_bear,
+                scan_rl_momentum_bull,
+                scan_rl_optimal_entry_bear,
+                scan_rl_optimal_entry_bull,
+                scan_rl_trend_bear,
+                scan_rl_trend_bull,
+                scan_rl_vwap_bear,
+                scan_rl_vwap_bull,
             )
             if stock_data:
                 rl_scanners = {
@@ -2368,7 +2417,8 @@ class MWAScanner:
                         if _gate_mode in ("dry_run", "block") and stocks:
                             try:
                                 from mcp_server.regime_detector import (
-                                    filter_tickers_by_regime, STRATEGY_GATES,
+                                    STRATEGY_GATES,
+                                    filter_tickers_by_regime,
                                 )
                                 if key in STRATEGY_GATES:
                                     kept, report = filter_tickers_by_regime(
@@ -2486,7 +2536,7 @@ class MWAScanner:
 
         if fii_check:
             try:
-                from mcp_server.fii_dii_filter import get_fii_dii_data, fii_allows_long
+                from mcp_server.fii_dii_filter import fii_allows_long, get_fii_dii_data
                 fii_data = get_fii_dii_data()
                 fii_net = fii_data.get("fii_net", 0)
                 if not fii_allows_long(fii_net):
@@ -2498,7 +2548,10 @@ class MWAScanner:
                 logger.warning("fii_dii_filter not available — skipping")
 
         try:
-            from mcp_server.sector_filter import get_sector_strength, sector_allows_trade
+            from mcp_server.sector_filter import (
+                get_sector_strength,
+                sector_allows_trade,
+            )
             sector_strength = get_sector_strength()
             candidates = [
                 c for c in candidates

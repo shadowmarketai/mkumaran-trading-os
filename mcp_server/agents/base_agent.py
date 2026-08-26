@@ -209,6 +209,7 @@ class BaseAgent(ABC):
         still proceeds to Telegram — a DB hiccup shouldn't silence alerts).
         """
         from datetime import date as _date
+
         from mcp_server.db import SessionLocal
         from mcp_server.models import Signal
 

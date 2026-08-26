@@ -10,7 +10,7 @@ def test_rrms_long_valid():
     result = engine.calculate("TEST", cmp=98, ltrp=97, pivot_high=115, direction="LONG")
     assert result.ticker == "TEST"
     assert result.direction == "LONG"
-    assert result.target == Decimal("115")
+    assert result.target == Decimal(115)
     # Verify calculation runs without error
 
 
@@ -85,6 +85,6 @@ def test_rrms_capital_override_via_numeric():
     # Decimal fallback isn't bypassed when a plain int is provided.
     engine = RRMSEngine(capital=200_000)
     assert isinstance(engine.capital, Decimal)
-    assert engine.capital == Decimal("200000")
+    assert engine.capital == Decimal(200000)
     # risk_amt = 200_000 * 0.02 = 4_000
     assert engine.risk_amt == Decimal("4000.00")

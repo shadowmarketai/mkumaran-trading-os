@@ -69,7 +69,7 @@ def _calc_pnl(
     """
     entry = to_money(entry_price)
     exit_p = to_money(exit_price)
-    zero = Decimal("0")
+    zero = Decimal(0)
     if entry <= 0:
         return zero, zero
     if direction in ("BUY", "LONG"):
@@ -91,7 +91,7 @@ def monitor_open_signals() -> list[dict]:
     from the manual /tools/check_signals endpoint.
     """
     from mcp_server.db import SessionLocal
-    from mcp_server.models import Signal, Outcome, ActiveTrade
+    from mcp_server.models import ActiveTrade, Outcome, Signal
 
     results: list[dict] = []
     session = SessionLocal()
@@ -292,9 +292,7 @@ def monitor_open_signals() -> list[dict]:
                                 if entry_prem > 0:
                                     pnl_per_lot = (exit_premium - entry_prem) * lot
                                     # Credit spreads / SHORT direction = inverted
-                                    if getattr(sig, "option_is_spread", False):
-                                        pnl_per_lot = -pnl_per_lot
-                                    elif direction in ("SELL", "SHORT"):
+                                    if getattr(sig, "option_is_spread", False) or direction in ("SELL", "SHORT"):
                                         pnl_per_lot = -pnl_per_lot
                                     outcome_rec.option_pnl_per_lot = round_paise(pnl_per_lot)
                                     outcome_rec.option_pnl_pct = round_paise(
@@ -398,7 +396,10 @@ def monitor_open_signals() -> list[dict]:
                 # float casts keep the wire payload plain and predictable even
                 # if jsonable_encoder is bypassed by a lower-level call.
                 try:
-                    from mcp_server.brain_bridge import observe_outcome, observe_postmortem
+                    from mcp_server.brain_bridge import (
+                        observe_outcome,
+                        observe_postmortem,
+                    )
                     observe_outcome(
                         ticker=sig.ticker, direction=direction,
                         outcome=outcome_str, entry=float(entry_price),
@@ -470,7 +471,7 @@ async def _send_close_alert(closed: dict) -> None:
     # Attach option P&L + postmortem RCA if available
     try:
         from mcp_server.db import SessionLocal
-        from mcp_server.models import Postmortem, Signal, Outcome
+        from mcp_server.models import Outcome, Postmortem, Signal
         session = SessionLocal()
         try:
             # Option P&L block — only if this signal was option-enriched

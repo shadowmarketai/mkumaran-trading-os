@@ -1,17 +1,16 @@
 """Tests for market calendar — trading hours, holidays, order timing validation."""
 
-from datetime import datetime, date, time
+from datetime import date, datetime, time
 
 from mcp_server.market_calendar import (
-    is_market_holiday,
-    is_weekend,
-    is_market_open,
-    get_market_status,
-    validate_order_timing,
     EXCHANGE_HOURS,
     NSE_HOLIDAYS_2026,
+    get_market_status,
+    is_market_holiday,
+    is_market_open,
+    is_weekend,
+    validate_order_timing,
 )
-
 
 # ── Holiday Tests ────────────────────────────────────────────
 

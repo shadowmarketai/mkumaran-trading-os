@@ -246,7 +246,7 @@ class EventCalendar:
         )
         return future[0] if future else None
 
-    def events_on_date(self, d: "date", now: datetime | None = None) -> list[CalendarEvent]:  # noqa: F821
+    def events_on_date(self, d: date, now: datetime | None = None) -> list[CalendarEvent]:  # noqa: F821
         return [e for e in self._events
                 if e.dt.astimezone(IST).date() == d]
 
@@ -255,7 +255,7 @@ class EventCalendar:
     @staticmethod
     def is_expiry_day(
         instrument: str,
-        d: "date | None" = None,  # noqa: F821
+        d: date | None = None,  # noqa: F821
     ) -> bool:
         """Return True if `d` (default today) is the weekly expiry day
         for `instrument` based on the WEEKLY_EXPIRY_DAY map.
@@ -273,7 +273,7 @@ class EventCalendar:
         return d.weekday() == expected_weekday
 
     @staticmethod
-    def expiry_instruments_today(d: "date | None" = None) -> list[str]:  # noqa: F821
+    def expiry_instruments_today(d: date | None = None) -> list[str]:  # noqa: F821
         """Return all instruments with weekly expiry on day `d` (default today)."""
         from datetime import date as _date
         if d is None:

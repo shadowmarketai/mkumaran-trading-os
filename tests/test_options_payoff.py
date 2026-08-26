@@ -12,14 +12,13 @@ Validates:
 from mcp_server.options_payoff import (
     OptionLeg,
     _single_leg_payoff,
-    calculate_payoff,
     bull_call_spread,
+    butterfly_spread,
+    calculate_payoff,
+    iron_condor,
     long_straddle,
     long_strangle,
-    iron_condor,
-    butterfly_spread,
 )
-
 
 # ── Single Leg P&L ──────────────────────────────────────────────
 

@@ -95,8 +95,7 @@ def _check_otp(key: str, otp: str) -> tuple[bool, str]:
 
 def _normalize_phone(phone: str) -> str:
     phone = phone.strip().replace(" ", "").replace("-", "")
-    if phone.startswith("0"):
-        phone = phone[1:]
+    phone = phone.removeprefix("0")
     if not phone.startswith("+91"):
         if phone.startswith("91") and len(phone) == 12:
             phone = "+" + phone
@@ -115,8 +114,8 @@ async def send_email_otp(email: str) -> dict:
     _store_otp(f"email:{email}", otp)
 
     import smtplib
-    from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
 
     msg = MIMEMultipart()
     msg["From"] = SMTP_FROM
@@ -419,8 +418,9 @@ async def reset_password(db_session, verify_token: str, new_password: str) -> di
 # ── BYOK ──────────────────────────────────────────────────────
 
 async def save_user_api_keys(db_session, user_email: str, keys: dict) -> dict:
-    from sqlalchemy import text
     import json
+
+    from sqlalchemy import text
     raw = json.dumps(keys)
     encrypted = _xor_encrypt(raw, settings.JWT_SECRET_KEY)
     try:
@@ -445,8 +445,9 @@ async def save_user_api_keys(db_session, user_email: str, keys: dict) -> dict:
 
 
 async def get_user_api_keys(db_session, user_email: str) -> dict:
-    from sqlalchemy import text
     import json
+
+    from sqlalchemy import text
     try:
         row = db_session.execute(
             text("SELECT setting_value FROM user_settings WHERE setting_key = :k"),

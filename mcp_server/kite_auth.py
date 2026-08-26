@@ -3,9 +3,9 @@ import logging
 import re
 import threading
 import time
-from datetime import datetime, date
+from datetime import date, datetime
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 import pyotp
 import requests

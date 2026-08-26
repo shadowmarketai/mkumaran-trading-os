@@ -291,7 +291,7 @@ def _is_cache_fresh(
     if interval in _DAILY_INTERVALS:
         # Import market calendar for smart staleness
         try:
-            from mcp_server.market_calendar import is_market_open, EXCHANGE_HOURS
+            from mcp_server.market_calendar import EXCHANGE_HOURS, is_market_open
 
             hours = EXCHANGE_HOURS.get(exchange.upper(), EXCHANGE_HOURS.get("NSE"))
             if hours:

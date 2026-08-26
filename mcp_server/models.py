@@ -1,25 +1,25 @@
 import logging
 
 from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Numeric,
-    Boolean,
-    Date,
-    Time,
-    DateTime,
-    Text,
-    ForeignKey,
     JSON,
-    UniqueConstraint,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    ForeignKey,
     Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    Time,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import relationship
 
 try:
-    from sqlalchemy.dialects.postgresql import JSONB, ARRAY
+    from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 except ImportError:
     JSONB = JSON
     ARRAY = None

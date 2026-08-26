@@ -1,14 +1,6 @@
 """VWAP bounce — 3-bar flip above/below VWAP on 5m bars."""
 
-from __future__ import annotations
-from typing import Any
-import numpy as np
-import pandas as pd
-from mcp_server.agents.skills.base_skill import BaseSkill
-from mcp_server.agents.skills.indicators import make_signal
-
-
-class VWAPBounceSkill(BaseSkill):
+from __future__ import annotationsfrom typing import Anyimport numpy as npimport pandas as pdfrom mcp_server.agents.skills.base_skill import BaseSkillfrom mcp_server.agents.skills.indicators import make_signalclass VWAPBounceSkill(BaseSkill):
     name = "vwap_bounce"
     enabled = False  # OVERRIDE � backtest: WR=39.2% Sharpe=-2.47 � 56% SL hits, 3-bar lag too slow
     segment = "equity_intraday"

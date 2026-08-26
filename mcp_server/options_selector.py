@@ -323,8 +323,7 @@ def select_strike_iv_aware(
         short_type = "PE"
         short_strike = atm
         long_idx = atm_idx - 2
-        if long_idx < 0:
-            long_idx = 0
+        long_idx = max(long_idx, 0)
         long_strike = strikes[long_idx]
         strategy = "BULL_PUT_SPREAD"
         primary_type = "PE"

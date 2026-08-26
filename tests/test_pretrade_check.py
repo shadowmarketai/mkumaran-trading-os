@@ -2,19 +2,19 @@
 
 from datetime import date
 from decimal import Decimal
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from mcp_server.models import Signal, MWAScore, ActiveTrade
+from mcp_server.models import ActiveTrade, MWAScore, Signal
 from mcp_server.pretrade_check import (
-    check_market_hours,
     check_active_positions,
-    check_rrr,
-    check_mwa_direction,
     check_ai_confidence,
-    check_price_zone,
-    check_fii_flow,
-    check_news_impact,
     check_delivery_pct,
+    check_fii_flow,
+    check_market_hours,
+    check_mwa_direction,
+    check_news_impact,
+    check_price_zone,
+    check_rrr,
     check_sector_strength,
     run_pretrade_checks,
 )
@@ -104,7 +104,7 @@ class TestActivePositions:
         for i in range(5):
             t = ActiveTrade()
             t.ticker = f"STOCK{i}"
-            t.entry_price = Decimal("100")
+            t.entry_price = Decimal(100)
             db_session.add(t)
         db_session.flush()
         result = check_active_positions(db_session)
@@ -216,7 +216,7 @@ class TestPriceZone:
 
 class TestFIIFlow:
     def test_fii_positive(self, db_session):
-        mwa = _make_mwa(fii_net=Decimal("500"))
+        mwa = _make_mwa(fii_net=Decimal(500))
         db_session.add(mwa)
         db_session.flush()
         sig = _make_signal(direction="LONG")
@@ -224,7 +224,7 @@ class TestFIIFlow:
         assert result["status"] == "PASS"
 
     def test_fii_heavy_selling(self, db_session):
-        mwa = _make_mwa(fii_net=Decimal("-3000"))
+        mwa = _make_mwa(fii_net=Decimal(-3000))
         db_session.add(mwa)
         db_session.flush()
         sig = _make_signal(direction="LONG")
@@ -232,7 +232,7 @@ class TestFIIFlow:
         assert result["status"] == "FAIL"
 
     def test_fii_moderate_selling(self, db_session):
-        mwa = _make_mwa(fii_net=Decimal("-1500"))
+        mwa = _make_mwa(fii_net=Decimal(-1500))
         db_session.add(mwa)
         db_session.flush()
         sig = _make_signal(direction="LONG")
@@ -240,7 +240,7 @@ class TestFIIFlow:
         assert result["status"] == "WARN"
 
     def test_fii_short_direction(self, db_session):
-        mwa = _make_mwa(fii_net=Decimal("-3000"))
+        mwa = _make_mwa(fii_net=Decimal(-3000))
         db_session.add(mwa)
         db_session.flush()
         sig = _make_signal(direction="SHORT")

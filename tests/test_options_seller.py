@@ -1,9 +1,15 @@
 """Tests for mcp_server.options_seller — IV engine, strike selector, adjustment engine."""
 
-import numpy as np
-import pytest
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+import pytest
+
+from mcp_server.options_seller.adjustment_engine import (
+    AdjustmentAction,
+    LivePositionSnapshot,
+    evaluate,
+)
 from mcp_server.options_seller.iv_engine import (
     DELTA_TARGET,
     PERCENTILE_CRUSHED,
@@ -15,18 +21,12 @@ from mcp_server.options_seller.iv_engine import (
     _percentile_rank,
     classify_iv,
 )
-from mcp_server.options_seller.adjustment_engine import (
-    AdjustmentAction,
-    LivePositionSnapshot,
-    evaluate,
-)
 from mcp_server.options_seller.strike_selector import (
     LOT_SIZES,
     StranglePosition,
     _lot_size,
     _nearest_strike,
 )
-
 
 # ── IV Engine ────────────────────────────────────────────────
 
@@ -151,8 +151,8 @@ def test_nearest_strike():
 
 def test_build_strangle_iron_condor():
     """Smoke test with a synthetic chain — verify structure is returned."""
-    from mcp_server.options_seller.strike_selector import build_strangle
     from mcp_server.options_greeks import calculate_greeks
+    from mcp_server.options_seller.strike_selector import build_strangle
 
     spot = 45000.0
     dte  = 5
@@ -187,8 +187,8 @@ def test_build_strangle_iron_condor():
 
 
 def test_build_strangle_naked():
-    from mcp_server.options_seller.strike_selector import build_strangle
     from mcp_server.options_greeks import calculate_greeks
+    from mcp_server.options_seller.strike_selector import build_strangle
 
     spot = 20000.0
     chain = {}
@@ -221,8 +221,8 @@ def test_build_strangle_sparse_chain_returns_none():
 
 
 def test_strangle_as_dict_keys():
-    from mcp_server.options_seller.strike_selector import build_strangle
     from mcp_server.options_greeks import calculate_greeks
+    from mcp_server.options_seller.strike_selector import build_strangle
 
     spot = 45000.0
     chain = {}

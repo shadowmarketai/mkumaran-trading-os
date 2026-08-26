@@ -4,14 +4,13 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from mcp_server.signal_cards import (
-    format_buy_signal,
-    format_short_signal,
-    format_fo_signal,
     format_alert,
+    format_buy_signal,
+    format_fo_signal,
     format_mwa_briefing,
+    format_short_signal,
 )
 from mcp_server.validator import validate_signal
-
 
 # ── format_buy_signal ─────────────────────────────────────────
 

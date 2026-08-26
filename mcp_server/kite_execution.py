@@ -12,7 +12,6 @@ Key features:
 import logging
 from typing import Any
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -292,8 +291,9 @@ async def handle_order_postback(order_data: dict) -> dict:
     # Send Telegram alert
     if msg:
         try:
-            from mcp_server.telegram_bot import send_telegram_message
             import asyncio
+
+            from mcp_server.telegram_bot import send_telegram_message
             asyncio.ensure_future(send_telegram_message(msg, exchange=exchange, force=True))
         except Exception as e:
             logger.warning("Failed to send order postback to Telegram: %s", e)

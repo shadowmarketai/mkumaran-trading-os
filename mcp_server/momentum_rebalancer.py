@@ -27,9 +27,8 @@ import json
 import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from decimal import Decimal, ROUND_DOWN
+from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +79,7 @@ class RebalancePlan:
     holds: list[str] = field(default_factory=list)
     rankings: list[RankedStock] = field(default_factory=list)   # full top-quintile
     estimated_cost_pct: float = 0.0
-    estimated_cost_inr: Decimal = Decimal("0")
+    estimated_cost_inr: Decimal = Decimal(0)
     is_first_run: bool = False
     fetch_errors: list[str] = field(default_factory=list)
 
@@ -109,6 +108,7 @@ def _load_prices_db(
     prices: dict[str, dict[date, float]] = {}
     try:
         from sqlalchemy import text
+
         from mcp_server.db import engine
         with engine.connect() as conn:
             for sym in symbols:
@@ -137,8 +137,8 @@ def _load_prices_yfinance(
     symbols: list[str], start_str: str, end_str: str, batch_size: int = 50
 ) -> tuple[dict[str, dict[date, float]], list[str]]:
     """Fetch prices via yfinance in batches. Returns (prices, errors)."""
-    import yfinance as yf  # type: ignore
     import pandas as pd
+    import yfinance as yf  # type: ignore
 
     prices: dict[str, dict[date, float]] = {}
     errors: list[str] = []
@@ -220,7 +220,7 @@ def _get_price_at(
     sorted_dates: list[date],
     target: date,
     tolerance: int = PRICE_TOLERANCE_DAYS,
-) -> Optional[float]:
+) -> float | None:
     """Return close price nearest to target within tolerance days."""
     candidates = [d for d in sorted_dates if abs((d - target).days) <= tolerance]
     if not candidates:
@@ -312,7 +312,7 @@ def estimate_trade_cost(
     cost_pct = total_cost / portfolio_value (not per-trade value).
     """
     if n_trades == 0 or position_size_inr <= 0:
-        return Decimal("0"), 0.0
+        return Decimal(0), 0.0
 
     per_trade = (
         BROKERAGE_PER_ORDER * 2
@@ -331,7 +331,7 @@ def estimate_trade_cost(
 
 def compute_rebalance_plan(
     portfolio_value_inr: Decimal,
-    today: Optional[date] = None,
+    today: date | None = None,
 ) -> RebalancePlan:
     """
     Compute the full monthly rebalance plan.
@@ -359,7 +359,7 @@ def compute_rebalance_plan(
     position_size = (
         (portfolio_value_inr / n_portfolio).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
         if n_portfolio > 0
-        else Decimal("0")
+        else Decimal(0)
     )
 
     state = load_state()
@@ -444,6 +444,7 @@ def format_telegram_message(plan: RebalancePlan) -> str:
 
 def _cli_main() -> None:
     import argparse
+
     from mcp_server.config import settings
 
     parser = argparse.ArgumentParser(

@@ -9,9 +9,9 @@ Validates:
 """
 
 from unittest.mock import patch
-import pandas as pd
-import numpy as np
 
+import numpy as np
+import pandas as pd
 
 # ── Helper: Generate mock OHLCV data ───────────────────────────
 

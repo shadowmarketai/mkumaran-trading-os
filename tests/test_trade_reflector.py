@@ -3,10 +3,8 @@
 import os
 from unittest.mock import patch
 
-
-from mcp_server.trade_memory import TradeRecord, TradeMemory
+from mcp_server.trade_memory import TradeMemory, TradeRecord
 from mcp_server.trade_reflector import TradeReflector
-
 
 # ── Helpers ──────────────────────────────────────────────────────
 

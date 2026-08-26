@@ -163,12 +163,14 @@ class TestRunAllBackwardCompat:
     def test_run_all_default_segment_is_all(self):
         """run_all() without segment param should default to 'ALL'."""
         import inspect
+
         from mcp_server.mwa_scanner import MWAScanner
         sig = inspect.signature(MWAScanner.run_all)
         assert sig.parameters["segment"].default == "ALL"
 
     def test_run_python_scanners_default_segment_is_all(self):
         import inspect
+
         from mcp_server.mwa_scanner import MWAScanner
         sig = inspect.signature(MWAScanner.run_python_scanners)
         assert sig.parameters["segment"].default == "ALL"
@@ -187,7 +189,7 @@ class TestAngelAutoRefresh:
     def test_get_ohlcv_routed_method_exists(self):
         from mcp_server.data_provider import MarketDataProvider
         assert hasattr(MarketDataProvider, "get_ohlcv_routed")
-        assert callable(getattr(MarketDataProvider, "get_ohlcv_routed"))
+        assert callable(MarketDataProvider.get_ohlcv_routed)
 
     def test_angel_fetch_with_refresh_method_exists(self):
         from mcp_server.data_provider import MarketDataProvider

@@ -159,8 +159,8 @@ def _aligned_series(prices_a: dict, prices_b: dict) -> tuple[list[date], list[fl
 def _engle_granger_pvalue(y: list[float], x: list[float]) -> float:
     """Engle-Granger cointegration p-value. y = leg_a, x = leg_b."""
     try:
-        from statsmodels.tsa.stattools import coint
         import numpy as np
+        from statsmodels.tsa.stattools import coint
         _, pvalue, _ = coint(np.array(y), np.array(x))
         return float(pvalue)
     except Exception as e:
@@ -453,11 +453,9 @@ def walk_forward_pair(
     max_dd = 0.0
     for p in all_oos_pnl_sorted:
         equity += p
-        if equity > peak:
-            peak = equity
+        peak = max(peak, equity)
         dd = (peak - equity) / capital_per_trade
-        if dd > max_dd:
-            max_dd = dd
+        max_dd = max(max_dd, dd)
 
     win_count = sum(1 for p in all_oos_pnl if p > 0)
     coint_pass = sum(1 for w in windows if w["coint_pval"] < 0.05)
@@ -490,12 +488,10 @@ def _monte_carlo(pnl_list: list[float], n: int = 5000) -> dict:
         eq = pk = max_dd = 0.0
         for p in perm:
             eq += p
-            if eq > pk:
-                pk = eq
+            pk = max(pk, eq)
             if pk > 0:
                 dd = (pk - eq) / pk
-                if dd > max_dd:
-                    max_dd = dd
+                max_dd = max(max_dd, dd)
         max_dds.append(max_dd)
     max_dds.sort()
     n_mc = len(max_dds)

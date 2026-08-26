@@ -24,12 +24,11 @@ Segment routing: signals also written to segment-specific tabs
 import logging
 import os
 import re
+from dataclasses import dataclass
 from datetime import date
 
-from mcp_server.market_calendar import now_ist
-from dataclasses import dataclass
-
 from mcp_server.config import settings
+from mcp_server.market_calendar import now_ist
 
 logger = logging.getLogger(__name__)
 
@@ -669,7 +668,12 @@ class TelegramSignalBot:
     def _setup(self):
         """Set up the Telegram bot application."""
         try:
-            from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters
+            from telegram.ext import (
+                ApplicationBuilder,
+                CommandHandler,
+                MessageHandler,
+                filters,
+            )
             self._app = ApplicationBuilder().token(self.token).build()
 
             # Handlers

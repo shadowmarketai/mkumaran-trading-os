@@ -162,8 +162,9 @@ def _get_user_keys(user_email: str | None) -> dict:
     if not user_email:
         return {}
     try:
-        from mcp_server.db import SessionLocal
         from sqlalchemy import text
+
+        from mcp_server.db import SessionLocal
         db = SessionLocal()
         try:
             row = db.execute(
@@ -171,8 +172,8 @@ def _get_user_keys(user_email: str | None) -> dict:
                 {"k": f"llm_keys:{user_email}"}
             ).first()
             if row:
-                from mcp_server.config import settings
                 from mcp_server.auth_providers import _xor_decrypt
+                from mcp_server.config import settings
                 return json.loads(_xor_decrypt(row[0], settings.JWT_SECRET_KEY))
         except Exception:
             pass

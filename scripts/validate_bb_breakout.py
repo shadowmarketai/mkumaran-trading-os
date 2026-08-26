@@ -81,6 +81,7 @@ def _load_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str, 
     """Load {date: {o,h,l,c}} from ohlcv_cache; yfinance fallback."""
     import yfinance as yf
     from sqlalchemy import text
+
     from mcp_server.db import engine
 
     prices: dict[str, dict] = {}

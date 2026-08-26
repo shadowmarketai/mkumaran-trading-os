@@ -15,13 +15,11 @@ Requires: Active Kite session with valid access token.
 """
 
 import logging
-from datetime import date
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 
-from mcp_server.market_calendar import now_ist
-
-from mcp_server.market_calendar import validate_order_timing
+from mcp_server.market_calendar import now_ist, validate_order_timing
 from mcp_server.money import Numeric, to_money
 from mcp_server.portfolio_risk import validate_portfolio_risk
 from mcp_server.risk_guard import RiskGuard
@@ -36,7 +34,7 @@ logger = logging.getLogger(__name__)
 MAX_OPEN_POSITIONS = 5                # Max concurrent trades
 DAILY_LOSS_LIMIT_PCT = -0.03         # -3% of capital = kill switch (ratio)
 MAX_POSITION_SIZE_PCT = 0.10          # Max 10% capital per trade (ratio)
-MAX_ORDER_VALUE: Decimal = Decimal("200000")  # Max Rs.2L per order (safety cap)
+MAX_ORDER_VALUE: Decimal = Decimal(200000)  # Max Rs.2L per order (safety cap)
 ALLOWED_EXCHANGES = {"NSE", "BSE", "MCX", "NFO", "CDS"}
 ALLOWED_ORDER_TYPES = {"MARKET", "LIMIT", "SL", "SL-M"}
 ALLOWED_PRODUCTS = {"CNC", "MIS", "NRML"}
@@ -64,8 +62,8 @@ class OrderResult:
 class KillSwitchState:
     """Tracks daily P&L for kill switch (Decimal zone)."""
     date: date = field(default_factory=date.today)
-    starting_capital: Decimal = field(default_factory=lambda: Decimal("0"))
-    realized_pnl: Decimal = field(default_factory=lambda: Decimal("0"))
+    starting_capital: Decimal = field(default_factory=lambda: Decimal(0))
+    realized_pnl: Decimal = field(default_factory=lambda: Decimal(0))
     is_triggered: bool = False
     trigger_reason: str = ""
 
@@ -75,7 +73,7 @@ class KillSwitchState:
             # New day — reset
             self.date = date.today()
             self.starting_capital = capital
-            self.realized_pnl = Decimal("0")
+            self.realized_pnl = Decimal(0)
             self.is_triggered = False
             self.trigger_reason = ""
 
@@ -85,7 +83,7 @@ class KillSwitchState:
         daily_pnl_pct = (
             self.realized_pnl / self.starting_capital
             if self.starting_capital > 0
-            else Decimal("0")
+            else Decimal(0)
         )
 
         if daily_pnl_pct <= DAILY_LOSS_LIMIT_PCT:
@@ -192,7 +190,7 @@ class OrderManager:
 
         # Position size check — ratio is dimensionless, compare against float constant.
         position_pct = (
-            order_value / self.capital if self.capital > 0 else Decimal("1")
+            order_value / self.capital if self.capital > 0 else Decimal(1)
         )
         if position_pct > MAX_POSITION_SIZE_PCT:
             return (
@@ -222,7 +220,7 @@ class OrderManager:
         # Runs last because it's the most expensive composite check; cheap
         # per-order rejects above already filtered out malformed/oversized
         # orders.
-        deployed = Decimal("0")
+        deployed = Decimal(0)
         for p in self.open_positions:
             deployed += to_money(p.get("entry_price", 0)) * Decimal(p.get("qty", 0))
         deployed += order_value
@@ -665,7 +663,7 @@ class OrderManager:
         # Calculate new trailing SL (Decimal × Decimal — convert trail_pct once)
         trail_factor = to_money(trail_pct)
         if is_long:
-            new_sl = current * (Decimal("1") - trail_factor)
+            new_sl = current * (Decimal(1) - trail_factor)
             # Only move SL up, never down
             if new_sl > old_sl:
                 pos["stop_loss"] = round(new_sl, 2)
@@ -682,7 +680,7 @@ class OrderManager:
                     "triggered": False,
                 }
         else:
-            new_sl = current * (Decimal("1") + trail_factor)
+            new_sl = current * (Decimal(1) + trail_factor)
             # Only move SL down for SHORT, never up
             if old_sl == 0 or new_sl < old_sl:
                 pos["stop_loss"] = round(new_sl, 2)
@@ -725,16 +723,7 @@ class OrderManager:
         current: Decimal = to_money(current_price)
         is_long = pos["direction"] == "BUY"
 
-        if is_long and current <= sl:
-            return {
-                "hit": True,
-                "action": "CLOSE",
-                "ticker": ticker,
-                "sl": sl,
-                "current_price": current,
-                "trail_active": pos.get("trail_active", False),
-            }
-        elif not is_long and current >= sl:
+        if is_long and current <= sl or not is_long and current >= sl:
             return {
                 "hit": True,
                 "action": "CLOSE",

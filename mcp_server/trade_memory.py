@@ -10,8 +10,7 @@ Gracefully degrades if rank-bm25 is not installed (returns empty results).
 import json
 import logging
 import os
-from dataclasses import dataclass, asdict
-from typing import Optional
+from dataclasses import asdict, dataclass
 
 from mcp_server.market_calendar import now_ist
 
@@ -243,7 +242,7 @@ class TradeMemory:
             if r.outcome in ("WIN", "LOSS", "BREAKEVEN") and not r.reflected
         ][:limit]
 
-    def get_record_by_id(self, signal_id: str) -> Optional[TradeRecord]:
+    def get_record_by_id(self, signal_id: str) -> TradeRecord | None:
         """Get a single record by signal_id."""
         for record in self._records:
             if record.signal_id == signal_id:

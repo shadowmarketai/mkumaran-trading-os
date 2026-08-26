@@ -4,11 +4,11 @@ import numpy as np
 import pandas as pd
 
 from mcp_server.fo_module import (
+    get_banknifty_ema_signal,
+    get_fo_signal,
+    get_nifty_ema_signal,
     get_oi_change,
     get_pcr,
-    get_banknifty_ema_signal,
-    get_nifty_ema_signal,
-    get_fo_signal,
 )
 
 

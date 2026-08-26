@@ -1,24 +1,23 @@
 """Tests for Multi-Asset Support: asset_registry, symbol resolution, filter applicability."""
 
 from mcp_server.asset_registry import (
-    Exchange,
-    AssetClass,
-    EXCHANGE_CONFIG,
-    MCX_YF_PROXY,
-    MCX_UNIVERSE,
     CDS_UNIVERSE,
+    EXCHANGE_CONFIG,
+    MCX_UNIVERSE,
+    MCX_YF_PROXY,
     NFO_INDEX_UNIVERSE,
+    AssetClass,
+    Exchange,
+    filter_applies,
+    format_ticker,
+    get_applicable_filters,
+    get_asset_class,
+    get_exchange,
+    get_supported_exchanges,
+    get_universe,
     parse_ticker,
     resolve_yf_symbol,
-    get_exchange,
-    get_asset_class,
-    get_applicable_filters,
-    filter_applies,
-    get_universe,
-    format_ticker,
-    get_supported_exchanges,
 )
-
 
 # ── Exchange / AssetClass Enums ──────────────────────────────
 

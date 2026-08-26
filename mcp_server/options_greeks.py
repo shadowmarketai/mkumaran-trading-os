@@ -261,10 +261,8 @@ def calculate_iv(
 
         sigma -= diff / vega
 
-        if sigma <= 0.001:
-            sigma = 0.001
-        if sigma > 5.0:
-            sigma = 5.0
+        sigma = max(0.001, sigma)
+        sigma = min(sigma, 5.0)
 
     # Bisection fallback
     low, high = 0.001, 5.0

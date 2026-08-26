@@ -59,11 +59,11 @@ logger = logging.getLogger(__name__)
 # ── Tax constants ────────────────────────────────────────────
 STCG_RATE      = Decimal("0.20")     # 20% post Budget 2024
 LTCG_RATE      = Decimal("0.125")    # 12.5%
-LTCG_EXEMPTION = Decimal("125000")   # ₹1.25L annual exemption
+LTCG_EXEMPTION = Decimal(125000)   # ₹1.25L annual exemption
 LTCG_DAYS      = 365                 # held ≥ 365 days = long-term
 
 # Cost constants (keep in sync with backtester.py hygiene values)
-BROKERAGE_FLAT   = Decimal("20")
+BROKERAGE_FLAT   = Decimal(20)
 BROKERAGE_PCT    = Decimal("0.0003")   # 0.03%
 STT_DELIVERY     = Decimal("0.00025")  # 0.025% on sell side
 STT_INTRADAY     = Decimal("0.000125") # 0.0125% on sell side
@@ -160,9 +160,9 @@ def _tax_on_trade(net_pnl: Decimal, category: TaxCategory) -> Decimal:
     slab rates, and offset rules. Intended for awareness, not filing.
     """
     if net_pnl <= 0:
-        return Decimal("0")
+        return Decimal(0)
     if category == "LTCG_EQUITY":
-        return round(max(net_pnl - LTCG_EXEMPTION, Decimal("0")) * LTCG_RATE, 2)
+        return round(max(net_pnl - LTCG_EXEMPTION, Decimal(0)) * LTCG_RATE, 2)
     if category == "STCG_EQUITY":
         return round(net_pnl * STCG_RATE, 2)
     # INTRADAY_EQUITY and FNO: business income — tax at slab; approximate at 30%.
@@ -341,9 +341,10 @@ def export_tax_statement(
         td = date.fromisoformat(str(to_date))   if to_date   else date.today()
         fy = f"{fd.year}-{str(fd.year + 1)[2:]}"
 
+    from sqlalchemy.orm import joinedload
+
     from mcp_server.db import SessionLocal
     from mcp_server.models import Outcome, Signal
-    from sqlalchemy.orm import joinedload
 
     db = SessionLocal()
     try:

@@ -104,11 +104,12 @@ def _load_symbols() -> list[str]:
 
 
 def _load_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str, dict]:
-    import yfinance as yf
     import pandas as pd
+    import yfinance as yf
 
     try:
         from sqlalchemy import text
+
         from mcp_server.db import engine
         prices: dict[str, dict] = {}
         with engine.connect() as conn:

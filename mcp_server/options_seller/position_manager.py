@@ -44,7 +44,6 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any
 
-
 logger = logging.getLogger(__name__)
 
 # IST
@@ -78,7 +77,7 @@ def _get_position(db, position_id: int) -> dict | None:
 def _insert_position(db, data: dict) -> int:
     from sqlalchemy import text
     cols = ", ".join(data.keys())
-    placeholders = ", ".join(f":{k}" for k in data.keys())
+    placeholders = ", ".join(f":{k}" for k in data)
     result = db.execute(
         text(f"INSERT INTO options_seller_positions ({cols}) VALUES ({placeholders}) RETURNING id"),
         data,
@@ -89,7 +88,7 @@ def _insert_position(db, data: dict) -> int:
 
 def _update_position(db, position_id: int, updates: dict) -> None:
     from sqlalchemy import text
-    set_clause = ", ".join(f"{k} = :{k}" for k in updates.keys())
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
     db.execute(
         text(f"UPDATE options_seller_positions SET {set_clause} WHERE id = :_id"),
         {"_id": position_id, **updates},
@@ -101,7 +100,7 @@ def _log_adjustment(db, position_id: int, data: dict) -> None:
     from sqlalchemy import text
     data["position_id"] = position_id
     cols = ", ".join(data.keys())
-    placeholders = ", ".join(f":{k}" for k in data.keys())
+    placeholders = ", ".join(f":{k}" for k in data)
     db.execute(
         text(f"INSERT INTO options_seller_adjustments ({cols}) VALUES ({placeholders})"),
         data,
@@ -163,8 +162,9 @@ def open_position(
 
     # ── Gate 3: Market regime ─────────────────────────────────
     try:
-        from mcp_server.options_seller.strike_selector import build_strangle
         import yfinance as yf
+
+        from mcp_server.options_seller.strike_selector import build_strangle
         df = yf.download("^NSEI", period="90d", progress=False, auto_adjust=True)
         if df is not None and not df.empty:
             from mcp_server.regime_detector import gate_strategy
@@ -266,7 +266,9 @@ def refresh_greeks(
     """
     from mcp_server.options_greeks import calculate_greeks
     from mcp_server.options_seller.adjustment_engine import (
-        AdjustmentAction, LivePositionSnapshot, evaluate,
+        AdjustmentAction,
+        LivePositionSnapshot,
+        evaluate,
     )
 
     db = _open_db()

@@ -28,8 +28,9 @@ Pure Python, numpy-only. No heavy deps.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 from mcp_server.db import SessionLocal
 from mcp_server.models import AdaptiveRule, Outcome, Signal

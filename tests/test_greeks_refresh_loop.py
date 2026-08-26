@@ -8,8 +8,8 @@ import pytest
 
 from mcp_server.options_seller.greeks_refresh_loop import (
     REFRESH_INTERVAL_S,
-    _is_market_hours,
     _get_open_instruments,
+    _is_market_hours,
 )
 
 _IST = timezone(timedelta(hours=5, minutes=30))

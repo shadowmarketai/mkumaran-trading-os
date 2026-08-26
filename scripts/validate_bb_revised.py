@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows cp1252 fix
 
@@ -58,8 +59,8 @@ NIFTY50 = [
 
 def _download_yf(symbols: list[str], interval: str, period: str | None = None,
                  start: str | None = None) -> dict[str, list[dict]]:
-    import yfinance as yf
     import pandas as pd
+    import yfinance as yf
 
     result: dict[str, list[dict]] = {}
     kw: dict = {"auto_adjust": True, "progress": False, "threads": False}
@@ -98,8 +99,8 @@ def _download_yf(symbols: list[str], interval: str, period: str | None = None,
 def _download_yf_batch(symbols: list[str], interval: str,
                        start: str) -> dict[str, list[dict]]:
     """Batch download for daily/weekly (faster)."""
-    import yfinance as yf
     import pandas as pd
+    import yfinance as yf
 
     result: dict[str, list[dict]] = {}
     for i in range(0, len(symbols), 50):

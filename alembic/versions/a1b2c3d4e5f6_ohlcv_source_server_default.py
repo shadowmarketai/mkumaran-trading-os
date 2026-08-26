@@ -13,8 +13,9 @@ This migration sets the Postgres column DEFAULT to 'yfinance' so
 backfills and other callers that omit the column work correctly.
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "a1b2c3d4e5f6"
 down_revision = "f5a6b7c8d9e0"

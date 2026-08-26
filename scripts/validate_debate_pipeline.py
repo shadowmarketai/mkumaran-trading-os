@@ -96,8 +96,8 @@ POC_TICKERS = ["HDFCBANK", "TCS", "INFY", "FEDERALBNK", "SBIN"]
 
 def _load_mwa_series(days: int):
     try:
-        import yfinance as yf
         import pandas as pd
+        import yfinance as yf
         period = "5y" if days > 1095 else "4y"
         df = yf.download(MWA_TICKER, period=period, progress=False, auto_adjust=True)
         if df is None or df.empty or len(df) < MWA_EMA_PERIOD + 10:
@@ -250,10 +250,10 @@ def run_ticker(
 
     try:
         from mcp_server.backtester import (
+            DEFAULT_SLIPPAGE_PCT,
+            _calculate_metrics,
             _generate_confluence_signals,
             _simulate_trades,
-            _calculate_metrics,
-            DEFAULT_SLIPPAGE_PCT,
         )
         from mcp_server.nse_scanner import get_stock_data
 

@@ -117,8 +117,8 @@ def _download_intraday(
     Returns {sym: [{"date": date, "bar_idx": int, "o": float, "h": float,
                      "l": float, "c": float, "is_last_of_day": bool}]}
     """
-    import yfinance as yf
     import pandas as pd
+    import yfinance as yf
 
     result: dict[str, list[dict]] = {}
     yf_kw = {"interval": cfg["yf_interval"], "auto_adjust": True,
@@ -177,8 +177,8 @@ def _download_intraday(
 
 def _download_daily(symbols: list[str], cfg: dict) -> dict[str, list[dict]]:
     """Download daily or weekly bars. Returns {sym: [{date, o, h, l, c}]}."""
-    import yfinance as yf
     import pandas as pd
+    import yfinance as yf
 
     result: dict[str, list[dict]] = {}
     interval = cfg["yf_interval"]
@@ -693,9 +693,9 @@ def main() -> None:
           f"{'MaxDD':>8} {'WinRate':>9}  Verdict")
     print("-" * 70)
     for r in summary_rows:
-        print(f"{r['tf']:<6} {str(r['trades']):>7} {str(r['cagr']):>10} "
-              f"{str(r['sharpe']):>8} {str(r['maxdd']):>8} "
-              f"{str(r['winrate']):>9}  {r['verdict']}")
+        print(f"{r['tf']:<6} {r['trades']!s:>7} {r['cagr']!s:>10} "
+              f"{r['sharpe']!s:>8} {r['maxdd']!s:>8} "
+              f"{r['winrate']!s:>9}  {r['verdict']}")
     print("=" * 70)
     print()
     print("NOTES:")

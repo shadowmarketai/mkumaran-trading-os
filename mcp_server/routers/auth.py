@@ -300,7 +300,7 @@ async def api_check_feature(feature: str, request: Request):
     """Check if user can access a specific feature."""
     user = getattr(request.state, "user", None)
     email = user.get("sub", "") if user else ""
-    from mcp_server.tier_guard import check_tier, TierError
+    from mcp_server.tier_guard import TierError, check_tier
     try:
         result = check_tier(email, feature, record=False)
         return result

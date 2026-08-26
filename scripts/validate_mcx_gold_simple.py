@@ -54,8 +54,8 @@ TIER2_MAXDD   = 0.40
 
 def _load_gold_inr(start_str: str, end_str: str) -> dict[date, float]:
     try:
-        import yfinance as yf
         import pandas as pd
+        import yfinance as yf
         raw = yf.download(["GC=F", "INR=X"], start=start_str, end=end_str,
                           auto_adjust=True, progress=False)
         if raw.empty:

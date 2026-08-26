@@ -14,11 +14,10 @@ from mcp_server.options_greeks import (
     _norm_cdf,
     _norm_pdf,
     bs_price,
+    build_greeks_chain,
     calculate_greeks,
     calculate_iv,
-    build_greeks_chain,
 )
-
 
 # ── Normal CDF/PDF ──────────────────────────────────────────────
 

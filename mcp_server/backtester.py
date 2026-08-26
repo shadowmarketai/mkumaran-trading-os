@@ -151,11 +151,9 @@ def _calculate_metrics(
     peak = capital
     max_dd = 0
     for eq in equity:
-        if eq > peak:
-            peak = eq
+        peak = max(peak, eq)
         dd = (peak - eq) / peak * 100
-        if dd > max_dd:
-            max_dd = dd
+        max_dd = max(max_dd, dd)
 
     # Max consecutive losses
     max_consec_loss = 0
@@ -680,9 +678,10 @@ def _load_from_cache(ticker: str, interval: str, days: int) -> pd.DataFrame:
     historical backtest data.
     """
     try:
+        from datetime import datetime, timedelta
+
         from mcp_server.db import SessionLocal
         from mcp_server.models import OHLCVCache
-        from datetime import datetime, timedelta
 
         db = SessionLocal()
         try:

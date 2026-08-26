@@ -8,10 +8,10 @@ with an overall verdict: GO / CAUTION / BLOCK.
 import logging
 from decimal import Decimal
 
-from sqlalchemy.orm import Session
 from sqlalchemy import desc
+from sqlalchemy.orm import Session
 
-from mcp_server.models import Signal, MWAScore, ActiveTrade
+from mcp_server.models import ActiveTrade, MWAScore, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def check_rrr(signal: Signal) -> dict:
     """Check 3: Does RRR meet the minimum for this asset class?"""
     # signal.rrr is Decimal from the Numeric column; preserve it — comparison
     # against a float threshold works in Python without loss.
-    rrr = signal.rrr if signal.rrr is not None else Decimal("0")
+    rrr = signal.rrr if signal.rrr is not None else Decimal(0)
     min_rrr = 3.0
     exchange = signal.exchange or "NSE"
     if exchange in ("MCX", "NFO", "CDS"):

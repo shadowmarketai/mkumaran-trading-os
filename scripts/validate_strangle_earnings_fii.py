@@ -47,21 +47,21 @@ sys.path.insert(1, _SCRIPTS)
 
 # ── Import simulation core from existing weekly strangle script ────────────
 
-from validate_nifty_weekly_strangle import (  # noqa: E402
-    simulate_trade,
+from validate_nifty_weekly_strangle import (
+    _build_vix_percentiles,
+    _entry_target_for_expiry,
     _load_options_data,
     _load_spot_from_db,
     _load_spot_from_yfinance,
     _load_vix_data,
-    _build_vix_percentiles,
-    _entry_target_for_expiry,
     _select_weekly_expiries,
-    walk_forward,
-    monte_carlo,
-    bootstrap_sharpe,
     aggregate_metrics,
+    bootstrap_sharpe,
     check_override_conditions,
     determine_tier,
+    monte_carlo,
+    simulate_trade,
+    walk_forward,
 )
 
 logging.basicConfig(
@@ -416,7 +416,7 @@ def _save_fii_cache(data: dict[date, float]) -> None:
     with FII_CACHE.open("w", newline="") as f:
         f.write("date,fii_net_fo\n")
         for d in sorted(data.keys()):
-            f.write("{},{}\n".format(d.isoformat(), data[d]))
+            f.write(f"{d.isoformat()},{data[d]}\n")
     logger.info("FII cache saved: %d sessions → %s", len(data), FII_CACHE)
 
 
@@ -439,7 +439,7 @@ def fii_blocked(
     if net is None:
         return False, ""
     if net < 0:
-        return True, "fii_net:{:.0f}".format(net)
+        return True, f"fii_net:{net:.0f}"
     return False, ""
 
 
@@ -536,9 +536,9 @@ def run_variant(
     if live_count < 5:
         return {
             "name": name, "trades": trades,
-            "agg": {"error": "insufficient trades: {}".format(live_count)},
+            "agg": {"error": f"insufficient trades: {live_count}"},
             "wf": {}, "mc": {}, "shp": {}, "tier": "INCONCLUSIVE",
-            "overrides": ["Insufficient live trades: {}".format(live_count)],
+            "overrides": [f"Insufficient live trades: {live_count}"],
             "live_count": live_count,
             "skip_vix": skip_vix, "skip_earn": skip_earn, "skip_fii": skip_fii,
         }
@@ -570,7 +570,7 @@ def write_comparison_report(
     lines = [
         "# Nifty Strangle — Earnings/FII Gate Comparison",
         "",
-        "**Run date:** {}".format(date.today()),
+        f"**Run date:** {date.today()}",
         "**Criteria doc:** docs/strategy_validation/strangle_earnings_fii_criteria.md",
         "",
     ]
@@ -637,7 +637,7 @@ def write_comparison_report(
         if v["overrides"]:
             lines.append("")
             for o in v["overrides"]:
-                lines.append("- OVERRIDE: {}".format(o))
+                lines.append(f"- OVERRIDE: {o}")
         lines += [
             "",
             "| Metric | Value |",
@@ -748,10 +748,7 @@ def main() -> None:
 
     fii_available = not args.earnings_only
     fii_series: dict[date, float] | None = None
-    if fii_available and not args.fii_only:
-        fii_series = load_fii_historical(from_date, to_date)
-        fii_available = fii_series is not None
-    elif args.fii_only:
+    if fii_available and not args.fii_only or args.fii_only:
         fii_series = load_fii_historical(from_date, to_date)
         fii_available = fii_series is not None
 
@@ -806,7 +803,7 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     run_date_str = date.today().isoformat()
-    md_path = output_dir / "strangle_gates_{}.md".format(run_date_str)
+    md_path = output_dir / f"strangle_gates_{run_date_str}.md"
     write_comparison_report(results, fii_available, md_path, earnings_exact=earnings_exact)
 
     # ── Console summary ───────────────────────────────────────────────

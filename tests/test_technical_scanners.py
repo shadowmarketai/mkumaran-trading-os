@@ -3,23 +3,23 @@
 import numpy as np
 import pandas as pd
 
+from mcp_server.swing_detector import (
+    auto_detect_levels,
+    find_swing_high,
+    find_swing_low,
+)
 from mcp_server.technical_scanners import (
     compute_ema,
-    detect_ema_crossover,
-    compute_supertrend,
     compute_macd,
+    compute_supertrend,
+    detect_ema_crossover,
+    run_all_technical_scanners,
+    scan_52week_high,
+    scan_bb_breakout_bull_weekly,
+    scan_macd_crossover,
     scan_nifty_ema,
     scan_stock_ema_crossover,
     scan_supertrend,
-    scan_macd_crossover,
-    scan_52week_high,
-    scan_bb_breakout_bull_weekly,
-    run_all_technical_scanners,
-)
-from mcp_server.swing_detector import (
-    find_swing_low,
-    find_swing_high,
-    auto_detect_levels,
 )
 
 

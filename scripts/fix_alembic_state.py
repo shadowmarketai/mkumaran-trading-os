@@ -19,6 +19,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import text
+
 from mcp_server.db import engine
 
 MERGE_HEAD = "d4e5f6a7b8c9"

@@ -39,7 +39,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Callable
+from collections.abc import Callable
 
 try:
     from tradingview_screener import Column, Query
@@ -84,7 +84,7 @@ def _auth_cookies() -> dict[str, str] | None:
 # ── Base query builder ──────────────────────────────────────────
 
 
-def _base() -> "Query":
+def _base() -> Query:
     """NSE equities only, liquidity floor applied."""
     return (
         Query()
@@ -101,7 +101,7 @@ def _base() -> "Query":
 # merge results by key (union with Chartink output).
 
 
-def _swing_low() -> "Query":
+def _swing_low() -> Query:
     # Close near 1-month low with green candle — proxy for Chartink's
     # "latest low <= min(20, latest low) and close > open".
     return (
@@ -114,7 +114,7 @@ def _swing_low() -> "Query":
     )
 
 
-def _upswing() -> "Query":
+def _upswing() -> Query:
     # Approximation of Chartink's 2-day upswing. We cannot use |2 shifts
     # (TV's scanner doesn't expose them) and empirical testing shows that
     # `low|1` returns anomalously few matches outside market hours — so
@@ -132,7 +132,7 @@ def _upswing() -> "Query":
     )
 
 
-def _swing_high() -> "Query":
+def _swing_high() -> Query:
     return (
         _base()
         .select("name", "close", "open", "high", "High.1M", "volume")
@@ -143,7 +143,7 @@ def _swing_high() -> "Query":
     )
 
 
-def _downswing() -> "Query":
+def _downswing() -> Query:
     # See _upswing for why this uses close/open shifts instead of high/low.
     return (
         _base()
@@ -156,7 +156,7 @@ def _downswing() -> "Query":
     )
 
 
-def _bandwalk_highs() -> "Query":
+def _bandwalk_highs() -> Query:
     # Upper BB touch with green candle — bullish bandwalk.
     return (
         _base()
@@ -168,7 +168,7 @@ def _bandwalk_highs() -> "Query":
     )
 
 
-def _llbb_bounce() -> "Query":
+def _llbb_bounce() -> Query:
     # Low touched lower BB + green candle close.
     return (
         _base()
@@ -180,12 +180,12 @@ def _llbb_bounce() -> "Query":
     )
 
 
-def _volume_avg() -> "Query":
+def _volume_avg() -> Query:
     # Liquidity floor scanner — volume > 10k already enforced in _base.
     return _base().select("name", "close", "volume")
 
 
-def _volume_spike() -> "Query":
+def _volume_spike() -> Query:
     # Relative volume > 2× 10-day average.
     return (
         _base()
@@ -194,7 +194,7 @@ def _volume_spike() -> "Query":
     )
 
 
-def _breakout_200dma() -> "Query":
+def _breakout_200dma() -> Query:
     # Fresh close above 200 SMA (yesterday was below).
     return (
         _base()
@@ -206,7 +206,7 @@ def _breakout_200dma() -> "Query":
     )
 
 
-def _breakout_50day() -> "Query":
+def _breakout_50day() -> Query:
     # TV's aggregate-window fields (High.3M / Low.1M) include today's bar,
     # so `close > High.3M` can never be true. The `|1` shift is silently
     # unsupported on those fields. Use the 50 SMA proxy instead: close
@@ -224,7 +224,7 @@ def _breakout_50day() -> "Query":
     )
 
 
-def _breakdown_20day() -> "Query":
+def _breakdown_20day() -> Query:
     # Mirror of breakout_50day; fresh close below a falling 20 SMA with
     # price already under SMA50.
     return (
@@ -239,7 +239,7 @@ def _breakdown_20day() -> "Query":
     )
 
 
-def _macd_buy_daily() -> "Query":
+def _macd_buy_daily() -> Query:
     # Fresh bullish MACD cross.
     return (
         _base()
@@ -251,7 +251,7 @@ def _macd_buy_daily() -> "Query":
     )
 
 
-def _macd_sell_weekly() -> "Query":
+def _macd_sell_weekly() -> Query:
     # Approximated on daily chart — fresh bearish MACD cross.
     return (
         _base()
@@ -263,20 +263,20 @@ def _macd_sell_weekly() -> "Query":
     )
 
 
-def _rsi_above_30() -> "Query":
+def _rsi_above_30() -> Query:
     return _base().select("name", "close", "RSI", "volume").where(Column("RSI") > 30)
 
 
-def _rsi_below_70() -> "Query":
+def _rsi_below_70() -> Query:
     return _base().select("name", "close", "RSI", "volume").where(Column("RSI") < 70)
 
 
-def _gap_up() -> "Query":
+def _gap_up() -> Query:
     # `gap` is in %, Chartink uses 2% as a common floor.
     return _base().select("name", "close", "gap", "volume").where(Column("gap") > 2.0)
 
 
-def _gap_down() -> "Query":
+def _gap_down() -> Query:
     return _base().select("name", "close", "gap", "volume").where(Column("gap") < -2.0)
 
 
@@ -287,7 +287,7 @@ def _gap_down() -> "Query":
 # adds expression support or we want to post-filter in Python.
 
 
-def _daily_pct_change() -> "Query":
+def _daily_pct_change() -> Query:
     # Move > 5% on the day.
     return (
         _base()
@@ -296,7 +296,7 @@ def _daily_pct_change() -> "Query":
     )
 
 
-def _intraday_momentum_bull() -> "Query":
+def _intraday_momentum_bull() -> Query:
     # Strong green candle: change >= 3% and close > open.
     return (
         _base()
@@ -308,7 +308,7 @@ def _intraday_momentum_bull() -> "Query":
     )
 
 
-def _intraday_momentum_bear() -> "Query":
+def _intraday_momentum_bear() -> Query:
     return (
         _base()
         .select("name", "close", "open", "change", "volume")
@@ -323,7 +323,7 @@ def _intraday_momentum_bear() -> "Query":
 # Only includes scanners where the TV approximation is faithful to the
 # original Chartink clause. SMC/Wyckoff/harmonic/RL scanners are
 # Chartink/Python-only and deliberately not replicated here.
-SCANNERS: dict[str, Callable[[], "Query"]] = {
+SCANNERS: dict[str, Callable[[], Query]] = {
     "swing_low": _swing_low,
     "upswing": _upswing,
     "swing_high": _swing_high,

@@ -99,8 +99,8 @@ async def tool_backfill_sheets_outcomes(
 
     Safe to call repeatedly — idempotent via match-based update + signal_id dedupe.
     """
-    from mcp_server.telegram_receiver import get_sheets_tracker
     from mcp_server.sheets_sync import update_accuracy
+    from mcp_server.telegram_receiver import get_sheets_tracker
 
     cutoff = date.today() - timedelta(days=days)
 
@@ -306,7 +306,7 @@ async def tool_expire_bad_options_signals():
     Safe to run multiple times — only touches OPEN signals.
     """
     from mcp_server.db import SessionLocal
-    from mcp_server.models import Signal, ActiveTrade
+    from mcp_server.models import ActiveTrade, Signal
 
     db = SessionLocal()
     expired_ids = []
@@ -489,6 +489,7 @@ async def api_tax_statement(
     Disclaimer: indicative_tax values are APPROXIMATE. Consult your CA.
     """
     import asyncio
+
     from mcp_server.tax_exporter import export_tax_statement
 
     if fy is None and from_date is None:
@@ -514,7 +515,9 @@ async def api_tax_statement_csv(
     Returns Content-Disposition: attachment so browsers save the file.
     """
     import asyncio
+
     from fastapi.responses import Response
+
     from mcp_server.tax_exporter import export_tax_statement
 
     if fy is None and from_date is None:
@@ -574,12 +577,14 @@ async def tool_run_backfill(
             import sys
             sys.path.insert(0, "/app")
             # Import and run the backfill inline
-            from scripts.backfill_dhan_intraday import (
-                NIFTY_100, backfill_ticker, _ensure_progress_table,
-                _build_ca_skip_dates,
-            )
-            from mcp_server.db import SessionLocal
             from mcp_server.data_provider import get_provider
+            from mcp_server.db import SessionLocal
+            from scripts.backfill_dhan_intraday import (
+                NIFTY_100,
+                _build_ca_skip_dates,
+                _ensure_progress_table,
+                backfill_ticker,
+            )
 
             universe = [ticker.upper()] if ticker else NIFTY_100
             total_days = years * 365

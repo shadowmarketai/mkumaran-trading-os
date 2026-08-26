@@ -496,11 +496,11 @@ async def fno_analytics_loop() -> None:
 
 
 __all__ = [
+    "INDEX_SYMBOLS",
+    "STATE_FILE",
     "check_fno_analytics_once",
     "fno_analytics_loop",
     "format_alert",
-    "INDEX_SYMBOLS",
-    "STATE_FILE",
 ]
 
 

@@ -392,9 +392,9 @@ def summarise(validation: dict[str, Any]) -> str:
 
 
 __all__ = [
-    "monte_carlo_test",
     "bootstrap_sharpe_ci",
-    "walk_forward_analysis",
+    "monte_carlo_test",
     "run_full_validation",
     "summarise",
+    "walk_forward_analysis",
 ]

@@ -1,9 +1,8 @@
 """Tests for validate_with_debate — debate routing and fallback chain."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from mcp_server.validator import validate_with_debate
-
 
 # ── Shared signal params ─────────────────────────────────────
 

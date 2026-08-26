@@ -11,9 +11,12 @@ Signal: BB(20,2) width < 1% then price breaks above upper / below lower.
 """
 
 from __future__ import annotations
+
 from typing import Any
+
 import numpy as np
 import pandas as pd
+
 from mcp_server.agents.skills.base_skill import BaseSkill
 from mcp_server.agents.skills.indicators import bollinger_bands, make_signal
 

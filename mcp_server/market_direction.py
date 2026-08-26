@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -33,14 +33,14 @@ ST_PERIOD     = 10
 ST_MULTIPLIER = 3.0
 
 # ── In-process cache ──────────────────────────────────────────────────────────
-_cache_ts:        Optional[datetime] = None
+_cache_ts:        datetime | None = None
 _cache_direction: int                = 1   # default: bullish
 _CACHE_TTL_HOURS                     = 23
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _fetch_nifty_daily(lookback_days: int = 220) -> "Optional[pd.DataFrame]":
+def _fetch_nifty_daily(lookback_days: int = 220) -> pd.DataFrame | None:
     """Download Nifty 50 daily OHLCV via yfinance."""
     try:
         import pandas as pd
@@ -61,9 +61,9 @@ def _fetch_nifty_daily(lookback_days: int = 220) -> "Optional[pd.DataFrame]":
         return None
 
 
-def _supertrend(df: "pd.DataFrame",
+def _supertrend(df: pd.DataFrame,
                 period: int = ST_PERIOD,
-                multiplier: float = ST_MULTIPLIER) -> "pd.Series":
+                multiplier: float = ST_MULTIPLIER) -> pd.Series:
     """
     Compute Supertrend direction (+1 bullish / -1 bearish) on daily OHLCV.
     Uses Wilder's ATR (not simple rolling mean) for accuracy on daily data.

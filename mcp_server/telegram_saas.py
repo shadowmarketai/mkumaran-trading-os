@@ -64,6 +64,7 @@ async def cmd_user_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     db = SessionLocal()
     try:
         from sqlalchemy import text
+
         from mcp_server.auth_providers import _verify_pw
 
         user = db.execute(
@@ -231,7 +232,7 @@ async def cmd_setkey(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             return
 
         # Save key via BYOK system
-        from mcp_server.auth_providers import save_user_api_keys, get_user_api_keys
+        from mcp_server.auth_providers import get_user_api_keys, save_user_api_keys
         existing = await get_user_api_keys(db, user["email"])
         existing[f"{provider}_key"] = api_key
         if "preferred_provider" not in existing:

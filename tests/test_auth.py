@@ -3,13 +3,12 @@
 from unittest.mock import patch
 
 from mcp_server.auth import (
-    hash_password,
-    verify_password,
+    authenticate_admin,
     create_access_token,
     decode_access_token,
-    authenticate_admin,
+    hash_password,
+    verify_password,
 )
-
 
 # ── Password Hashing ──────────────────────────────────────
 
@@ -103,6 +102,7 @@ class TestPublicEndpoints:
 
     def test_health_always_accessible(self):
         from fastapi.testclient import TestClient
+
         from mcp_server.mcp_server import app
         client = TestClient(app)
         resp = client.get("/health")
@@ -110,6 +110,7 @@ class TestPublicEndpoints:
 
     def test_api_info_always_accessible(self):
         from fastapi.testclient import TestClient
+
         from mcp_server.mcp_server import app
         client = TestClient(app)
         resp = client.get("/api/info")
@@ -117,6 +118,7 @@ class TestPublicEndpoints:
 
     def test_login_endpoint_accessible(self):
         from fastapi.testclient import TestClient
+
         from mcp_server.mcp_server import app
         client = TestClient(app)
         # Login with wrong creds should return 401 (not 403 or blocked)
@@ -129,6 +131,7 @@ class TestAuthDisabled:
 
     def test_auth_me_returns_dev_user(self):
         from fastapi.testclient import TestClient
+
         from mcp_server.mcp_server import app
         # Default settings have AUTH_ENABLED=false
         client = TestClient(app)

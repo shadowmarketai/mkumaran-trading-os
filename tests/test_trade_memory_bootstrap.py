@@ -1,8 +1,9 @@
 """Tests for trade memory bootstrap — seed trades, BM25 cold start."""
 
-import os
 import json
+import os
 import tempfile
+
 import pytest
 
 from mcp_server.trade_memory import (

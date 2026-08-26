@@ -15,7 +15,6 @@ import statistics
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -160,8 +159,9 @@ def validate_signals(db_session, days: int = 90, max_holding: int = 30) -> Valid
 
         # Fetch OHLCV
         try:
-            from mcp_server.data_provider import get_provider
             from datetime import datetime
+
+            from mcp_server.data_provider import get_provider
             provider = get_provider()
             sd = sig["signal_date"]
             if isinstance(sd, str):
@@ -236,8 +236,7 @@ def validate_signals(db_session, days: int = 90, max_holding: int = 30) -> Valid
     peak = curve[0]["equity"]
     mdd = 0.0
     for p in curve:
-        if p["equity"] > peak:
-            peak = p["equity"]
+        peak = max(peak, p["equity"])
         dd = (peak - p["equity"]) / peak * 100
         mdd = max(mdd, dd)
     report.max_drawdown = round(mdd, 2)

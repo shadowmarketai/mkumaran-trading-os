@@ -76,7 +76,7 @@ async def api_selfdev_status():
         "signals_suppressed": suppressed,
         "similarity": sim_stats,
         "bayesian": {
-            "scanners_tracked": len((bayes.get("scanners") or {})),
+            "scanners_tracked": len(bayes.get("scanners") or {}),
             "updated_at": bayes.get("updated_at"),
         },
     }

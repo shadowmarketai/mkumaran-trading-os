@@ -364,10 +364,10 @@ def main() -> None:
     end_ts   = pd.Timestamp(args.end)
 
     # Instantiate engines
-    from mcp_server.smc_engine      import SMCEngine
-    from mcp_server.vsa_engine      import VSAEngine
-    from mcp_server.wyckoff_engine  import WyckoffEngine
     from mcp_server.harmonic_engine import HarmonicEngine
+    from mcp_server.smc_engine import SMCEngine
+    from mcp_server.vsa_engine import VSAEngine
+    from mcp_server.wyckoff_engine import WyckoffEngine
 
     all_engines = {
         "SMC":      SMCEngine(),

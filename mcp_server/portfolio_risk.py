@@ -121,10 +121,10 @@ def check_sector_concentration(
     for pos in open_positions:
         sector = get_sector(pos.get("ticker", ""))
         value = to_money(pos.get("entry_price", 0)) * pos.get("qty", 0)
-        sector_exposure[sector] = sector_exposure.get(sector, Decimal("0")) + value
+        sector_exposure[sector] = sector_exposure.get(sector, Decimal(0)) + value
 
     # Add the proposed new position
-    current_sector_value = sector_exposure.get(new_sector, Decimal("0"))
+    current_sector_value = sector_exposure.get(new_sector, Decimal(0))
     new_total = current_sector_value + new_order_value_d
     sector_pct = new_total / capital_d
 
@@ -170,9 +170,9 @@ def check_asset_class_concentration(
         pos_exchange = pos_ticker.split(":")[0] if ":" in pos_ticker else "NSE"
         pos_class = asset_class_map.get(pos_exchange, "EQUITY")
         value = to_money(pos.get("entry_price", 0)) * pos.get("qty", 0)
-        class_exposure[pos_class] = class_exposure.get(pos_class, Decimal("0")) + value
+        class_exposure[pos_class] = class_exposure.get(pos_class, Decimal(0)) + value
 
-    current_value = class_exposure.get(new_asset_class, Decimal("0"))
+    current_value = class_exposure.get(new_asset_class, Decimal(0))
     new_total = current_value + new_order_value_d
     class_pct = new_total / capital_d
 
@@ -232,18 +232,18 @@ def get_portfolio_exposure(
         "MCX": "COMMODITY", "CDS": "CURRENCY", "NFO": "FNO",
     }
 
-    total_deployed = Decimal("0")
+    total_deployed = Decimal(0)
     for pos in open_positions:
         ticker = pos.get("ticker", "")
         value = to_money(pos.get("entry_price", 0)) * pos.get("qty", 0)
         total_deployed += value
 
         sector = get_sector(ticker)
-        sector_exposure[sector] = sector_exposure.get(sector, Decimal("0")) + value
+        sector_exposure[sector] = sector_exposure.get(sector, Decimal(0)) + value
 
         exchange = ticker.split(":")[0] if ":" in ticker else "NSE"
         asset_class = asset_class_map.get(exchange, "EQUITY")
-        class_exposure[asset_class] = class_exposure.get(asset_class, Decimal("0")) + value
+        class_exposure[asset_class] = class_exposure.get(asset_class, Decimal(0)) + value
 
     def _pct(value: Decimal) -> float:
         # Dashboard-facing percentage — float for stable equality in UI tests.

@@ -79,6 +79,7 @@ def _load_all_prices(symbols: list[str], start_str: str, end_str: str) -> dict[s
     prices: dict[str, dict[date, float]] = {}
     try:
         from sqlalchemy import text
+
         from mcp_server.db import engine
         logger.info("Loading %d symbols from ohlcv_cache...", len(symbols))
         with engine.connect() as conn:

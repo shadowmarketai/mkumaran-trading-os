@@ -263,8 +263,9 @@ async def api_news(
     min_impact: str = Query(default="LOW"),
 ):
     """Get latest news items classified by impact. For dashboard consumption."""
-    from mcp_server.news_monitor import get_latest_news
     from dataclasses import asdict as _asdict
+
+    from mcp_server.news_monitor import get_latest_news
 
     items = get_latest_news(hours=hours, min_impact=min_impact.upper())
     return [_asdict(item) for item in items[:100]]
@@ -276,8 +277,9 @@ async def tool_market_news(
     min_impact: str = Query(default="MEDIUM"),
 ):
     """MCP tool: Get market news for Claude analysis."""
-    from mcp_server.news_monitor import get_latest_news
     from dataclasses import asdict as _asdict
+
+    from mcp_server.news_monitor import get_latest_news
 
     items = get_latest_news(hours=hours, min_impact=min_impact.upper())
     return {
@@ -380,13 +382,14 @@ async def tool_momentum_rebalance(request: Request, top_n: int = Query(default=1
 
     Takes ~40-75s due to rate-limited yfinance calls.
     """
+    from dataclasses import asdict as _asdict
+
     from mcp_server.momentum_ranker import (
-        rank_universe,
         generate_rebalance_signals,
         get_momentum_portfolio,
+        rank_universe,
         save_momentum_portfolio,
     )
-    from dataclasses import asdict as _asdict
 
     prev = get_momentum_portfolio()
     current_holdings = prev.get("holdings", []) if prev else []
@@ -472,8 +475,8 @@ async def api_cache_stats():
 @router.post("/tools/cache_refresh")
 async def tool_cache_refresh(req: CacheRefreshRequest):
     """Force-refresh cached data for a ticker (invalidate + re-fetch)."""
-    from mcp_server.ohlcv_cache import invalidate_ticker
     from mcp_server.data_provider import get_stock_data
+    from mcp_server.ohlcv_cache import invalidate_ticker
 
     db_session = SessionLocal()
     try:
@@ -592,6 +595,7 @@ async def api_regime(
     without a code change — useful for tuning during backtesting.
     """
     import asyncio
+
     from mcp_server.nse_scanner import get_stock_data
     from mcp_server.regime_detector import classify_from_df
 

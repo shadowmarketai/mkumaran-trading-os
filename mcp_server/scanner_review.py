@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from mcp_server.config import settings
 from mcp_server.db import SessionLocal
-from mcp_server.market_calendar import is_weekend, is_market_holiday, now_ist
+from mcp_server.market_calendar import is_market_holiday, is_weekend, now_ist
 from mcp_server.mwa_scanner import SCANNERS, SIGNAL_CHAINS
 
 logger = logging.getLogger(__name__)

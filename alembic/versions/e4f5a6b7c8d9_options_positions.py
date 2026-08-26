@@ -21,9 +21,9 @@ Also adds options_seller_adjustments log (one row per rule fired).
 
 from __future__ import annotations
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "e4f5a6b7c8d9"
 down_revision = "d3b488d0416d"

@@ -44,7 +44,9 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows cp1252 fix
 
-from mcp_server.options_greeks import calculate_greeks  # noqa: E402  # shared BS implementation
+from mcp_server.options_greeks import (
+    calculate_greeks,  # shared BS implementation
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -569,11 +571,9 @@ def walk_forward(
             win_max_dd = 0.0
             for p in pnl_list:
                 eq += p
-                if eq > pk:
-                    pk = eq
+                pk = max(pk, eq)
                 dd = (pk - eq) / SPAN_MARGIN if pk > 0 else 0.0
-                if dd > win_max_dd:
-                    win_max_dd = dd
+                win_max_dd = max(win_max_dd, dd)
 
             span = (test_end - test_start).days
             windows.append({
@@ -639,11 +639,9 @@ def monte_carlo(trades: list[dict], n_iterations: int = 10_000) -> dict:
         max_dd = 0.0
         for pnl in perm:
             equity += pnl
-            if equity > peak:
-                peak = equity
+            peak = max(peak, equity)
             dd_pct = (peak - equity) / SPAN_MARGIN if peak > 0 else 0.0
-            if dd_pct > max_dd:
-                max_dd = dd_pct
+            max_dd = max(max_dd, dd_pct)
         max_dds_pct.append(max_dd)
 
     max_dds_pct.sort()
@@ -782,12 +780,10 @@ def aggregate_metrics(trades: list[dict]) -> dict:
     max_dd_pct = 0.0
     for p in pnl_list:
         equity += p
-        if equity > peak:
-            peak = equity
+        peak = max(peak, equity)
         if peak > 0:
             dd = (peak - equity) / SPAN_MARGIN
-            if dd > max_dd_pct:
-                max_dd_pct = dd
+            max_dd_pct = max(max_dd_pct, dd)
 
     # Holding period stats
     holding_days = [t["holding_days"] for t in live]

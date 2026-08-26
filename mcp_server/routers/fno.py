@@ -104,7 +104,7 @@ async def tool_run_fno_analytics():
     Returns alerts + per-symbol snapshots and updates the persisted state.
     Useful for n8n hooks or for testing alert wiring outside market hours.
     """
-    from mcp_server.fno_analytics_monitor import check_fno_analytics_once, _send_alerts
+    from mcp_server.fno_analytics_monitor import _send_alerts, check_fno_analytics_once
 
     result = await asyncio.to_thread(check_fno_analytics_once)
     alerts = result.get("alerts", [])
@@ -119,7 +119,7 @@ async def tool_run_fno_analytics():
 @router.get("/api/fno/analytics/state")
 async def api_fno_analytics_state():
     """Return the most recent F&O analytics monitor snapshot/state file."""
-    from mcp_server.fno_analytics_monitor import _load_state, STATE_FILE
+    from mcp_server.fno_analytics_monitor import STATE_FILE, _load_state
 
     state = _load_state()
     return {

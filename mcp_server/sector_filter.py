@@ -1,6 +1,7 @@
 import logging
-import yfinance as yf
 from datetime import timedelta
+
+import yfinance as yf
 
 from mcp_server.asset_registry import filter_applies
 from mcp_server.market_calendar import now_ist

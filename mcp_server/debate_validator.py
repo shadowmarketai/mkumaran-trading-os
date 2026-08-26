@@ -184,7 +184,9 @@ def _build_memory_context(similar_trades: list[dict]) -> str:
 def _compute_chart_summary(ticker: str) -> str:
     """Fetch OHLCV + compute indicators. Runs in a thread — may be slow."""
     import re as _re
+
     import numpy as np
+
     from mcp_server.data_provider import get_provider
 
     exchange, sym = ("NSE", ticker)

@@ -78,9 +78,9 @@ def _yf_ticker(ticker: str) -> str:
 
 def fetch_characteristics(tickers: list[str]):
     """Fetch market cap, sector, beta, ADV, volatility for each ticker."""
-    import yfinance as yf
-    import pandas as pd
     import numpy as np
+    import pandas as pd
+    import yfinance as yf
 
     rows = []
     for ticker in tickers:
@@ -186,7 +186,7 @@ def find_rule(df) -> dict:
                     "rule_dict": {"mcap_min_cr": mcap_min, "vol_max_pct": vol_max},
                     "profitable_captured": int(tp),
                     "total_profitable": int(clean["profitable"].sum()),
-                    "total_predicted": int(len(predicted)),
+                    "total_predicted": len(predicted),
                     "precision": round(precision, 3),
                     "recall": round(recall, 3),
                 }

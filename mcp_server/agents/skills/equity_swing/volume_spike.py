@@ -8,9 +8,12 @@ Disabled. Volume alone without breakout has no edge standalone.
 """
 
 from __future__ import annotations
+
 from typing import Any
+
 import numpy as np
 import pandas as pd
+
 from mcp_server.agents.skills.base_skill import BaseSkill
 from mcp_server.agents.skills.indicators import make_signal
 

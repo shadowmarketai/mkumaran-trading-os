@@ -25,7 +25,6 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +62,7 @@ class GWCSignal:
     notes:      str          = ""
 
 
-def _auto_sl(sig: "GWCSignal") -> tuple[float, str]:
+def _auto_sl(sig: GWCSignal) -> tuple[float, str]:
     """
     Compute a system-derived SL when GWC doesn't provide one.
 
@@ -107,7 +106,7 @@ def _num(text: str, pattern: str) -> float:
     return 0.0
 
 
-def parse_gwc(text: str) -> Optional[GWCSignal]:
+def parse_gwc(text: str) -> GWCSignal | None:
     """
     Parse a GWC WhatsApp signal into a GWCSignal dataclass.
     Returns None if the text doesn't look like a tradeable signal.
@@ -316,7 +315,7 @@ def log_to_sheets(
 ) -> bool:
     """Append a GWC signal row to the 'GWC TRACKER' Google Sheets tab."""
     try:
-        from mcp_server.sheets_sync import _get_sheets_client, _get_or_create_worksheet
+        from mcp_server.sheets_sync import _get_or_create_worksheet, _get_sheets_client
         _, sheet = _get_sheets_client()
         if not sheet:
             return False
@@ -434,8 +433,8 @@ def validate_gwc_signal(sig: GWCSignal) -> dict:
                 "reasoning": "Target missing — cannot compute RRR."}
 
     try:
-        from mcp_server.debate_validator import run_debate
         from mcp_server.db import SessionLocal
+        from mcp_server.debate_validator import run_debate
         from mcp_server.models import MWAScore
 
         mwa_direction = "UNKNOWN"
@@ -693,7 +692,7 @@ def log_raw_to_sheets(
 ) -> bool:
     """Append a raw GWC message to the 'GWC LOG' Google Sheets tab."""
     try:
-        from mcp_server.sheets_sync import _get_sheets_client, _get_or_create_worksheet
+        from mcp_server.sheets_sync import _get_or_create_worksheet, _get_sheets_client
         _, sheet = _get_sheets_client()
         if not sheet:
             return False
@@ -752,7 +751,7 @@ def _extract_underlying(text: str) -> str:
 def link_gwc_outcome_from_message(
     text: str,
     extracted: dict,
-    as_of_date: Optional[date] = None,
+    as_of_date: date | None = None,
 ) -> str:
     """
     For a RESULT message, find the open GWC TRACKER row and update its status.

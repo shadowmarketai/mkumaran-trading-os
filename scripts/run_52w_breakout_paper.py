@@ -68,6 +68,7 @@ def _fetch_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str,
 
     try:
         from sqlalchemy import text
+
         from mcp_server.db import engine
         with engine.connect() as conn:
             for sym in symbols:
@@ -91,8 +92,8 @@ def _fetch_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str,
 
     missing = [s for s in symbols if s not in prices]
     if missing:
-        import yfinance as yf
         import pandas as pd
+        import yfinance as yf
         logger.info("yfinance fetch: %d symbols", len(missing))
         for i in range(0, len(missing), 50):
             chunk = missing[i : i + 50]
@@ -261,9 +262,9 @@ def run(today: date, dry_run: bool) -> str:
     logger.info("Prices loaded: %d symbols with data", len(prices))
 
     from mcp_server.sheets_sync import (
+        close_paper_trade,
         get_open_paper_trades,
         log_paper_trade,
-        close_paper_trade,
     )
 
     open_trades = get_open_paper_trades()

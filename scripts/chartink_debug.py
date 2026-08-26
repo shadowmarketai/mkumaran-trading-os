@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+
 from playwright.async_api import async_playwright
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")

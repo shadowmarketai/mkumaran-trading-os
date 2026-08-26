@@ -1,7 +1,7 @@
 """Tests for Unified Data Provider: Kite primary + yfinance fallback."""
 
-from unittest.mock import patch, MagicMock
 from datetime import datetime
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -9,14 +9,13 @@ import pytest
 from mcp_server.data_provider import (
     _INTERVAL_MAP,
     _PERIOD_TO_DAYS,
-    _resolve_instrument_token,
     _load_instrument_cache,
+    _rate_limited_download,
+    _resolve_instrument_token,
     _yfinance_fetch,
     fetch_kite_historical,
     get_stock_data,
-    _rate_limited_download,
 )
-
 
 # ── Interval / Period Mapping ─────────────────────────────────
 
@@ -345,8 +344,8 @@ def test_get_stock_data_passes_period_and_interval(mock_kite, mock_settings):
 
 def test_nse_scanner_reexports_get_stock_data():
     """nse_scanner still exports get_stock_data for backward compatibility."""
-    from mcp_server.nse_scanner import get_stock_data as nse_get_stock_data
     from mcp_server.data_provider import get_stock_data as dp_get_stock_data
+    from mcp_server.nse_scanner import get_stock_data as nse_get_stock_data
     assert nse_get_stock_data is dp_get_stock_data
 
 

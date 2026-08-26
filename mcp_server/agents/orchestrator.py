@@ -21,12 +21,12 @@ logger = logging.getLogger(__name__)
 
 async def start_all_agents() -> list[asyncio.Task]:
     """Start all trading agents as background tasks. Returns task handles."""
-    from mcp_server.agents.options_index_agent import OptionsIndexAgent
-    from mcp_server.agents.options_stock_agent import OptionsStockAgent
     from mcp_server.agents.commodity_agent import CommodityAgent
+    from mcp_server.agents.equity_swing_agent import EquitySwingAgent
     from mcp_server.agents.forex_agent import ForexAgent
     from mcp_server.agents.futures_agent import FuturesAgent
-    from mcp_server.agents.equity_swing_agent import EquitySwingAgent
+    from mcp_server.agents.options_index_agent import OptionsIndexAgent
+    from mcp_server.agents.options_stock_agent import OptionsStockAgent
 
     agents = [
         EquitySwingAgent(),
@@ -54,12 +54,12 @@ async def start_all_agents() -> list[asyncio.Task]:
 
 def get_agent_status() -> list[dict[str, Any]]:
     """Return status info for each agent (for dashboard/health endpoint)."""
-    from mcp_server.agents.options_index_agent import OptionsIndexAgent
-    from mcp_server.agents.options_stock_agent import OptionsStockAgent
     from mcp_server.agents.commodity_agent import CommodityAgent
+    from mcp_server.agents.equity_swing_agent import EquitySwingAgent
     from mcp_server.agents.forex_agent import ForexAgent
     from mcp_server.agents.futures_agent import FuturesAgent
-    from mcp_server.agents.equity_swing_agent import EquitySwingAgent
+    from mcp_server.agents.options_index_agent import OptionsIndexAgent
+    from mcp_server.agents.options_stock_agent import OptionsStockAgent
 
     agents = [
         EquitySwingAgent(),

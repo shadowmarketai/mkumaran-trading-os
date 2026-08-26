@@ -4,14 +4,14 @@ import numpy as np
 import pandas as pd
 
 from mcp_server.forex_scanners import (
-    scan_cds_ema_crossover,
-    scan_cds_ema_crossover_bear,
-    scan_cds_rsi_oversold,
-    scan_cds_rsi_overbought,
     scan_cds_bb_squeeze,
     scan_cds_bb_squeeze_bear,
     scan_cds_carry_trade,
     scan_cds_dxy_divergence,
+    scan_cds_ema_crossover,
+    scan_cds_ema_crossover_bear,
+    scan_cds_rsi_overbought,
+    scan_cds_rsi_oversold,
 )
 
 

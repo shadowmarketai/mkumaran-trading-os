@@ -14,13 +14,12 @@
 #   smc = SMCEngine()
 #   result = smc.analyse(df, symbol="NSE:BANKNIFTY", timeframe="15minute")
 
-import pandas as pd
-import numpy as np
-from typing import Optional
-
-from mcp_server.market_calendar import now_ist
 from dataclasses import dataclass
 
+import numpy as np
+import pandas as pd
+
+from mcp_server.market_calendar import now_ist
 
 # ─── DATA CLASSES ─────────────────────────────────────────────────────────────
 
@@ -67,7 +66,7 @@ class C4Setup:
     consolidation_high: float
     consolidation_low:  float
     compression_range:  float    # Narrowing candle range (% of consolidation)
-    catalyst_candle:    Optional[CRTCandle]
+    catalyst_candle:    CRTCandle | None
     entry_price:        float
     stop_loss:          float
     target_1:           float    # 1:2 RRR
@@ -418,7 +417,7 @@ class CRTEngine:
 
     def detect_opening_crt(self, df: pd.DataFrame,
                             symbol: str = "BANKNIFTY",
-                            timeframe: str = "5minute") -> Optional[CRTCandle]:
+                            timeframe: str = "5minute") -> CRTCandle | None:
         """
         Special function for 9:15-9:30 AM opening candle CRT analysis.
         The opening candle on NSE almost always shows CRT manipulation.
@@ -461,7 +460,7 @@ class C4Engine:
         self.crt_engine        = CRTEngine()
 
     def detect_consolidation(self, df: pd.DataFrame,
-                              lookback: int = 20) -> Optional[dict]:
+                              lookback: int = 20) -> dict | None:
         """Find the most recent clear consolidation in the last N candles."""
         scan = df.tail(lookback)
         best_zone = None
@@ -486,7 +485,7 @@ class C4Engine:
 
     def detect_compression(self, df: pd.DataFrame,
                             consol: dict,
-                            last_n: int = 5) -> Optional[dict]:
+                            last_n: int = 5) -> dict | None:
         """
         After consolidation, detect if candles are compressing (narrowing).
         Compression = candle ranges getting smaller within the consolidation.
@@ -513,7 +512,7 @@ class C4Engine:
         return None
 
     def detect_catalyst(self, df: pd.DataFrame,
-                         consol: dict) -> Optional[CRTCandle]:
+                         consol: dict) -> CRTCandle | None:
         """
         Detect the catalyst candle — the CRT manipulation sweep that signals
         the true direction. Must be a liquidity sweep beyond consolidation range.
@@ -548,7 +547,7 @@ class C4Engine:
     def detect_setup(self, df: pd.DataFrame,
                       symbol: str = "",
                       timeframe: str = "15minute",
-                      amd_zones: list = None) -> Optional[C4Setup]:
+                      amd_zones: list = None) -> C4Setup | None:
         """
         Full C4 detection on a DataFrame.
         Returns C4Setup if a valid setup is found, else None.

@@ -15,7 +15,7 @@ def test_run_scan_empty_no_error(monkeypatch):
     """run_scan with no open positions should return empty list without DB access."""
     monkeypatch.setattr(
         "mcp_server.options_seller.position_manager._fetch_open_positions",
-        lambda: [],
+        list,
     )
     result = run_scan(spot_lookup={}, chain_lookup={})
     assert isinstance(result, list)

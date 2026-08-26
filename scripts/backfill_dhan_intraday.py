@@ -322,8 +322,8 @@ def main():
     )
 
     # Setup DB
-    from mcp_server.db import SessionLocal
     from mcp_server.data_provider import get_provider
+    from mcp_server.db import SessionLocal
 
     session = SessionLocal()
     _ensure_progress_table(session)

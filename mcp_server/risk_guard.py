@@ -67,8 +67,8 @@ class RiskGuardState:
     """Tracks weekly P&L + broker heartbeat for halt gates."""
 
     week_start: date = field(default_factory=lambda: _iso_week_start(date.today()))
-    weekly_starting_capital: Decimal = field(default_factory=lambda: Decimal("0"))
-    weekly_realized_pnl: Decimal = field(default_factory=lambda: Decimal("0"))
+    weekly_starting_capital: Decimal = field(default_factory=lambda: Decimal(0))
+    weekly_realized_pnl: Decimal = field(default_factory=lambda: Decimal(0))
     last_broker_heartbeat: datetime | None = None
 
     is_weekly_halted: bool = False
@@ -80,7 +80,7 @@ class RiskGuardState:
         if current_week_start != self.week_start:
             self.week_start = current_week_start
             self.weekly_starting_capital = capital
-            self.weekly_realized_pnl = Decimal("0")
+            self.weekly_realized_pnl = Decimal(0)
             self.is_weekly_halted = False
             self.weekly_halt_reason = ""
             logger.info("RiskGuard: new ISO week, resetting weekly P&L")
@@ -169,7 +169,7 @@ class RiskGuard:
     def check(
         self,
         capital: Numeric,
-        deployed: Numeric = Decimal("0"),
+        deployed: Numeric = Decimal(0),
         now: datetime | None = None,
     ) -> tuple[bool, str | None]:
         """Run all halt gates. First trip wins."""

@@ -73,6 +73,7 @@ async def api_kite_callback(request_token: str = Query(...)):
 
         try:
             from kiteconnect import KiteConnect
+
             from mcp_server import mcp_server as _ms
             kite = KiteConnect(api_key=settings.KITE_API_KEY)
             kite.set_access_token(access_token)
@@ -141,8 +142,8 @@ async def tool_refresh_gwc_token():
     Result is cached to data/gwc_token.json for the rest of the trading day.
     """
     try:
-        from mcp_server.gwc_auth import refresh_gwc_token
         from mcp_server.data_provider import get_provider
+        from mcp_server.gwc_auth import refresh_gwc_token
         access_token = await asyncio.to_thread(refresh_gwc_token)
         try:
             provider = get_provider()

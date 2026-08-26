@@ -7,29 +7,29 @@ get_stock_data cache integration.
 """
 
 import os
-import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # Use SQLite for tests
 os.environ["DATABASE_URL"] = "sqlite:///test_trading.db"
 
-from mcp_server.db import Base  # noqa: E402
-from mcp_server.models import OHLCVCache  # noqa: E402
-from mcp_server.ohlcv_cache import (  # noqa: E402
-    check_cache,
-    store_cache,
+from mcp_server.db import Base
+from mcp_server.models import OHLCVCache
+from mcp_server.ohlcv_cache import (
+    _DAILY_INTERVALS,
     _is_cache_fresh,
     _normalize_bar_date,
-    purge_old_data,
-    invalidate_ticker,
+    check_cache,
     get_cache_stats,
+    invalidate_ticker,
+    purge_old_data,
     reset_counters,
-    _DAILY_INTERVALS,
+    store_cache,
 )
 
 TEST_DB_URL = "sqlite:///test_ohlcv_cache.db"

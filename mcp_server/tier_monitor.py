@@ -1,4 +1,5 @@
 import logging
+
 from sqlalchemy.orm import Session
 
 from mcp_server.market_calendar import now_ist

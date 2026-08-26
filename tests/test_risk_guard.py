@@ -18,14 +18,13 @@ from mcp_server.risk_guard import (
     validate_spread_acceptable,
 )
 
-
 # ── Weekly loss ─────────────────────────────────────────────
 
 
 def test_weekly_loss_does_not_trigger_below_limit():
     g = RiskGuard()
-    cap = Decimal("100000")
-    g.record_pnl(Decimal("-2000"), cap)  # -2% — below the 5% halt
+    cap = Decimal(100000)
+    g.record_pnl(Decimal(-2000), cap)  # -2% — below the 5% halt
     halt, reason = g.check_weekly_loss(cap)
     assert halt is False
     assert reason is None
@@ -33,9 +32,9 @@ def test_weekly_loss_does_not_trigger_below_limit():
 
 def test_weekly_loss_triggers_at_limit():
     g = RiskGuard()
-    cap = Decimal("100000")
+    cap = Decimal(100000)
     # Drive below the -5% threshold
-    g.record_pnl(Decimal("-5500"), cap)
+    g.record_pnl(Decimal(-5500), cap)
     halt, reason = g.check_weekly_loss(cap)
     assert halt is True
     assert "Weekly loss" in reason
@@ -47,13 +46,13 @@ def test_weekly_loss_resets_on_new_week(monkeypatch):
     g = RiskGuard()
     last_week = _iso_week_start(date.today()) - timedelta(days=7)
     g.state.week_start = last_week
-    g.state.weekly_starting_capital = Decimal("100000")
-    g.state.weekly_realized_pnl = Decimal("-9000")  # -9% — would normally halt
+    g.state.weekly_starting_capital = Decimal(100000)
+    g.state.weekly_realized_pnl = Decimal(-9000)  # -9% — would normally halt
     g.state.is_weekly_halted = True
 
-    halt, _ = g.check_weekly_loss(Decimal("100000"))
+    halt, _ = g.check_weekly_loss(Decimal(100000))
     assert halt is False, "New ISO week must reset the weekly halt"
-    assert g.state.weekly_realized_pnl == Decimal("0")
+    assert g.state.weekly_realized_pnl == Decimal(0)
     assert g.state.week_start == _iso_week_start(date.today())
 
 
@@ -67,15 +66,15 @@ def test_weekly_loss_constant_is_negative_5pct():
 
 def test_margin_below_warn_passes():
     g = RiskGuard()
-    halt, _ = g.check_margin(capital=Decimal("100000"), deployed=Decimal("50000"))
+    halt, _ = g.check_margin(capital=Decimal(100000), deployed=Decimal(50000))
     assert halt is False
 
 
 def test_margin_at_halt_threshold_blocks():
     g = RiskGuard()
     halt, reason = g.check_margin(
-        capital=Decimal("100000"),
-        deployed=Decimal("85000"),  # exactly 85%
+        capital=Decimal(100000),
+        deployed=Decimal(85000),  # exactly 85%
     )
     assert halt is True
     assert "Margin utilisation" in reason
@@ -85,8 +84,8 @@ def test_margin_warn_threshold_logs_but_passes(caplog):
     g = RiskGuard()
     with caplog.at_level("WARNING"):
         halt, _ = g.check_margin(
-            capital=Decimal("100000"),
-            deployed=Decimal("75000"),  # 75% — between warn and halt
+            capital=Decimal(100000),
+            deployed=Decimal(75000),  # 75% — between warn and halt
         )
     assert halt is False
     assert any("margin utilisation" in m.lower() for m in caplog.messages), (
@@ -96,7 +95,7 @@ def test_margin_warn_threshold_logs_but_passes(caplog):
 
 def test_margin_zero_capital_does_not_explode():
     g = RiskGuard()
-    halt, _ = g.check_margin(capital=Decimal("0"), deployed=Decimal("0"))
+    halt, _ = g.check_margin(capital=Decimal(0), deployed=Decimal(0))
     assert halt is False
 
 
@@ -134,10 +133,10 @@ def test_heartbeat_stale_blocks():
 
 def test_composite_check_returns_first_failing_gate():
     g = RiskGuard()
-    cap = Decimal("100000")
+    cap = Decimal(100000)
     # Trip weekly loss + margin simultaneously; weekly is the first listed gate.
-    g.record_pnl(Decimal("-6000"), cap)
-    halt, reason = g.check(capital=cap, deployed=Decimal("90000"))
+    g.record_pnl(Decimal(-6000), cap)
+    halt, reason = g.check(capital=cap, deployed=Decimal(90000))
     assert halt is True
     assert reason.startswith("weekly_loss")
 
@@ -145,7 +144,7 @@ def test_composite_check_returns_first_failing_gate():
 def test_composite_check_passes_when_clean():
     g = RiskGuard()
     g.record_broker_heartbeat()
-    halt, reason = g.check(capital=Decimal("100000"), deployed=Decimal("10000"))
+    halt, reason = g.check(capital=Decimal(100000), deployed=Decimal(10000))
     assert halt is False
     assert reason is None
 
@@ -189,7 +188,7 @@ def test_spread_rejected_wide():
 
 
 def test_spread_rejects_crossed_book():
-    ok, err = validate_spread_acceptable(bid=Decimal("101"), ask=Decimal("100"))
+    ok, err = validate_spread_acceptable(bid=Decimal(101), ask=Decimal(100))
     assert ok is False
     assert "crossed" in err.lower() or "invalid" in err.lower()
 
@@ -213,19 +212,19 @@ def test_iso_week_start_is_monday():
 
 def test_record_pnl_updates_weekly_tally():
     g = RiskGuard()
-    cap = Decimal("100000")
-    g.record_pnl(Decimal("-1000"), cap)
-    g.record_pnl(Decimal("-2000"), cap)
-    assert g.state.weekly_realized_pnl == Decimal("-3000")
+    cap = Decimal(100000)
+    g.record_pnl(Decimal(-1000), cap)
+    g.record_pnl(Decimal(-2000), cap)
+    assert g.state.weekly_realized_pnl == Decimal(-3000)
     halt, _ = g.check_weekly_loss(cap)
     assert halt is False  # -3% still below the -5% halt
 
 
 def test_record_pnl_accumulates_to_halt():
     g = RiskGuard()
-    cap = Decimal("100000")
+    cap = Decimal(100000)
     for _ in range(6):
-        g.record_pnl(Decimal("-1000"), cap)
+        g.record_pnl(Decimal(-1000), cap)
     # -6% cumulative — must be halted by the auto re-eval inside record_pnl
     assert g.state.is_weekly_halted is True
 

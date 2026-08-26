@@ -321,7 +321,7 @@ def generate_signals_for_backtest(
     suppressed. This lets the backtest reflect the same gate that the
     live system applies. Set to False to see unfiltered signal count.
     """
-    from mcp_server.regime_detector import classify_from_df, STRATEGY_GATES
+    from mcp_server.regime_detector import STRATEGY_GATES, classify_from_df
 
     gen = FiveEMAGenerator()
     cap = float(to_money(capital))

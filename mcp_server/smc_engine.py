@@ -13,7 +13,6 @@ Integrates with the MWA scoring system as scanners 41-52.
 """
 
 import logging
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -238,7 +237,7 @@ class SMCEngine:
 
     # ── 1. Break of Structure (BOS) ──────────────────────────
 
-    def detect_bos(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_bos(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect Break of Structure.
 
@@ -288,7 +287,7 @@ class SMCEngine:
 
     # ── 2. Change of Character (CHoCH) ───────────────────────
 
-    def detect_choch(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_choch(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect Change of Character (trend reversal signal).
 
@@ -503,7 +502,7 @@ class SMCEngine:
 
     def detect_liquidity_sweep(
         self, df: pd.DataFrame
-    ) -> Optional[PatternResult]:
+    ) -> PatternResult | None:
         """
         Detect Liquidity Sweeps (stop hunts / equal level raids).
 
@@ -557,7 +556,7 @@ class SMCEngine:
 
     def detect_premium_discount(
         self, df: pd.DataFrame
-    ) -> Optional[PatternResult]:
+    ) -> PatternResult | None:
         """
         Detect whether price is in Premium (above EQ) or Discount (below EQ).
 
@@ -883,7 +882,7 @@ class SMCEngine:
 
     # ── 10. Market Structure Shift (MSS) ──────────────────────
 
-    def detect_mss(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_mss(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect Market Structure Shift — the first break of a key level
         that signals a potential trend change. More aggressive than CHoCH.
@@ -940,7 +939,7 @@ class SMCEngine:
 
     # ── 11. Optimal Trade Entry (OTE) ─────────────────────────
 
-    def detect_ote(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_ote(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect Optimal Trade Entry — price retracing to the 62%-79% Fibonacci
         zone of the last impulse move (the institutional sweet spot).
@@ -1002,7 +1001,7 @@ class SMCEngine:
 
     # ── 12. Inducement (IDM) ──────────────────────────────────
 
-    def detect_inducement(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def detect_inducement(self, df: pd.DataFrame) -> PatternResult | None:
         """
         Detect Inducement — minor liquidity pools (minor swing highs/lows)
         that trap retail traders before the real move.
@@ -1192,7 +1191,7 @@ class SMCEngine:
 
     def detect_fake_breakout(
         self, df: pd.DataFrame
-    ) -> Optional[PatternResult]:
+    ) -> PatternResult | None:
         """
         Detect Fake Breakout — price breaks a key level then reverses.
 
@@ -1245,7 +1244,7 @@ class SMCEngine:
 
     def detect_ema_pullback(
         self, df: pd.DataFrame
-    ) -> Optional[PatternResult]:
+    ) -> PatternResult | None:
         """
         Detect 9/21 EMA pullback entries in trending markets.
 

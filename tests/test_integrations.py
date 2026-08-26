@@ -12,7 +12,6 @@ import os
 
 import pytest
 
-
 # ============================================================
 # 1. n8n Workflow Structure Validation
 # ============================================================
@@ -162,8 +161,11 @@ class TestSheetsAutoSync:
 
     def test_sheets_sync_functions_exist(self):
         from mcp_server.sheets_sync import (
-            sync_watchlist, log_signal, update_accuracy,
-            log_mwa, sync_active_trades,
+            log_mwa,
+            log_signal,
+            sync_active_trades,
+            sync_watchlist,
+            update_accuracy,
         )
         assert callable(sync_watchlist)
         assert callable(log_signal)
@@ -178,8 +180,9 @@ class TestSheetsAutoSync:
 
     def test_auto_sync_helper_exists(self):
         """The _auto_sync_sheets async helper should exist in mcp_server."""
-        from mcp_server.mcp_server import _auto_sync_sheets
         import asyncio
+
+        from mcp_server.mcp_server import _auto_sync_sheets
         assert asyncio.iscoroutinefunction(_auto_sync_sheets)
 
 

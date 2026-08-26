@@ -85,6 +85,7 @@ def _load_dhan_3min(symbols: list[str], days: int) -> dict[str, list[dict]]:
     Returns {sym: [{date, ts, o, h, l, c, is_last_of_day}]}
     """
     import pandas as pd
+
     from mcp_server.data_provider import DhanSource
 
     dhan = DhanSource()

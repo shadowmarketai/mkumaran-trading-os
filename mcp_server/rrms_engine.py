@@ -105,7 +105,7 @@ class RRMSEngine:
         """Calculate for LONG position."""
         # Entry trigger: CMP must be within 2% of LTRP
         entry_zone_upper = ltrp * Decimal("1.02")
-        zero = Decimal("0")
+        zero = Decimal(0)
 
         if cmp > entry_zone_upper:
             return RRMSResult(
@@ -179,7 +179,7 @@ class RRMSEngine:
         pivot_high: Decimal,
     ) -> RRMSResult:
         """Calculate for SHORT position (reversed logic)."""
-        zero = Decimal("0")
+        zero = Decimal(0)
         # For shorts: entry near pivot_high, target at ltrp, SL above pivot_high
         entry_zone_lower = pivot_high * Decimal("0.98")
 

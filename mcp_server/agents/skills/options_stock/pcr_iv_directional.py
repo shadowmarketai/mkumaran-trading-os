@@ -7,8 +7,11 @@ Disclaimer kept until 60+ live outcomes logged via Dhan chain data.
 """
 
 from __future__ import annotations
+
 from typing import Any
+
 import pandas as pd
+
 from mcp_server.agents.skills.base_skill import BaseSkill
 from mcp_server.agents.skills.indicators import make_signal
 

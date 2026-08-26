@@ -1,9 +1,9 @@
-import os
 import logging
+import os
 from pathlib import Path
 
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +71,9 @@ def run_alembic_upgrade() -> None:
     consolidation plan (docs/SCHEMA_CONSOLIDATION_PLAN.md).
     """
     try:
-        from alembic import command
         from alembic.config import Config
+
+        from alembic import command
     except ImportError:
         logger.warning("Alembic not installed — skipping upgrade")
         return

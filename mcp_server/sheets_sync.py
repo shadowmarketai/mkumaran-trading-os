@@ -1,7 +1,6 @@
 """Google Sheets auto-sync for MKUMARAN Trading OS."""
 import logging
 from datetime import date, timedelta
-from typing import Optional
 
 from mcp_server.config import settings
 
@@ -147,7 +146,7 @@ def log_paper_trade(
 def close_paper_trade(
     symbol: str,
     exit_price: float,
-    exit_date: Optional[str] = None,
+    exit_date: str | None = None,
     reason: str = "",
     scanner_filter: str = "",
 ) -> str:

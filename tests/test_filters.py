@@ -9,7 +9,6 @@ from mcp_server.sector_filter import (
     sector_allows_trade,
 )
 
-
 # ── Delivery Filter ───────────────────────────────────────────
 
 def test_delivery_filter_passes():

@@ -11,7 +11,7 @@ Optional: NEWSAPI_KEY env var for NewsAPI.org integration (free tier, 100 req/da
 import logging
 import re
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 
 import requests

@@ -1,10 +1,10 @@
 import logging
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass
-from typing import Optional
 
-from mcp_server.volatility import scaled_tolerance, calculate_atr_pct
+from mcp_server.volatility import calculate_atr_pct, scaled_tolerance
 
 logger = logging.getLogger(__name__)
 
@@ -520,7 +520,7 @@ class PatternEngine:
 
         return None
 
-    def _detect_broadening(self, df: pd.DataFrame) -> Optional[PatternResult]:
+    def _detect_broadening(self, df: pd.DataFrame) -> PatternResult | None:
         """Detect Broadening (Megaphone): rising highs AND falling lows simultaneously.
 
         Signals increasing volatility and indecision — typically precedes sharp moves.

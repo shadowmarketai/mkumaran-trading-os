@@ -3,15 +3,14 @@
 from decimal import Decimal
 
 from mcp_server.portfolio_risk import (
-    get_sector,
-    check_sector_concentration,
-    check_asset_class_concentration,
-    validate_portfolio_risk,
-    get_portfolio_exposure,
-    MAX_SECTOR_PCT,
     MAX_ASSET_CLASS_PCT,
+    MAX_SECTOR_PCT,
+    check_asset_class_concentration,
+    check_sector_concentration,
+    get_portfolio_exposure,
+    get_sector,
+    validate_portfolio_risk,
 )
-
 
 # ── Sector Mapping Tests ─────────────────────────────────────
 

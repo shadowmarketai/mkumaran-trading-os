@@ -25,17 +25,17 @@ BACKWARD COMPATIBILITY:
   DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN
 """
 
-import os
-import time
 import json
 import logging
-import requests
-import pandas as pd
-import yfinance as yf
-from datetime import datetime, timedelta, date
-from pathlib import Path
-from typing import Optional, Dict
+import os
+import time
+from datetime import date, datetime, timedelta
 from functools import wraps
+from pathlib import Path
+
+import pandas as pd
+import requests
+import yfinance as yf
 
 from mcp_server.asset_registry import parse_ticker, resolve_yf_symbol
 from mcp_server.config import settings
@@ -570,7 +570,6 @@ class AngelTokenInvalid(Exception):
     Caught by MarketDataProvider._angel_fetch_with_refresh to trigger a
     mid-day TOTP re-login via force_refresh_angel_token().
     """
-    pass
 
 
 def _is_angel_token_error(payload: dict | str | None) -> bool:
@@ -628,7 +627,7 @@ class AngelSource:
         self.api_key = _settings.ANGEL_API_KEY
         self.client = None
         self.logged_in = False
-        self._token_cache: Dict[str, str] = {}
+        self._token_cache: dict[str, str] = {}
         # Circuit breaker: after this many consecutive AG8001 / invalid-token
         # responses, the source self-disables for the rest of the session.
         # Prevents the scan loop from doing N × TOTP-login when Angel's IP
@@ -794,7 +793,7 @@ class AngelSource:
             logger.warning("Angel orderBook error: %s", e)
             return {}
 
-    def _get_token(self, symbol: str, exchange: str = "NSE") -> Optional[str]:
+    def _get_token(self, symbol: str, exchange: str = "NSE") -> str | None:
         """Get instrument token for symbol (cached).
 
         Raises AngelTokenInvalid if the JWT has expired so the caller can
@@ -877,7 +876,7 @@ class AngelSource:
 
     def _pick_instrument(
         self, candidates: list, symbol: str, exchange: str
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Filter searchScrip results to the correct contract.
 
@@ -1533,11 +1532,11 @@ class MarketDataProvider:
         }
 
         # Quote cache (symbol → {quote, timestamp})
-        self._quote_cache: Dict[str, dict] = {}
+        self._quote_cache: dict[str, dict] = {}
         self._cache_ttl = 15  # seconds
 
         # Historical cache (symbol+interval → DataFrame)
-        self._hist_cache: Dict[str, tuple] = {}
+        self._hist_cache: dict[str, tuple] = {}
         self._hist_ttl = 3600  # 1 hour
 
     def initialise(self, sources: list = None):
@@ -1673,7 +1672,10 @@ class MarketDataProvider:
                 try:
                     from mcp_server.kite_auth import get_authenticated_kite
                     kite = get_authenticated_kite()
-                    from mcp_server.data_provider import _resolve_instrument_token, _INTERVAL_MAP
+                    from mcp_server.data_provider import (
+                        _INTERVAL_MAP,
+                        _resolve_instrument_token,
+                    )
                     token = _resolve_instrument_token(f"{exchange}:{symbol}")
                     if token is None:
                         return pd.DataFrame()
@@ -1999,7 +2001,7 @@ class MarketDataProvider:
 # SINGLETON INSTANCE
 # ══════════════════════════════════════════════════════════════════
 
-_provider_instance: Optional[MarketDataProvider] = None
+_provider_instance: MarketDataProvider | None = None
 
 
 def get_provider() -> MarketDataProvider:
@@ -2361,8 +2363,8 @@ def get_stock_data(
     # Step 1: Check OHLCV cache (unless force_refresh)
     if not force_refresh and settings.OHLCV_CACHE_ENABLED:
         try:
-            from mcp_server.ohlcv_cache import check_cache
             from mcp_server.db import SessionLocal
+            from mcp_server.ohlcv_cache import check_cache
 
             cache_session = SessionLocal()
             try:
@@ -2446,8 +2448,8 @@ def _store_to_cache(ticker: str, interval: str, df: pd.DataFrame, source: str) -
     if not settings.OHLCV_CACHE_ENABLED:
         return
     try:
-        from mcp_server.ohlcv_cache import store_cache
         from mcp_server.db import SessionLocal
+        from mcp_server.ohlcv_cache import store_cache
 
         cache_session = SessionLocal()
         try:

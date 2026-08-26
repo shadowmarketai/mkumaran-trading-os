@@ -2,19 +2,20 @@
 Wall Street Tools -- 10 AI-powered analysis functions for MKUMARAN Trading OS.
 Each function wraps a Wall Street prompt template and calls AI (Grok/Kimi).
 """
-import logging
 import json
+import logging
+
 from mcp_server.ai_provider import call_ai, call_ai_second_opinion
 from mcp_server.prompts import (
-    GOLDMAN_SCREEN_PROMPT,
-    MORGAN_STANLEY_DCF_PROMPT,
-    BRIDGEWATER_RISK_PROMPT,
-    JPMORGAN_EARNINGS_PROMPT,
     BLACKROCK_PORTFOLIO_PROMPT,
+    BRIDGEWATER_RISK_PROMPT,
     CITADEL_TECHNICAL_PROMPT,
+    GOLDMAN_SCREEN_PROMPT,
     HARVARD_DIVIDEND_PROMPT,
-    RENAISSANCE_PATTERN_PROMPT,
+    JPMORGAN_EARNINGS_PROMPT,
     MCKINSEY_MACRO_PROMPT,
+    MORGAN_STANLEY_DCF_PROMPT,
+    RENAISSANCE_PATTERN_PROMPT,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ def _call_gpt(prompt: str, max_tokens: int = 500, model: str = "") -> str:
 
 async def generate_ai_report(report_type: str, data: dict) -> str:
     """Generate an AI narrative report for morning brief or EOD."""
-    from .prompts import MORNING_BRIEF_PROMPT, EOD_REPORT_PROMPT
+    from .prompts import EOD_REPORT_PROMPT, MORNING_BRIEF_PROMPT
 
     prompt_map = {
         "morning": MORNING_BRIEF_PROMPT,

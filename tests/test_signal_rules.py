@@ -1,11 +1,10 @@
 """Tests for Signal Rules Engine."""
 
 from mcp_server.signal_rules import (
+    apply_confidence_boosts,
     check_auto_reject,
     validate_entry_rules,
-    apply_confidence_boosts,
 )
-
 
 # ── check_auto_reject ────────────────────────────────────────
 

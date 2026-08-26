@@ -357,7 +357,7 @@ async def tool_eod_summary():
 @router.post("/tools/check_signals")
 async def tool_check_signals():
     """Manually trigger signal monitor — check all OPEN signals for SL/TGT hit."""
-    from mcp_server.signal_monitor import monitor_open_signals, _send_close_alert
+    from mcp_server.signal_monitor import _send_close_alert, monitor_open_signals
     closed = monitor_open_signals()
     for c in closed:
         try:

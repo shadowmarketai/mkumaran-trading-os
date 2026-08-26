@@ -1,5 +1,6 @@
 import os
 import tempfile
+
 import pytest
 import pytest_asyncio
 from sqlalchemy import create_engine
@@ -10,9 +11,10 @@ _db_fd, _db_path = tempfile.mkstemp(suffix=".db", prefix="test_trading_")
 os.close(_db_fd)
 os.environ["DATABASE_URL"] = f"sqlite:///{_db_path}"
 
-from mcp_server.db import Base, get_db  # noqa: E402
-from mcp_server.mcp_server import app  # noqa: E402
-from httpx import AsyncClient, ASGITransport  # noqa: E402
+from httpx import ASGITransport, AsyncClient
+
+from mcp_server.db import Base, get_db
+from mcp_server.mcp_server import app
 
 TEST_DATABASE_URL = f"sqlite:///{_db_path}"
 engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})

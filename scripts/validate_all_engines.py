@@ -181,8 +181,8 @@ def run_one(
             logger.debug("Resume: using checkpoint %s/%s/%s", strategy, interval, ticker)
             return cached
 
-    from mcp_server.backtester import run_backtest
     from mcp_server.backtest_validation import run_full_validation, summarise
+    from mcp_server.backtester import run_backtest
 
     t0 = time.monotonic()
     try:

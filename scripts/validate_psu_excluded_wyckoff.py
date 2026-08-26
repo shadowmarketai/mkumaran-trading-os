@@ -120,8 +120,8 @@ def run_ticker(ticker: str, days: int, reports_dir: Path, resume: bool, suffix: 
 
     try:
         from mcp_server.backtester import (
-            run_backtest,
             DEFAULT_SLIPPAGE_PCT,
+            run_backtest,
         )
 
         result = run_backtest(
@@ -196,23 +196,23 @@ def write_report(agg: dict, results: list[dict], path: Path, full_universe: bool
         "FULL Nifty 100 (baseline comparison)" if full_universe
         else "Non-PSU ({} tickers, {} excluded)".format(agg["universe_size"], agg["psu_excluded"])
     )
-    pf_lift_str = "{:+.3f}".format(pf_lift) if pf_lift is not None else "—"
-    wr_str = "{:.1f}%".format(wr) if wr is not None else "—"
+    pf_lift_str = f"{pf_lift:+.3f}" if pf_lift is not None else "—"
+    wr_str = f"{wr:.1f}%" if wr is not None else "—"
 
     lines = [
-        "# PSU-Excluded Wyckoff — {}".format(date.today()),
+        f"# PSU-Excluded Wyckoff — {date.today()}",
         "",
         "## Configuration",
-        "- Universe: {}".format(univ_label),
+        f"- Universe: {univ_label}",
         "- Engine: Wyckoff standalone (no filters)",
-        "- Lookback: {} days | Capital: Rs.{:,}/ticker".format(DAYS, CAPITAL),
+        f"- Lookback: {DAYS} days | Capital: Rs.{CAPITAL:,}/ticker",
         "",
         "## Portfolio Summary vs Baseline",
         "",
         "| Metric | This run | Baseline (full universe) | Lift |",
         "|---|---|---|---|",
         "| Median PF | {} | {} | {} |".format(pf or "—", BASELINE_PF, pf_lift_str),
-        "| Median WR | {} | {}% | — |".format(wr_str, BASELINE_WR),
+        f"| Median WR | {wr_str} | {BASELINE_WR}% | — |",
         "| Median Sharpe | {} | {} | — |".format(sh or "—", BASELINE_SHARPE),
         f"| Total trades | {agg['total_trades']:,} | 744 (pipeline) | — |",
         f"| Profitable tickers | {agg['profitable_tickers']}/{agg['ok_count']} ({agg['profitable_pct']}%) | — | — |",

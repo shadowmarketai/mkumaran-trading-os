@@ -2,8 +2,7 @@
 
 from decimal import Decimal
 
-from mcp_server.signal_monitor import _check_signal_hit, _calc_pnl
-
+from mcp_server.signal_monitor import _calc_pnl, _check_signal_hit
 
 # ── SL/TGT hit detection ────────────────────────────────────
 

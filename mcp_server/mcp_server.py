@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import os
-
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -10,18 +9,17 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import desc, text
-
+from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import desc, text
+from sqlalchemy.orm import Session, joinedload
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from mcp_server.config import settings
-from mcp_server.db import init_db, run_alembic_upgrade, SessionLocal
+from mcp_server.db import SessionLocal, init_db, run_alembic_upgrade
 from mcp_server.models import (
     ActiveTrade,
     MWAScore,
@@ -97,7 +95,7 @@ async def _intraday_scan_loop():
 
 async def _deliver_intraday_signals(
     candidates: list[dict],
-    SessionLocal,  # noqa: N803
+    SessionLocal,
     Signal,
     ActiveTrade,
 ) -> None:
@@ -278,7 +276,9 @@ async def _nifty_strangle_loop():
             if today_str != last_check_date and past_930:
                 last_check_date = today_str
 
-                from mcp_server.nifty_strangle_live import check_and_emit_strangle_signal
+                from mcp_server.nifty_strangle_live import (
+                    check_and_emit_strangle_signal,
+                )
                 result = check_and_emit_strangle_signal()
 
                 if result and result.get("status") == "emitted":
@@ -291,7 +291,9 @@ async def _nifty_strangle_loop():
                         _fire_and_forget(send_telegram_message(msg, exchange="NFO", force=True))
                         # Broadcast to subscribers with F&O segment
                         try:
-                            from mcp_server.telegram_saas import broadcast_signal_to_users
+                            from mcp_server.telegram_saas import (
+                                broadcast_signal_to_users,
+                            )
                             _fire_and_forget(broadcast_signal_to_users(msg, exchange="NFO"))
                         except Exception:
                             pass
@@ -365,8 +367,10 @@ async def _monthly_rebalance_loop() -> None:
     10:00 IST. Sends a Telegram reminder so the user runs /rebalance to
     review the plan and confirm saving state.
     """
-    from mcp_server.market_calendar import now_ist, is_market_holiday, is_weekend
-    from datetime import date as _date, timedelta as _td
+    from datetime import date as _date
+    from datetime import timedelta as _td
+
+    from mcp_server.market_calendar import is_market_holiday, is_weekend, now_ist
 
     logger.info("Monthly rebalance reminder loop started")
     last_notified_month: str = ""  # YYYY-MM guard prevents duplicate alerts
@@ -451,8 +455,8 @@ async def _options_signal_loop():
                 signals = []
 
             if signals:
-                from mcp_server.telegram_bot import send_telegram_message
                 from mcp_server.options_signal_engine import format_option_signal_card
+                from mcp_server.telegram_bot import send_telegram_message
 
                 # ── Per-ticker conflict resolution ────────────────────────────
                 # Multiple strategies can fire on the same ticker in one cycle
@@ -676,7 +680,8 @@ _kite_login_notify_cache: dict[str, str] = {}
 # Scan-in-progress lock — prevents concurrent MWA scans from the auto-scan
 # loop (every 15 min) and n8n extended monitor (every 10 min) from
 # overlapping and generating duplicate signals for the same ticker.
-import threading  # noqa: E402 — deferred to this point to avoid circular import
+import threading
+
 _scan_lock = threading.Lock()
 
 
@@ -791,7 +796,7 @@ def _run_self_dev_pipeline_sync() -> dict[str, Any]:
     # and apply automatic corrections for tomorrow.
     try:
         from mcp_server.db import SessionLocal as _EodSession
-        from mcp_server.models import Signal, Outcome
+        from mcp_server.models import Outcome, Signal
         eod_db = _EodSession()
         try:
             today = date.today()
@@ -994,7 +999,9 @@ async def _dhan_token_refresh_loop() -> None:
             await asyncio.sleep(3600)
         try:
             from mcp_server.dhan_auth import (
-                get_dhan_token, _hours_remaining, _load_cached_token,
+                _hours_remaining,
+                _load_cached_token,
+                get_dhan_token,
             )
             # Read from disk cache — the cache is always updated after a
             # successful refresh. Reading from dhan.client.dhan_context
@@ -1102,8 +1109,8 @@ async def lifespan(app: FastAPI):
     # (NYMEX WTI USD) etc., which is wrong currency + wrong contract for
     # MCX FUTCOM lookups. After purge, next fetch hits gwc/angel/kite.
     try:
-        from mcp_server.ohlcv_cache import purge_yfinance_mcx_nfo
         from mcp_server.db import SessionLocal
+        from mcp_server.ohlcv_cache import purge_yfinance_mcx_nfo
         _purge_session = SessionLocal()
         try:
             purged = purge_yfinance_mcx_nfo(_purge_session)
@@ -1348,7 +1355,9 @@ async def lifespan(app: FastAPI):
     # Monitors open strangle/condor positions and fires adjustment alerts.
     # Disable with OPTIONS_GREEKS_LOOP_ENABLED=false.
     try:
-        from mcp_server.options_seller.greeks_refresh_loop import start_loop as _opts_loop
+        from mcp_server.options_seller.greeks_refresh_loop import (
+            start_loop as _opts_loop,
+        )
         asyncio.create_task(_opts_loop())
         logger.info("Options seller Greeks refresh loop started (every 5 min, market hours only)")
     except Exception as e:
@@ -1366,6 +1375,7 @@ async def lifespan(app: FastAPI):
     # Alerts on GHOST / PHANTOM / QTY_DRIFT. Never raises — logs only.
     async def _reconciler_loop() -> None:
         import asyncio as _aio
+
         from mcp_server.market_calendar import is_market_open as _is_open
         while True:
             try:
@@ -1390,8 +1400,8 @@ async def lifespan(app: FastAPI):
         ):
             async def _gwc_startup_login():
                 try:
-                    from mcp_server.gwc_auth import refresh_gwc_token
                     from mcp_server.data_provider import get_provider
+                    from mcp_server.gwc_auth import refresh_gwc_token
                     access_token = await asyncio.to_thread(refresh_gwc_token)
                     provider = get_provider()
                     provider.gwc.set_access_token(access_token)
@@ -1515,22 +1525,23 @@ app = FastAPI(
 
 # ── Per-domain routers (progressive extraction) ─────────────
 # See docs/MCP_SERVER_ROUTER_SPLIT_PLAN.md for the full layout.
-from mcp_server.routers import admin as _router_admin  # noqa: E402
-from mcp_server.routers import auth as _router_auth  # noqa: E402
-from mcp_server.routers import backtest as _router_backtest  # noqa: E402
-from mcp_server.routers import brokers as _router_brokers  # noqa: E402
-from mcp_server.routers import fno as _router_fno  # noqa: E402
-from mcp_server.routers import health as _router_health  # noqa: E402
-from mcp_server.routers import market_data as _router_market_data  # noqa: E402
-from mcp_server.routers import options as _router_options  # noqa: E402
-from mcp_server.routers import scanners as _router_scanners  # noqa: E402
-from mcp_server.routers import screener as _router_screener  # noqa: E402
-from mcp_server.routers import selfdev as _router_selfdev  # noqa: E402
-from mcp_server.routers import signals as _router_signals  # noqa: E402
-from mcp_server.routers import trades as _router_trades  # noqa: E402
-from mcp_server.routers import wallstreet as _router_wallstreet  # noqa: E402
-from mcp_server.routers import watchlist as _router_watchlist  # noqa: E402
-from mcp_server.routers import webhooks as _router_webhooks  # noqa: E402
+from mcp_server.routers import admin as _router_admin
+from mcp_server.routers import auth as _router_auth
+from mcp_server.routers import backtest as _router_backtest
+from mcp_server.routers import brokers as _router_brokers
+from mcp_server.routers import fno as _router_fno
+from mcp_server.routers import health as _router_health
+from mcp_server.routers import market_data as _router_market_data
+from mcp_server.routers import options as _router_options
+from mcp_server.routers import scanners as _router_scanners
+from mcp_server.routers import screener as _router_screener
+from mcp_server.routers import selfdev as _router_selfdev
+from mcp_server.routers import signals as _router_signals
+from mcp_server.routers import trades as _router_trades
+from mcp_server.routers import wallstreet as _router_wallstreet
+from mcp_server.routers import watchlist as _router_watchlist
+from mcp_server.routers import webhooks as _router_webhooks
+
 app.include_router(_router_admin.router)
 app.include_router(_router_auth.router)
 app.include_router(_router_backtest.router)
@@ -1556,7 +1567,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from mcp_server.routers.deps import limiter  # noqa: E402
+from mcp_server.routers.deps import limiter
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -1765,6 +1777,7 @@ def _fire_and_forget(coro) -> None:
 def _run_mwa_scan_background(job_id: str) -> None:
     """Run the full MWA scan in a background thread, store result in _mwa_jobs."""
     import traceback
+
     from mcp_server.db import SessionLocal
     try:
         _mwa_jobs[job_id]["status"] = "running"
@@ -1801,10 +1814,19 @@ def _execute_mwa_scan(db: Session, segments: list[str] | None = None) -> dict:
 
 def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> dict:
     """Inner implementation — always called under _scan_lock."""
-    from mcp_server.mwa_scanner import MWAScanner
-    from mcp_server.mwa_scoring import calculate_mwa_score, get_promoted_stocks, format_morning_brief
-    from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, NFO_INDEX_UNIVERSE, NFO_STOCK_UNIVERSE
+    from mcp_server.asset_registry import (
+        CDS_UNIVERSE,
+        MCX_UNIVERSE,
+        NFO_INDEX_UNIVERSE,
+        NFO_STOCK_UNIVERSE,
+    )
     from mcp_server.data_provider import get_provider
+    from mcp_server.mwa_scanner import MWAScanner
+    from mcp_server.mwa_scoring import (
+        calculate_mwa_score,
+        format_morning_brief,
+        get_promoted_stocks,
+    )
 
     provider = get_provider()
 
@@ -1816,13 +1838,14 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
     data_diag: dict = {"nse": 0, "cds": 0, "mcx": 0, "nfo": 0, "errors": []}
 
     try:
-        from mcp_server.nse_scanner import _get_nse_universe
+        import gc as _gc
 
         # 1) NSE equity — routed via Angel → NSE India → yfinance
         # Limit universe size to prevent server crash on small VPS
         import os as _os
         import time as _scan_time
-        import gc as _gc
+
+        from mcp_server.nse_scanner import _get_nse_universe
         _MAX_NSE = int(_os.getenv("MWA_MAX_NSE_STOCKS", "30"))
         _BATCH_DELAY = float(_os.getenv("MWA_BATCH_DELAY", "0.1"))
         if segments is None or "NSE" in segments:
@@ -2099,8 +2122,8 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
         # 1666 inside a conditional) and every reference below raises
         # UnboundLocalError when TELEGRAM_SIGNALS_ONLY=true — which is
         # the production default, silently killing every signal card.
-        from mcp_server.telegram_bot import send_telegram_message  # noqa: F811
         from mcp_server.mwa_signal_generator import generate_mwa_signals
+        from mcp_server.telegram_bot import send_telegram_message
 
         # Exclude tickers that already have OPEN signals — otherwise every
         # scan feeds the same top-10 into signal generation and the dedup
@@ -2311,7 +2334,10 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
             # SMC analysis — AMD + CRT + C4 confidence boost
             smc_card_text = ""
             try:
-                from mcp_server.smart_money_concepts import SMCEngine, smc_confidence_boost
+                from mcp_server.smart_money_concepts import (
+                    SMCEngine,
+                    smc_confidence_boost,
+                )
                 smc_engine = SMCEngine()
                 sig_df = stock_data.get(sig["ticker"])
                 if sig_df is not None and len(sig_df) >= 15:
@@ -2509,8 +2535,8 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                 # ── Self-development: capture entry context features ──
                 try:
                     from mcp_server.signal_features import (
-                        extract_entry_features,
                         apply_features_to_signal,
+                        extract_entry_features,
                     )
                     feat = extract_entry_features(
                         sig.get("ohlcv_df"),
@@ -2832,7 +2858,7 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
 async def _auto_sync_sheets(signal_data: dict = None, mwa_data: dict = None):
     """Background auto-sync to Google Sheets + Stitch. Non-blocking, fails silently."""
     try:
-        from mcp_server.sheets_sync import log_signal, log_mwa
+        from mcp_server.sheets_sync import log_mwa, log_signal
         if signal_data:
             log_signal(signal_data)
         if mwa_data:
@@ -3057,7 +3083,8 @@ def get_system_health() -> dict:
 
     # Last MWA scan time
     if _last_mwa_scan_time:
-        from datetime import timezone, timedelta as _td
+        from datetime import timedelta as _td
+        from datetime import timezone
         _ist = timezone(_td(hours=5, minutes=30))
         _scan_ist = _last_mwa_scan_time.replace(tzinfo=timezone.utc).astimezone(_ist)
         health["last_mwa_scan"] = _scan_ist.strftime("%I:%M %p IST")
@@ -3103,8 +3130,9 @@ _market_movers_ts: datetime | None = None
 def _fetch_market_movers() -> dict:
     """Fetch top gainers, losers, 52W highs, most-active across all segments."""
     import yfinance as yf
+
+    from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, MCX_YF_PROXY
     from mcp_server.nse_scanner import _get_nse_universe
-    from mcp_server.asset_registry import MCX_UNIVERSE, CDS_UNIVERSE, MCX_YF_PROXY
 
     results: dict[str, list[dict]] = {
         "gainers": [], "losers": [], "week52_high": [],
@@ -3254,7 +3282,7 @@ async def gwc_signal_intake(request: Request):
         return JSONResponse({"error": "text is required"}, status_code=400)
 
     try:
-        from mcp_server.gwc_tracker import parse_gwc, validate_gwc_signal, log_to_sheets
+        from mcp_server.gwc_tracker import log_to_sheets, parse_gwc, validate_gwc_signal
         sig = parse_gwc(text)
         if sig is None:
             return {"parsed": False, "message": "Not a tradeable signal (commentary ignored)"}

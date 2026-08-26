@@ -120,9 +120,10 @@ def _fetch_bhav(trade_date: date):
 
     Returns DataFrame with BankNifty option rows, or None if unavailable.
     """
-    import pandas as pd
-    import urllib.request
     import urllib.error
+    import urllib.request
+
+    import pandas as pd
 
     dd  = trade_date.strftime("%d")
     mon = NSE_MONTHS[trade_date.month]
@@ -395,8 +396,9 @@ def main() -> None:
         return
 
     if args.stats:
-        from mcp_server.db import SessionLocal
         from sqlalchemy import text as _text
+
+        from mcp_server.db import SessionLocal
         db = SessionLocal()
         r = db.execute(_text(
             "SELECT COUNT(DISTINCT expiry_date), COUNT(DISTINCT strike), COUNT(*) "
@@ -430,8 +432,9 @@ def main() -> None:
     )
 
     if not args.dry_run:
-        from mcp_server.db import SessionLocal
         from sqlalchemy import text as _text
+
+        from mcp_server.db import SessionLocal
         session = SessionLocal()
         try:
             session.execute(_text(CREATE_TABLE_SQL))

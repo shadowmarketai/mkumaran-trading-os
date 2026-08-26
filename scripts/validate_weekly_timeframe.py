@@ -222,7 +222,7 @@ def write_report(
     path: Path,
 ) -> None:
     lines = [
-        "# Weekly Timeframe — {}".format(date.today()),
+        f"# Weekly Timeframe — {date.today()}",
         "",
         "## Engine Summary",
         "",
@@ -286,7 +286,7 @@ def write_report(
             reverse=True,
         )[:5]
         if top:
-            lines.append("### {}".format(eng_name))
+            lines.append(f"### {eng_name}")
             lines.append("| Ticker | Trades | PF | WR |")
             lines.append("|---|---|---|---|")
             for r in top:
@@ -295,8 +295,8 @@ def write_report(
                 lines.append("| {} | {} | {} | {} |".format(
                     r["ticker"],
                     r.get("total_trades", 0),
-                    "{:.2f}".format(pf_t) if pf_t is not None else "—",
-                    "{:.0f}%".format(wr_t) if wr_t is not None else "—",
+                    f"{pf_t:.2f}" if pf_t is not None else "—",
+                    f"{wr_t:.0f}%" if wr_t is not None else "—",
                 ))
             lines.append("")
 
@@ -371,7 +371,7 @@ def main() -> None:
 
     engine_summaries = [aggregate_engine(all_results[e["name"]], e) for e in engines]
 
-    report_path = reports_dir / "weekly_timeframe_{}.md".format(date.today())
+    report_path = reports_dir / f"weekly_timeframe_{date.today()}.md"
     write_report(engine_summaries, all_results, report_path)
 
     print("\n" + "=" * 72)

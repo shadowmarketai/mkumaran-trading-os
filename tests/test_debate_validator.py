@@ -1,22 +1,20 @@
 """Tests for Debate Validator — debate_validator.py"""
 
 import json
-from unittest.mock import patch, MagicMock
-
+from unittest.mock import MagicMock, patch
 
 from mcp_server.debate_validator import (
-    should_debate,
-    _build_signal_context,
-    _build_memory_context,
     DebateMessage,
     DebateResult,
-    run_debate,
-    _call_bull_analyst,
+    _build_memory_context,
+    _build_signal_context,
     _call_bear_analyst,
+    _call_bull_analyst,
     _call_judge,
     _call_risk_assessment,
+    run_debate,
+    should_debate,
 )
-
 
 # ── Common fixtures ─────────────────────────────────────────────
 

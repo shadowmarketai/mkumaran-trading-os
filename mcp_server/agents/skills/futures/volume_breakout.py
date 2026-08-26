@@ -8,9 +8,12 @@ Paper trade for 30 days then promote to live.
 """
 
 from __future__ import annotations
+
 from typing import Any
+
 import numpy as np
 import pandas as pd
+
 from mcp_server.agents.skills.base_skill import BaseSkill
 from mcp_server.agents.skills.indicators import atr, make_signal
 

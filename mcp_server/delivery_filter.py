@@ -1,5 +1,6 @@
 import logging
 from datetime import date, timedelta
+
 import requests
 
 from mcp_server.asset_registry import filter_applies
@@ -37,8 +38,8 @@ def get_delivery_data(target_date: date | None = None) -> dict[str, float]:
             if resp.status_code != 200:
                 continue
 
-            import io
             import csv
+            import io
             reader = csv.DictReader(io.StringIO(resp.text))
 
             for row in reader:

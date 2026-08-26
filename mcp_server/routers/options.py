@@ -114,7 +114,7 @@ async def api_option_greeks(
 
     Pure-Python Black-Scholes — no Kite needed.
     """
-    from mcp_server.options_greeks import calculate_iv, calculate_greeks
+    from mcp_server.options_greeks import calculate_greeks, calculate_iv
 
     iv = calculate_iv(market_price, spot, strike, expiry_days, 0.065, option_type)
     greeks = calculate_greeks(spot, strike, expiry_days, 0.065, iv if iv > 0 else 0.20, option_type)
@@ -161,11 +161,11 @@ async def api_option_recommendation(symbol: str, direction: str = "LONG"):
     """
     from mcp_server import mcp_server as _ms
     from mcp_server.mwa_signal_generator import _compute_atr
+    from mcp_server.nse_scanner import get_stock_data
     from mcp_server.options_selector import (
         build_option_recommendation,
         is_eligible,
     )
-    from mcp_server.nse_scanner import get_stock_data
 
     symbol_u = (symbol or "").upper()
     direction_u = (direction or "LONG").upper()
@@ -257,8 +257,9 @@ async def api_option_recommendation(symbol: str, direction: str = "LONG"):
 @router.post("/api/options/greeks")
 async def api_options_greeks(req: GreeksRequest):
     """Calculate Greeks for a single option."""
-    from mcp_server.options_greeks import calculate_greeks
     from dataclasses import asdict as _asdict
+
+    from mcp_server.options_greeks import calculate_greeks
 
     result = calculate_greeks(
         spot=req.spot,
@@ -319,8 +320,9 @@ async def api_options_chain(
 @router.post("/api/options/payoff")
 async def api_options_payoff(req: PayoffRequest):
     """Calculate multi-leg options payoff curve."""
-    from mcp_server.options_payoff import OptionLeg, calculate_payoff
     from dataclasses import asdict as _asdict
+
+    from mcp_server.options_payoff import OptionLeg, calculate_payoff
 
     legs = [
         OptionLeg(
@@ -366,8 +368,9 @@ async def api_options_strategy_build(req: StrategyBuildRequest):
     Pass `name` (e.g. "iron_butterfly") and `params` (kwargs for the preset
     function from options_payoff.py).
     """
-    from mcp_server import options_payoff as op
     from dataclasses import asdict as _asdict
+
+    from mcp_server import options_payoff as op
 
     builder = getattr(op, req.name, None)
     if not callable(builder) or req.name.startswith("_"):
@@ -413,8 +416,11 @@ async def api_iv_regime(
       GET /api/options-seller/iv-regime/BANKNIFTY?vix=16.5
     """
     import asyncio
+
     from mcp_server.options_seller.iv_engine import (
-        classify_iv, _fetch_vix_history, _fetch_vix_current,
+        _fetch_vix_current,
+        _fetch_vix_history,
+        classify_iv,
     )
 
     # Fetch VIX history (needed for percentile rank)
@@ -480,8 +486,9 @@ async def api_build_strangle(
         &vix=16.5&iv=0.18&strike_step=100
     """
     import asyncio
-    from mcp_server.options_seller.iv_engine import classify_iv, _fetch_vix_history
+
     from mcp_server.options_greeks import calculate_greeks
+    from mcp_server.options_seller.iv_engine import _fetch_vix_history, classify_iv
     from mcp_server.options_seller.strike_selector import build_strangle
 
     # Require manual VIX since live fetch is unreliable in container
@@ -568,7 +575,8 @@ async def api_evaluate_adjustment(
     human-readable reason. Front-end can display this live to the operator.
     """
     from mcp_server.options_seller.adjustment_engine import (
-        LivePositionSnapshot, evaluate,
+        LivePositionSnapshot,
+        evaluate,
     )
     snap = LivePositionSnapshot(
         instrument=instrument,
@@ -613,9 +621,10 @@ async def api_open_position(
       POST /api/options-seller/open?instrument=BANKNIFTY&spot=56322&vix=16.5
     """
     import asyncio
-    from mcp_server.options_seller.position_manager import open_position
-    from mcp_server.options_selector import get_options_chain
+
     from mcp_server.options_greeks import calculate_greeks
+    from mcp_server.options_selector import get_options_chain
+    from mcp_server.options_seller.position_manager import open_position
 
     inst = instrument.upper()
     STEP_MAP = {
@@ -626,7 +635,7 @@ async def api_open_position(
     iv = 0.18
 
     # IV regime pre-check (fast fail before fetching chain)
-    from mcp_server.options_seller.iv_engine import classify_iv, _fetch_vix_history
+    from mcp_server.options_seller.iv_engine import _fetch_vix_history, classify_iv
     vix_history = await asyncio.to_thread(_fetch_vix_history, 252)
     hist_90 = vix_history[-90:] if len(vix_history) >= 90 else vix_history
     hist_1y = vix_history[-252:] if len(vix_history) >= 252 else vix_history
@@ -680,6 +689,7 @@ async def api_open_position(
 async def api_close_position(position_id: int, reason: str = "manual"):
     """Close an open options seller position and log the exit."""
     import asyncio
+
     from mcp_server.options_seller.position_manager import close_position
     ok = await asyncio.to_thread(close_position, position_id, reason)
     if not ok:
@@ -690,8 +700,9 @@ async def api_close_position(position_id: int, reason: str = "manual"):
 @router.get("/api/options-seller/positions")
 async def api_open_positions():
     """List all currently OPEN options seller positions."""
-    from mcp_server.db import SessionLocal
     from sqlalchemy import text
+
+    from mcp_server.db import SessionLocal
     db = SessionLocal()
     try:
         rows = db.execute(
@@ -751,10 +762,11 @@ async def api_quick_strangle(
       GET /api/options-seller/strangle/BANKNIFTY/56322/16.5
       GET /api/options-seller/strangle/BANKNIFTY/56322/16.5?dte=7&wings=3
     """
-    from mcp_server.options_seller.iv_engine import classify_iv, _fetch_vix_history
-    from mcp_server.options_greeks import calculate_greeks
-    from mcp_server.options_seller.strike_selector import build_strangle
     import asyncio
+
+    from mcp_server.options_greeks import calculate_greeks
+    from mcp_server.options_seller.iv_engine import _fetch_vix_history, classify_iv
+    from mcp_server.options_seller.strike_selector import build_strangle
 
     # Instrument defaults
     STEP_MAP = {
@@ -784,8 +796,9 @@ async def api_quick_strangle(
 
     # 1. Dhan option chain (IDX_I segment for indices)
     try:
-        from mcp_server.data_provider import get_provider
         from datetime import date, timedelta
+
+        from mcp_server.data_provider import get_provider
         provider = get_provider()
         dhan = provider.dhan
         if dhan.logged_in:
@@ -929,7 +942,9 @@ async def strangle_diagnostic() -> dict:
     # Gate 2: VIX fetch + percentile
     try:
         from mcp_server.nifty_strangle_live import (
-            _fetch_vix_percentile, VIX_LOW_PCT, VIX_HIGH_PCT,
+            VIX_HIGH_PCT,
+            VIX_LOW_PCT,
+            _fetch_vix_percentile,
         )
         vix, vix_pct = _fetch_vix_percentile()
         in_range = (vix_pct is not None and VIX_LOW_PCT <= vix_pct <= VIX_HIGH_PCT)
@@ -1017,7 +1032,8 @@ async def options_scan_diagnostic() -> dict:
     }
 
     try:
-        from mcp_server.market_calendar import is_market_open as _mkt_open, now_ist
+        from mcp_server.market_calendar import is_market_open as _mkt_open
+        from mcp_server.market_calendar import now_ist
         result["market_open"] = _mkt_open("NSE")
         result["server_time_ist"] = now_ist().strftime("%H:%M:%S IST %A")
     except Exception as e:

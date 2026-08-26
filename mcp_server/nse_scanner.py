@@ -1,12 +1,13 @@
-import logging
 import json
+import logging
 from pathlib import Path
 
 import pandas as pd
 import yfinance as yf
+
 from mcp_server.asset_registry import get_universe
+from mcp_server.data_provider import get_stock_data
 from mcp_server.market_calendar import now_ist
-from mcp_server.data_provider import get_stock_data  # noqa: F401 — re-exported
 
 logger = logging.getLogger(__name__)
 

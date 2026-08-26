@@ -4,6 +4,7 @@ Extracted from mcp_server.mcp_server in Phase 1b of the router split.
 Both handlers moved verbatim. Rate-limiting via the shared `limiter`
 singleton (mcp_server.routers.deps).
 """
+import logging
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, Request
@@ -16,8 +17,6 @@ from mcp_server.db import SessionLocal
 from mcp_server.models import MWAScore
 from mcp_server.routers.deps import limiter
 from mcp_server.webhook_auth import verify_tv_webhook_signature
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +33,10 @@ async def api_telegram_webhook(payload: dict):
 
     n8n can forward Telegram messages here for processing.
     """
-    from mcp_server.telegram_receiver import parse_signal_message, record_signal_to_sheets
+    from mcp_server.telegram_receiver import (
+        parse_signal_message,
+        record_signal_to_sheets,
+    )
 
     text = payload.get("message", {}).get("text", "")
     if not text:
@@ -122,10 +124,7 @@ async def api_tv_webhook(request: Request, payload: TVWebhookPayload):
                 1 for v in scanner_results.values()
                 if isinstance(v, list) and plain_ticker in v
             )
-            if mwa_direction in ("BULL", "MILD_BULL") and direction == "LONG":
-                confidence_boosts.append(f"MWA {mwa_direction} (+10%)")
-                pre_confidence += 10
-            elif mwa_direction in ("BEAR", "MILD_BEAR") and direction == "SHORT":
+            if mwa_direction in ("BULL", "MILD_BULL") and direction == "LONG" or mwa_direction in ("BEAR", "MILD_BEAR") and direction == "SHORT":
                 confidence_boosts.append(f"MWA {mwa_direction} (+10%)")
                 pre_confidence += 10
             if scanner_count >= 3:

@@ -5,9 +5,10 @@ These are integration smoke tests: they verify the wiring exists and
 behaves correctly with synthetic data, without a live DB or broker.
 """
 
-import pandas as pd
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
 
 _IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -209,6 +210,7 @@ def test_event_calendar_suppresses_intraday_within_4h(monkeypatch):
 def test_reconciler_loop_defined_in_mcp_server():
     """Verify the reconciler loop exists in the lifespan body."""
     import inspect
+
     from mcp_server import mcp_server as ms
     src = inspect.getsource(ms)
     assert "_reconciler_loop" in src, (
@@ -221,6 +223,7 @@ def test_reconciler_loop_defined_in_mcp_server():
 def test_reconciler_loop_gates_on_market_hours():
     """Loop body must check is_market_open before calling reconcile."""
     import inspect
+
     from mcp_server import mcp_server as ms
     src = inspect.getsource(ms)
     # The loop should gate on market hours check

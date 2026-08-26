@@ -1,17 +1,16 @@
 """Tests for news_monitor.py — keyword classification, RSS parsing, dedup."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
+from mcp_server.config import settings
 from mcp_server.news_monitor import (
-    classify_impact,
-    fetch_rss_feeds,
-    fetch_newsapi,
-    get_latest_news,
     NewsItem,
     _clean_html,
+    classify_impact,
+    fetch_newsapi,
+    fetch_rss_feeds,
+    get_latest_news,
 )
-from mcp_server.config import settings
-
 
 # ── Impact Classification ──────────────────────────────────
 

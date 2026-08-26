@@ -14,8 +14,9 @@ Fixes from v1:
 - Structured error handling — never silently approves
 """
 
-import logging
 import json
+import logging
+
 from mcp_server.config import settings
 
 logger = logging.getLogger(__name__)

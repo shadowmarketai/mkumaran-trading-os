@@ -126,8 +126,8 @@ async def api_chart_ohlcv(
 @router.post("/tools/detect_pattern")
 async def tool_detect_pattern(ticker: str, timeframe: str = "day"):
     """Detect all 12 price patterns on a stock."""
-    from mcp_server.pattern_engine import PatternEngine
     from mcp_server.nse_scanner import get_stock_data
+    from mcp_server.pattern_engine import PatternEngine
 
     df = await asyncio.to_thread(get_stock_data, ticker)
     if df is None or df.empty:
@@ -149,8 +149,8 @@ async def tool_detect_pattern(ticker: str, timeframe: str = "day"):
 @router.post("/tools/detect_smc")
 async def tool_detect_smc(ticker: str, timeframe: str = "day"):
     """Detect Smart Money Concepts (SMC/ICT) patterns on a stock."""
-    from mcp_server.smc_engine import SMCEngine
     from mcp_server.nse_scanner import get_stock_data
+    from mcp_server.smc_engine import SMCEngine
 
     df = await asyncio.to_thread(get_stock_data, ticker)
     if df is None or df.empty:
@@ -172,8 +172,8 @@ async def tool_detect_smc(ticker: str, timeframe: str = "day"):
 @router.post("/tools/detect_wyckoff")
 async def tool_detect_wyckoff(ticker: str, timeframe: str = "day"):
     """Detect Wyckoff market cycle patterns on a stock."""
-    from mcp_server.wyckoff_engine import WyckoffEngine
     from mcp_server.nse_scanner import get_stock_data
+    from mcp_server.wyckoff_engine import WyckoffEngine
 
     df = await asyncio.to_thread(get_stock_data, ticker)
     if df is None or df.empty:
@@ -195,8 +195,8 @@ async def tool_detect_wyckoff(ticker: str, timeframe: str = "day"):
 @router.post("/tools/detect_vsa")
 async def tool_detect_vsa(ticker: str, timeframe: str = "day"):
     """Detect Volume Spread Analysis patterns on a stock."""
-    from mcp_server.vsa_engine import VSAEngine
     from mcp_server.nse_scanner import get_stock_data
+    from mcp_server.vsa_engine import VSAEngine
 
     df = await asyncio.to_thread(get_stock_data, ticker)
     if df is None or df.empty:
@@ -241,8 +241,8 @@ async def tool_detect_harmonic(ticker: str, timeframe: str = "day"):
 @router.post("/tools/detect_rl")
 async def tool_detect_rl(ticker: str, timeframe: str = "day"):
     """Detect RL-inspired patterns (regime, VWAP, momentum, optimal entry) on a stock."""
-    from mcp_server.rl_engine import RLEngine
     from mcp_server.nse_scanner import get_stock_data
+    from mcp_server.rl_engine import RLEngine
 
     df = await asyncio.to_thread(get_stock_data, ticker)
     if df is None or df.empty:
@@ -323,6 +323,7 @@ async def tool_mwa_scan_status(job_id: str):
 async def tool_run_mwa_scan(request: Request, db: Session = Depends(get_db)):
     """Run the full 98-scanner MWA scan and persist score to DB."""
     import threading
+
     from mcp_server import mcp_server as _ms
     from mcp_server.market_calendar import is_market_holiday, is_market_open, is_weekend
 

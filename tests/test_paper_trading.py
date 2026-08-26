@@ -8,11 +8,11 @@ Validates:
 - get_status shows paper_mode=True
 """
 
-import pytest
 from unittest.mock import patch
 
-from mcp_server.order_manager import OrderManager, MAX_OPEN_POSITIONS
+import pytest
 
+from mcp_server.order_manager import MAX_OPEN_POSITIONS, OrderManager
 
 # All tests mock market hours and portfolio risk to isolate paper trading logic
 _MOCK_TIMING = patch("mcp_server.order_manager.validate_order_timing", return_value=None)

@@ -18,7 +18,6 @@ from mcp_server.money import (
     to_money,
 )
 
-
 # ── to_money ────────────────────────────────────────────────────────
 
 class TestToMoney:
@@ -26,7 +25,7 @@ class TestToMoney:
         assert to_money("123.45") == Decimal("123.45")
 
     def test_int_is_exact(self):
-        assert to_money(100) == Decimal("100")
+        assert to_money(100) == Decimal(100)
 
     def test_float_goes_via_str_no_binary_artefact(self):
         # Decimal(0.1) == Decimal('0.1000000000000000055511151231257827021181583404541015625')

@@ -62,8 +62,8 @@ TIER2_MAXDD   = 0.35
 def _load_gold_inr(start_str: str, end_str: str) -> dict[date, float]:
     """Gold price in INR = COMEX Gold (USD/oz) × USDINR rate."""
     try:
-        import yfinance as yf
         import pandas as pd
+        import yfinance as yf
 
         raw = yf.download(["GC=F", "INR=X"], start=start_str, end=end_str,
                           auto_adjust=True, progress=False)

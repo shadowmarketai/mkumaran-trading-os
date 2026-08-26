@@ -10,11 +10,14 @@ Exit dist: SL 54% | Target 31% | Max-hold 15%
 """
 
 from __future__ import annotations
+
 from typing import Any
+
 import numpy as np
 import pandas as pd
+
 from mcp_server.agents.skills.base_skill import BaseSkill
-from mcp_server.agents.skills.indicators import rsi, make_signal
+from mcp_server.agents.skills.indicators import make_signal, rsi
 
 # Only USDINR is validated — all major pairs (EUR/GBP/JPY) are OVERRIDE
 _VALIDATED_PAIRS = {"CDS:USDINR", "USDINR", "USDINR=X"}

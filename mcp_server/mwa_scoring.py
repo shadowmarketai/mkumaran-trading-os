@@ -258,7 +258,7 @@ def get_promoted_stocks(
             if is_multi:
                 multi_asset_hits.add(stock)
 
-    from mcp_server.asset_registry import MCX_UNIVERSE, CDS_UNIVERSE, NFO_INDEX_UNIVERSE
+    from mcp_server.asset_registry import CDS_UNIVERSE, MCX_UNIVERSE, NFO_INDEX_UNIVERSE
     multi_asset_tickers = set(MCX_UNIVERSE + CDS_UNIVERSE + NFO_INDEX_UNIVERSE)
 
     promoted = []

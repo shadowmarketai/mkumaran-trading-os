@@ -47,8 +47,8 @@ class OptionsIndexAgent(BaseAgent):
         vix = None
         try:
             from mcp_server.options_signal_engine import (
-                _get_vix_data,
                 _get_chain_and_data,
+                _get_vix_data,
             )
 
             vix = _get_vix_data()

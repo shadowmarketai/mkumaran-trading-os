@@ -13,7 +13,6 @@ that integrate with the RRMS position sizing engine.
 """
 
 import logging
-from typing import Optional
 
 import pandas as pd
 
@@ -230,7 +229,7 @@ class HarmonicEngine:
         b: float,
         c: float,
         d: float,
-    ) -> Optional[PatternResult]:
+    ) -> PatternResult | None:
         """Check if XABCD points match a specific harmonic pattern."""
         ratios = HARMONIC_RATIOS[name]
         tol = ratios["tolerance"]

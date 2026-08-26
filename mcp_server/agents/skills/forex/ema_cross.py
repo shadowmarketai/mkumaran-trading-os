@@ -11,9 +11,12 @@ Per-pair RRR: USDJPY=2.0, EURUSD=1.5, USDINR=1.5
 """
 
 from __future__ import annotations
+
 from typing import Any
+
 import numpy as np
 import pandas as pd
+
 from mcp_server.agents.skills.base_skill import BaseSkill
 from mcp_server.agents.skills.indicators import ema, make_signal
 

@@ -198,10 +198,11 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
         # Uses the same path as nifty_strangle_live._get_chain_nse()
         if not chain and symbol in INDEX_UNIVERSE:
             try:
-                from mcp_server.nifty_strangle_live import _get_chain_nse
-                from datetime import timedelta
                 # Find next expiry via calendar arithmetic
                 from datetime import date as _date
+                from datetime import timedelta
+
+                from mcp_server.nifty_strangle_live import _get_chain_nse
                 d = _date.today()
                 for _ in range(14):
                     if d.weekday() == 0:  # Monday — Nifty weekly expiry day (post-2025)

@@ -213,6 +213,7 @@ async def tool_update_all_trailing_sl():
 async def tool_refresh_trade_prices(db: Session = Depends(get_db)):
     """Fetch live prices for all active trades and update DB."""
     from datetime import datetime as _dt
+
     from mcp_server import mcp_server as _ms
 
     trades = db.query(ActiveTrade).options(joinedload(ActiveTrade.signal)).all()
@@ -327,8 +328,8 @@ async def tool_connect_gwc():
     thread and wires the resulting access_token into the MarketDataProvider.
     """
     try:
-        from mcp_server.gwc_auth import refresh_gwc_token
         from mcp_server.data_provider import get_provider
+        from mcp_server.gwc_auth import refresh_gwc_token
         access_token = await asyncio.to_thread(refresh_gwc_token)
         provider = get_provider()
         provider.gwc.set_access_token(access_token)

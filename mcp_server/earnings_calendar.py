@@ -10,13 +10,14 @@
 
 import logging
 import time
-import requests
-import anthropic
 from datetime import date, datetime, timedelta
 
-from mcp_server.db import SessionLocal
-from mcp_server.models import Watchlist, ActiveTrade
+import anthropic
+import requests
+
 from mcp_server.config import settings
+from mcp_server.db import SessionLocal
+from mcp_server.models import ActiveTrade, Watchlist
 
 logger = logging.getLogger(__name__)
 
@@ -332,7 +333,7 @@ def generate_pre_earnings_brief(event: dict, kite, db_session) -> str:
     q_table = "Quarter | Revenue (Cr) | PAT (Cr) | EPS\n"
     q_table += "-" * 45 + "\n"
     for q in fundamentals.get("quarters", []):
-        q_table += f"{q['period']:10} | {str(q['revenue']):12} | {str(q['pat']):8} | {q['eps']}\n"
+        q_table += f"{q['period']:10} | {q['revenue']!s:12} | {q['pat']!s:8} | {q['eps']}\n"
 
     # Build price reactions table
     r_table = "Quarter | Date | Move\n"

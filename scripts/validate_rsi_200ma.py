@@ -80,6 +80,7 @@ def _load_symbols() -> list[str]:
 def _load_all_prices(symbols: list[str], start_str: str, end_str: str) -> dict[str, dict[date, float]]:
     import yfinance as yf
     from sqlalchemy import text
+
     from mcp_server.db import engine
 
     prices: dict[str, dict[date, float]] = {}
@@ -249,7 +250,7 @@ def run_backtest(
             idx = next((i for i, d in enumerate(sym_dates) if d == today), None)
             if idx is None or idx == 0:
                 continue
-            if rsi_by_sym[sym].get(sym_dates[idx - 1], 50.0) < rsi_entry:
+            if rsi_map.get(sym_dates[idx - 1], 50.0) < rsi_entry:
                 continue  # not a fresh crossover
 
             today_close = prices_by_sym[sym].get(today)

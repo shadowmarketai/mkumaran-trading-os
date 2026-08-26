@@ -27,7 +27,8 @@ import logging
 import math
 import os
 import sys
-from datetime import date, time as dtime
+from datetime import date
+from datetime import time as dtime
 from pathlib import Path
 
 import pandas as pd

@@ -149,7 +149,7 @@ def _print_stats(session) -> None:
     print(f"\n{'Symbol':<15} {'Bars':>5}  {'From':<12} {'To':<12}")
     print("-" * 48)
     for r in rows:
-        print(f"{r.ticker:<15} {r.bars:>5}  {str(r.from_date):<12} {str(r.to_date):<12}")
+        print(f"{r.ticker:<15} {r.bars:>5}  {r.from_date!s:<12} {r.to_date!s:<12}")
     missing = set(SYMBOLS) - {r.ticker for r in rows}
     if missing:
         print(f"\nMissing: {sorted(missing)}")

@@ -16,17 +16,16 @@ Commands:
 """
 
 import argparse
-import json
 import hashlib
+import json
 import os
+import re
 import subprocess
 import sys
-import re
 import urllib.request
-from pathlib import Path
-from datetime import datetime, timezone
 from collections import defaultdict
-from typing import Optional
+from datetime import datetime, timezone
+from pathlib import Path
 
 try:
     import fcntl
@@ -1229,7 +1228,7 @@ def _collect_pending_dirs() -> list[Path]:
     return dirs
 
 
-def _parse_created_date(file_path: Path) -> Optional[datetime]:
+def _parse_created_date(file_path: Path) -> datetime | None:
     """Parse the 'created' date from YAML frontmatter of an instinct file.
 
     Falls back to file mtime if no 'created' field is found.

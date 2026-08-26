@@ -10,7 +10,6 @@ from mcp_server.pos_five_ema import (
     generate_signals_for_backtest,
 )
 
-
 # ── Fixtures ────────────────────────────────────────────────
 
 
