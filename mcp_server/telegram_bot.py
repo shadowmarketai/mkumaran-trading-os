@@ -815,6 +815,30 @@ async def cmd_signal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 from mcp_server.market_calendar import now_ist
                 today = now_ist().date()
 
+                # Dedup: an OPEN signal for the same ticker+direction means
+                # a webhook retry or a re-broadcast. Don't create a phantom
+                # duplicate that the monitor will later "close" twice.
+                dup = (
+                    db.query(Signal)
+                    .filter(
+                        Signal.ticker == ticker,
+                        Signal.direction == direction,
+                        Signal.status == "OPEN",
+                    )
+                    .first()
+                )
+                if dup is not None:
+                    logger.info(
+                        "External signal %s %s skipped: OPEN duplicate exists (id=%d)",
+                        ticker, direction, dup.id,
+                    )
+                    report += (
+                        f"\n⚠️ DUPLICATE SKIPPED\n"
+                        f"  • Existing OPEN signal (id={dup.id}) already tracks this setup.\n"
+                    )
+                    await update.message.reply_text(report)
+                    return
+
                 db_signal = Signal(
                     signal_date=today,
                     signal_time=now_ist().time(),

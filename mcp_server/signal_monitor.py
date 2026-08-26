@@ -97,7 +97,17 @@ def monitor_open_signals() -> list[dict]:
     session = SessionLocal()
 
     try:
-        open_signals = session.query(Signal).filter(Signal.status == "OPEN").all()
+        # Row-lock OPEN signals so concurrent monitor invocations (background
+        # loop + manual /check + n8n poller) can't each grab the same row and
+        # emit duplicate SL/TGT Telegram alerts. skip_locked = other callers
+        # move on rather than block; correct behaviour since a locked row is
+        # already being processed by someone else.
+        open_signals = (
+            session.query(Signal)
+            .filter(Signal.status == "OPEN")
+            .with_for_update(skip_locked=True)
+            .all()
+        )
         if not open_signals:
             return results
 
@@ -197,6 +207,28 @@ def monitor_open_signals() -> list[dict]:
                     if active:
                         active.current_price = current_price
                         active.last_updated = now_ist()
+                    continue
+
+                # Idempotency guard: if an Outcome already exists for this
+                # signal id, another concurrent invocation already closed it
+                # and sent the alert. Skip silently.
+                existing_outcome = (
+                    session.query(Outcome)
+                    .filter(Outcome.signal_id == sig.id)
+                    .first()
+                )
+                if existing_outcome is not None:
+                    logger.info(
+                        "Monitor: outcome already exists for signal %s (%s) — skipping duplicate close",
+                        sig.id, sig.ticker,
+                    )
+                    if sig.status == "OPEN":
+                        sig.status = (
+                            "TARGET_HIT" if existing_outcome.outcome == "WIN"
+                            else "SL_HIT" if existing_outcome.outcome == "LOSS"
+                            else "EXPIRED"
+                        )
+                        session.commit()
                     continue
 
                 # ── Signal hit! Update everything ──

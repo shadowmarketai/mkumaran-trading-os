@@ -1833,8 +1833,21 @@ class MWAScanner:
         """
         results: dict[str, list[str]] = {}
 
+        # Skip auto-disabled scanners (Bayesian underperformers) — same
+        # mechanism the Chartink block already applies. Loaded once per
+        # call rather than per-scanner since disabled_scanners.json only
+        # changes once/day (self-dev pipeline, after market close).
+        try:
+            from mcp_server.scanner_bayesian import get_disabled_scanners
+            _auto_disabled = get_disabled_scanners()
+        except Exception:
+            _auto_disabled = set()
+
         def _should_run(scanner_key: str) -> bool:
             """Check if scanner should run for the given segment."""
+            if scanner_key in _auto_disabled:
+                logger.info("[PYTHON] %s: SKIPPED (auto-disabled by Bayesian stats)", scanner_key)
+                return False
             if segment == "ALL":
                 return True
             cfg = SCANNERS.get(scanner_key, {})
@@ -2343,6 +2356,46 @@ class MWAScanner:
                         continue
                     try:
                         stocks = self.fetch_chartink(cfg["slug"], cfg.get("scan_clause", ""))
+
+                        # ── Regime gate (Phase 1, default off) ─────────
+                        # Filter per-ticker; scanner-wide skip would drop
+                        # legit trending stocks in a ranging market.
+                        try:
+                            from mcp_server.config import settings as _s
+                            _gate_mode = getattr(_s, "MWA_REGIME_GATE_MODE", "off")
+                        except Exception:
+                            _gate_mode = "off"
+                        if _gate_mode in ("dry_run", "block") and stocks:
+                            try:
+                                from mcp_server.regime_detector import (
+                                    filter_tickers_by_regime, STRATEGY_GATES,
+                                )
+                                if key in STRATEGY_GATES:
+                                    kept, report = filter_tickers_by_regime(
+                                        stocks, key, stock_data,
+                                        dry_run=(_gate_mode == "dry_run"),
+                                    )
+                                    if _gate_mode == "block" and report["blocked"]:
+                                        for b in report["blocked"]:
+                                            logger.info(
+                                                "[REGIME_GATE] scanner=%s ticker=%s "
+                                                "regime=%s adx=%.1f action=BLOCKED",
+                                                key, b["ticker"], b["regime"], b["adx"],
+                                            )
+                                        stocks = kept
+                                    elif _gate_mode == "dry_run" and report["would_block"]:
+                                        for b in report["would_block"]:
+                                            logger.info(
+                                                "[REGIME_GATE] scanner=%s ticker=%s "
+                                                "regime=%s adx=%.1f action=WOULD_BLOCK",
+                                                key, b["ticker"], b["regime"], b["adx"],
+                                            )
+                            except Exception as gate_err:
+                                logger.warning(
+                                    "[REGIME_GATE] filter failed for %s: %s (allowing all)",
+                                    key, gate_err,
+                                )
+
                         results[key] = stocks
                         logger.info(
                             "[CHARTINK] %s: %d stocks (%s)", key, len(stocks), cfg["type"]
@@ -2374,8 +2427,16 @@ class MWAScanner:
 
                 if tv_scanner.is_available():
                     tv_results = tv_scanner.run_all()
+                    try:
+                        from mcp_server.scanner_bayesian import get_disabled_scanners
+                        _tv_auto_disabled = get_disabled_scanners()
+                    except Exception:
+                        _tv_auto_disabled = set()
                     added_total = 0
                     for key, tv_symbols in tv_results.items():
+                        if key in _tv_auto_disabled:
+                            logger.info("[TRADINGVIEW] %s: SKIPPED (auto-disabled by Bayesian stats)", key)
+                            continue
                         existing = results.get(key, [])
                         seen = set(existing)
                         additions = [s for s in tv_symbols if s and s not in seen]

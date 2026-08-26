@@ -147,7 +147,7 @@ class BaseAgent(ABC):
         return "\n".join(lines)
 
     async def deliver(self, signals: list[dict]) -> int:
-        """Persist + send to Telegram + broadcast to subscribers."""
+        """Persist to DB, send to Telegram, and broadcast to subscribers."""
         from mcp_server.telegram_bot import send_telegram_message
 
         self._reset_daily()
@@ -165,6 +165,14 @@ class BaseAgent(ABC):
                 continue
 
             try:
+                # ── Persist to DB first so this signal is tracked by
+                # signal_monitor (SL/TGT auto-close) and shows up in
+                # EOD/self-dev reporting, matching every other signal
+                # source in the system. Previously this method only sent
+                # a Telegram message despite its docstring claiming it
+                # persisted — agent-sourced signals were untracked.
+                db_signal_id = self._persist_signal(sig)
+
                 from mcp_server.config import settings
                 disclaimer = "" if sig.get("validated") else getattr(settings, "UNVALIDATED_SIGNAL_DISCLAIMER", "")
                 msg = disclaimer + self.format_card(sig)
@@ -182,16 +190,63 @@ class BaseAgent(ABC):
                 self._signals_today += 1
                 delivered += 1
                 logger.info(
-                    "[%s] delivered: %s %s %s",
+                    "[%s] delivered: %s %s %s (signal_id=%s)",
                     self.name,
                     sig.get("ticker"),
                     sig.get("direction"),
                     sig.get("pattern"),
+                    db_signal_id,
                 )
             except Exception as e:
                 logger.warning("[%s] delivery failed: %s", self.name, e)
 
         return delivered
+
+    def _persist_signal(self, sig: dict) -> int | None:
+        """Write a Signal row to the DB for this agent-generated candidate.
+
+        Returns the new Signal.id, or None if persistence failed (delivery
+        still proceeds to Telegram — a DB hiccup shouldn't silence alerts).
+        """
+        from datetime import date as _date
+        from mcp_server.db import SessionLocal
+        from mcp_server.models import Signal
+
+        db = SessionLocal()
+        try:
+            entry = sig.get("entry", 0)
+            sl = sig.get("sl", 0)
+            target = sig.get("target", 0)
+
+            db_signal = Signal(
+                signal_date=_date.today(),
+                ticker=sig.get("ticker", ""),
+                exchange=self.segment,
+                asset_class="EQUITY",
+                direction=sig.get("direction", "LONG"),
+                pattern=sig.get("pattern", sig.get("skill_name", self.name)),
+                entry_price=entry,
+                stop_loss=sl,
+                target=target,
+                rrr=sig.get("rrr"),
+                ai_confidence=sig.get("confidence"),
+                scanner_count=1,
+                tier=sig.get("tier"),
+                source=self.name,
+                timeframe="1D",
+                status="OPEN",
+                scanner_list=[sig.get("pattern") or sig.get("skill_name") or self.name],
+            )
+            db.add(db_signal)
+            db.commit()
+            db.refresh(db_signal)
+            return db_signal.id
+        except Exception as e:
+            logger.warning("[%s] Signal persistence failed for %s: %s", self.name, sig.get("ticker"), e)
+            db.rollback()
+            return None
+        finally:
+            db.close()
 
     async def run_cycle(self) -> dict[str, Any]:
         """One full scan → validate → deliver cycle."""

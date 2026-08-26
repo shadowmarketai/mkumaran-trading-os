@@ -17,7 +17,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -31,9 +31,8 @@ logger = logging.getLogger(__name__)
 
 
 def run_backfill(live: bool) -> None:
-    from mcp_server.sheets_sync import _get_sheets_client, _get_or_create_worksheet
+    from mcp_server.sheets_sync import _get_sheets_client
     from mcp_server.gwc_tracker import (
-        GWC_LOG_HEADERS,
         classify_gwc_message,
         GWCMessageType,
         link_gwc_outcome_from_message,

@@ -239,12 +239,22 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
         atm_iv = (
             atm_data.get("CE", {}).get("iv", 0) + atm_data.get("PE", {}).get("iv", 0)
         ) / 2
+        atm_iv_is_proxy = False
         if atm_iv <= 0:
-            # Use India VIX as proxy (VIX ≈ annualised 30-day Nifty IV)
+            # Use India VIX as proxy (VIX ≈ annualised 30-day Nifty IV) — for
+            # display/context only. VIX is a broad-market index-wide number;
+            # it is NOT a substitute for a specific instrument's own ATM IV
+            # (a mid-cap index or single-stock chain can legitimately trade
+            # at a very different IV than Nifty). Strategies that make a
+            # buy/sell-premium decision off atm_iv must check
+            # atm_iv_is_proxy and skip firing rather than trade on a
+            # borrowed macro number that was never actually measured for
+            # this instrument's own chain.
             try:
                 vix_val = _get_vix_data()
                 if vix_val and vix_val.get("vix", 0) > 0:
                     atm_iv = vix_val["vix"]
+                    atm_iv_is_proxy = True
                     logger.debug("IV proxy from VIX for %s: %.1f", symbol, atm_iv)
             except Exception:
                 pass
@@ -270,6 +280,7 @@ def _get_chain_and_data(symbol: str) -> dict[str, Any] | None:
             "pcr": pcr,
             "max_pain": max_pain_strike,
             "atm_iv": atm_iv,
+            "atm_iv_is_proxy": atm_iv_is_proxy,
             "atm_strike": atm_strike,
             "atm_ce_ltp": atm_ce_ltp,
             "atm_pe_ltp": atm_pe_ltp,
@@ -312,6 +323,11 @@ def strategy_iv_crush(data: dict, **_kw: Any) -> dict[str, Any] | None:
     """IV high → sell premium (credit strategy). IV will contract."""
     if data["atm_iv"] <= 0:
         return None
+    if data.get("atm_iv_is_proxy"):
+        # atm_iv is a VIX fallback, not this instrument's real chain IV —
+        # don't sell premium on a number that was never actually measured
+        # for this symbol.
+        return None
     # Indian market IV norms: NIFTY ATM IV usually 10-25%, stocks 20-50%
     threshold = 18 if data["symbol"] in INDEX_UNIVERSE else 35
     if data["atm_iv"] < threshold:
@@ -339,6 +355,11 @@ def strategy_cheap_premium(data: dict, **_kw: Any) -> dict[str, Any] | None:
     """IV low → buy options cheap. Expect volatility expansion."""
     if data.get("days_to_expiry", 0) < 1:
         return None  # 0DTE: premium SL distance = 1×premium in spot points, hit instantly by gamma
+    if data.get("atm_iv_is_proxy"):
+        # atm_iv is a VIX fallback, not this instrument's real chain IV —
+        # a broad-market VIX reading being low doesn't mean THIS symbol's
+        # premium is actually cheap. Don't buy on a borrowed number.
+        return None
     threshold = 12 if data["symbol"] in INDEX_UNIVERSE else 20
     if data["atm_iv"] > threshold or data["atm_iv"] <= 0:
         return None
@@ -672,9 +693,11 @@ def run_options_scan() -> list[dict[str, Any]]:
         )
 
     symbols_with_data = 0
+    symbols_missing_data: list[str] = []
     for symbol in universe:
         data = _get_chain_and_data(symbol)
         if not data:
+            symbols_missing_data.append(symbol)
             logger.debug("[OPTIONS] %s: no chain data available", symbol)
             continue
         symbols_with_data += 1
@@ -697,7 +720,26 @@ def run_options_scan() -> list[dict[str, Any]]:
                     result.setdefault("vix_change", vix_data.get("pct_change"))
                 signals.append(result)
 
-    logger.info("[OPTIONS] %d pure option signals from %d symbols", len(signals), len(universe))
+    # Summary distinguishes silent failure modes: data fetch vs threshold miss.
+    logger.info(
+        "[OPTIONS] %d signals | symbols=%d (data=%d, no_data=%d) | strategies=%d",
+        len(signals), len(universe), symbols_with_data,
+        len(symbols_missing_data), len(ALL_STRATEGIES),
+    )
+    if symbols_missing_data and not symbols_with_data:
+        # Every symbol failed to fetch — this is a data-provider outage,
+        # not a market condition. Surface at WARNING so the user sees it.
+        logger.warning(
+            "[OPTIONS] ALL %d symbols missing chain data — likely broker session expired or API unavailable",
+            len(symbols_missing_data),
+        )
+    elif symbols_with_data and not signals:
+        # Data flowed but no strategy met its thresholds. Normal in quiet
+        # markets; log at INFO so tail -f shows the "why nothing today" case.
+        logger.info(
+            "[OPTIONS] All %d symbols had data but no strategy thresholds met — quiet market",
+            symbols_with_data,
+        )
     return signals
 
 

@@ -264,11 +264,11 @@ def load_earnings_calendar(from_date: date, to_date: date) -> tuple[dict[date, l
 
     EARNINGS_CACHE.parent.mkdir(parents=True, exist_ok=True)
     EARNINGS_CACHE.write_text(json.dumps({
-        "fetched_from": from_date.isoformat(, encoding='utf-8'),
+        "fetched_from": from_date.isoformat(),
         "fetched_to":   to_date.isoformat(),
         "is_exact":     is_exact,
         "events":       {str(k): v for k, v in result.items()},
-    }, indent=2))
+    }, indent=2), encoding='utf-8')
 
     src = "exact NSE dates" if is_exact else "approximate quarterly seasons"
     logger.info("Earnings calendar: %d event dates (%s)", len(result), src)

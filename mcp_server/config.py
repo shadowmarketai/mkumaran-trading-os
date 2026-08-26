@@ -185,6 +185,12 @@ class Settings:
     # Self-Development System (postmortem RCA + predictive gate + rules engine)
     SELF_DEV_ENABLED: bool = os.getenv("SELF_DEV_ENABLED", "true").lower() == "true"
     PREDICTOR_BLOCK_THRESHOLD: float = float(os.getenv("PREDICTOR_BLOCK_THRESHOLD", "0.75"))
+
+    # Regime gate for MWA Chartink scanners (Phase 1 — default OFF).
+    # Values: "off" (no gate, current behaviour), "dry_run" (compute + log
+    # would-block events but don't remove tickers), "block" (actually filter).
+    # See regime_detector.STRATEGY_GATES for the per-scanner allow-lists.
+    MWA_REGIME_GATE_MODE: str = os.getenv("MWA_REGIME_GATE_MODE", "off").lower()
     PREDICTOR_RETRAIN_HOUR: int = int(os.getenv("PREDICTOR_RETRAIN_HOUR", "16"))  # 4 PM IST, after signal monitor closes last trades
     RULES_ENGINE_ENABLED: bool = os.getenv("RULES_ENGINE_ENABLED", "true").lower() == "true"
     RULES_MINE_ON_RETRAIN: bool = os.getenv("RULES_MINE_ON_RETRAIN", "true").lower() == "true"

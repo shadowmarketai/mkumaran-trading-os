@@ -923,7 +923,6 @@ def get_gwc_learn_insights() -> str:
         ticker_counts = Counter(tickers)
 
         linked_count    = sum(1 for row in data if len(row) > col_linked and row[col_linked])
-        total_signals   = type_counts.get("SIGNAL", 0)
         total_results   = type_counts.get("RESULT", 0)
 
         lines = [

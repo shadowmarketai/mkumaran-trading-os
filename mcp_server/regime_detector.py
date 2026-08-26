@@ -66,6 +66,16 @@ STRATEGY_GATES: dict[str, frozenset[RegimeLabel]] = {
     "options_seller":  frozenset({"RANGING"}),           # sell premium in low-ADX
     "iron_condor":     frozenset({"RANGING"}),
     "confluence":      frozenset({"TRENDING_UP", "TRENDING_DOWN", "RANGING"}),
+
+    # Mean-reversion bounces — need TRENDING_UP so the "bounce" is a real
+    # pullback and not just another lower low. Yesterday's 14+14 losses on
+    # swing_low / llbb_bounce were all in a Bull-11% / Bear-12.9% RANGING day.
+    "swing_low":       frozenset({"TRENDING_UP"}),
+    "llbb_bounce":     frozenset({"TRENDING_UP"}),
+    # volume_spike is tagged type=BULL, weight=3.0 in mwa_scanner — it's a
+    # BULL confirmation, not direction-agnostic. Restrict to uptrend context
+    # only; in RANGING a 2x volume spike is usually a fake-out.
+    "volume_spike":    frozenset({"TRENDING_UP"}),
 }
 
 
@@ -295,6 +305,12 @@ def gate_strategy(
     If `allowed_regimes` is provided, it overrides the STRATEGY_GATES
     default for this call (useful for A/B testing thresholds without
     editing the module-level dict).
+
+    Look-ahead note: `df` is used as-passed. Callers running BACKTESTS
+    must pass a frame that excludes the signal bar itself (e.g.
+    `df.iloc[:-1]`) or the regime read incorporates the same bar it's
+    gating. LIVE callers can pass the full history — using today's bar
+    to decide today's action is not look-ahead.
     """
     regime = classify_from_df(df, **classify_kwargs)
     if allowed_regimes is not None:
@@ -308,3 +324,76 @@ def gate_strategy(
             strategy, regime.label, regime.adx,
         )
     return allowed, regime
+
+
+def filter_tickers_by_regime(
+    tickers: list[str],
+    strategy: str,
+    stock_data: dict | None,
+    dry_run: bool = False,
+) -> tuple[list[str], dict]:
+    """Filter a list of scanner-returned tickers by per-stock regime.
+
+    Meant for the Chartink post-fetch gate — a scanner returns tickers
+    without OHLCV context; this looks each one up in `stock_data`,
+    classifies its regime, and filters.
+
+    Skip discipline:
+      - Ticker not in `stock_data` → NOT filtered (allow through, log at DEBUG).
+        We don't gate what we can't verify.
+      - Strategy has no gate in STRATEGY_GATES → NOT filtered (same fallback
+        as MarketRegime.allows_strategy).
+      - dry_run=True → returns full list but populates `report` with the
+        would-have-blocked entries. Used for pre-flip counting.
+
+    Returns:
+        (kept_tickers, report_dict) where report_dict has keys
+        {"blocked", "would_block", "no_data", "kept", "regime_counts"}.
+    """
+    from collections import Counter
+
+    report = {
+        "blocked": [],       # actually removed (dry_run=False)
+        "would_block": [],   # would have been removed (dry_run=True)
+        "no_data": [],       # ticker missing from stock_data
+        "kept": [],
+        "regime_counts": Counter(),
+    }
+
+    # If we have no gate for this strategy, don't touch anything
+    if strategy not in STRATEGY_GATES:
+        report["kept"] = list(tickers)
+        return list(tickers), report
+
+    if not stock_data:
+        report["no_data"] = list(tickers)
+        report["kept"] = list(tickers)
+        return list(tickers), report
+
+    kept: list[str] = []
+    for ticker in tickers:
+        # Chartink returns bare symbols; stock_data may key by "NSE:SYMBOL"
+        # or bare "SYMBOL". Explicit None check — `or` on a DataFrame raises.
+        df = stock_data.get(ticker)
+        if df is None:
+            df = stock_data.get(f"NSE:{ticker}")
+        if df is None or df.empty:
+            report["no_data"].append(ticker)
+            kept.append(ticker)   # allow through when we can't verify
+            continue
+
+        regime = classify_from_df(df)
+        report["regime_counts"][regime.label] += 1
+
+        if regime.allows_strategy(strategy):
+            kept.append(ticker)
+            report["kept"].append(ticker)
+        else:
+            entry = {"ticker": ticker, "regime": regime.label, "adx": round(regime.adx, 1)}
+            if dry_run:
+                report["would_block"].append(entry)
+                kept.append(ticker)   # dry-run: pass through
+            else:
+                report["blocked"].append(entry)
+
+    return kept, report
