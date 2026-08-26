@@ -570,6 +570,8 @@ async def tool_run_backfill(
 
     import asyncio
 
+    from mcp_server.task_registry import track
+
     async def _run():
         global _backfill_status
         _backfill_status = {"running": True, "progress": "starting...", "pid": None}
@@ -617,7 +619,7 @@ async def tool_run_backfill(
             _backfill_status = {"running": False, "progress": f"FAILED: {e}"}
             logger.error("Backfill task failed: %s", e)
 
-    asyncio.create_task(_run())
+    track(asyncio.create_task(_run()), name="dhan_backfill")
     return {
         "status": "started",
         "message": f"Backfill running in background ({years}Y, {'all Nifty 100' if not ticker else ticker}). Poll GET /tools/backfill_status for progress.",

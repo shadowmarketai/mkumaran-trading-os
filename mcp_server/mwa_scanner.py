@@ -1915,7 +1915,7 @@ class MWAScanner:
                             continue
                         intraday_pct = ((c - o) / o) * 100
                         vs_prev_pct = ((c - pc) / pc) * 100
-                        if mom_dir == "bull" and intraday_pct >= mom_pct and vs_prev_pct > 0 or mom_dir == "bear" and intraday_pct <= mom_pct and vs_prev_pct < 0:
+                        if (mom_dir == "bull" and intraday_pct >= mom_pct and vs_prev_pct > 0) or (mom_dir == "bear" and intraday_pct <= mom_pct and vs_prev_pct < 0):
                             hits.append(ticker.replace("NSE:", ""))
                     results[mom_key] = hits
                     if hits:

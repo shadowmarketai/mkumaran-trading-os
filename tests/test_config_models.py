@@ -16,8 +16,8 @@ def test_settings_defaults():
     # RRMS money-shaped settings are Decimal after the Phase 2 enforcement.
     # Decimal("100000") == 100000 is True (int equality), but
     # Decimal("0.02") == 0.02 is False — float 0.02 is inexact.
-    assert s.RRMS_CAPITAL == Decimal(100000)
-    assert s.RRMS_RISK_PCT == Decimal("0.02")
+    assert Decimal(100000) == s.RRMS_CAPITAL
+    assert Decimal("0.02") == s.RRMS_RISK_PCT
     assert s.RRMS_MIN_RRR == 3.0
 
 

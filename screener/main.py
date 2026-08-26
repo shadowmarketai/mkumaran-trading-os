@@ -24,6 +24,38 @@ from fastapi.templating import Jinja2Templates
 
 from screener.scanner import is_market_open, run_scan
 
+# Local task registry — screener runs as a separate process from mcp_server,
+# so it can't share mcp_server.task_registry. Same pattern, kept minimal.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _track(task: asyncio.Task, *, name: str | None = None) -> asyncio.Task:
+    """Retain a strong reference to a background task and log if it dies.
+
+    Without this, asyncio.create_task returns a weakly-referenced task
+    that GC can reap mid-run, silently killing a background loop (RUF006).
+    """
+    if name is not None:
+        try:
+            task.set_name(name)
+        except Exception:
+            pass
+    _background_tasks.add(task)
+
+    def _on_done(t: asyncio.Task) -> None:
+        _background_tasks.discard(t)
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            logging.getLogger(__name__).error(
+                "Background task %r ended with exception: %s",
+                t.get_name(), exc, exc_info=exc,
+            )
+
+    task.add_done_callback(_on_done)
+    return task
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)-8s %(message)s",
@@ -86,7 +118,7 @@ async def _scheduler() -> None:
 
 @app.on_event("startup")
 async def startup() -> None:
-    asyncio.create_task(_scheduler())
+    _track(asyncio.create_task(_scheduler()), name="screener_scheduler")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────

@@ -442,10 +442,10 @@ class PositionMonitor:
             self.positions[symbol]["pnl"] = round(pnl, 2)
 
         # Check Stop Loss
-        if pos["direction"] == "LONG" and ltp <= pos["sl"] or pos["direction"] == "SHORT" and ltp >= pos["sl"]:
+        if (pos["direction"] == "LONG" and ltp <= pos["sl"]) or (pos["direction"] == "SHORT" and ltp >= pos["sl"]):
             self._trigger_exit(pos, ltp, "STOP_LOSS", pnl)
         # Check Target
-        elif pos["direction"] == "LONG" and ltp >= pos["target"] or pos["direction"] == "SHORT" and ltp <= pos["target"]:
+        elif (pos["direction"] == "LONG" and ltp >= pos["target"]) or (pos["direction"] == "SHORT" and ltp <= pos["target"]):
             self._trigger_exit(pos, ltp, "TARGET_HIT", pnl)
 
     def _trigger_exit(self, pos: dict, exit_price: float,

@@ -226,7 +226,7 @@ def generate_mwa_signals(
                     )
                 else:
                     logger.debug("Option enrichment: %s → no recommendation returned", ticker)
-        except Exception as opt_err:  # noqa: BLE001
+        except Exception as opt_err:
             logger.debug("Option enrichment failed for %s: %s", ticker, opt_err)
 
         # POS 5 EMA shadow — KILLED 2026-04-27 after backtest validation.

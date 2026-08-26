@@ -260,23 +260,23 @@ def test_summary_csv_empty_trades_returns_empty_bytes():
 
 
 def test_stt_delivery_is_25bps():
-    assert STT_DELIVERY == Decimal("0.00025")
+    assert Decimal("0.00025") == STT_DELIVERY
 
 
 def test_stt_intraday_is_12_5bps():
-    assert STT_INTRADAY == Decimal("0.000125")
+    assert Decimal("0.000125") == STT_INTRADAY
 
 
 def test_ltcg_rate_is_12_5pct():
-    assert LTCG_RATE == Decimal("0.125")
+    assert Decimal("0.125") == LTCG_RATE
 
 
 def test_stcg_rate_is_20pct():
-    assert STCG_RATE == Decimal("0.20")
+    assert Decimal("0.20") == STCG_RATE
 
 
 def test_ltcg_exemption_is_1_25_lakh():
-    assert LTCG_EXEMPTION == Decimal(125000)
+    assert Decimal(125000) == LTCG_EXEMPTION
 
 
 def test_ltcg_days_is_365():

@@ -187,7 +187,7 @@ async def api_option_recommendation(symbol: str, direction: str = "LONG"):
 
     try:
         df = await asyncio.to_thread(get_stock_data, symbol_u, "3mo", "1d")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return {"status": "error", "symbol": symbol_u, "message": f"OHLCV fetch failed: {e}"}
 
     if df is None or df.empty or len(df) < 15:

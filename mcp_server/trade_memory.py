@@ -92,7 +92,7 @@ class TradeMemory:
             self._records = []
             return
         try:
-            with open(self._filepath, "r", encoding="utf-8") as f:
+            with open(self._filepath, encoding="utf-8") as f:
                 data = json.load(f)
             self._records = [TradeRecord(**r) for r in data]
             self._rebuild_index()

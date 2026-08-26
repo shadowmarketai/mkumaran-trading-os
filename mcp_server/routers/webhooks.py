@@ -124,7 +124,7 @@ async def api_tv_webhook(request: Request, payload: TVWebhookPayload):
                 1 for v in scanner_results.values()
                 if isinstance(v, list) and plain_ticker in v
             )
-            if mwa_direction in ("BULL", "MILD_BULL") and direction == "LONG" or mwa_direction in ("BEAR", "MILD_BEAR") and direction == "SHORT":
+            if (mwa_direction in ("BULL", "MILD_BULL") and direction == "LONG") or (mwa_direction in ("BEAR", "MILD_BEAR") and direction == "SHORT"):
                 confidence_boosts.append(f"MWA {mwa_direction} (+10%)")
                 pre_confidence += 10
             if scanner_count >= 3:

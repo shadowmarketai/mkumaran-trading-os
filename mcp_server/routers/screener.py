@@ -17,6 +17,8 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter
 
+from mcp_server.task_registry import track
+
 router = APIRouter(prefix="/api/screener", tags=["screener"])
 logger = logging.getLogger("screener")
 
@@ -187,7 +189,7 @@ async def _scheduler() -> None:
 def start_scheduler() -> None:
     global _scheduler_started
     if not _scheduler_started:
-        asyncio.create_task(_scheduler())
+        track(asyncio.create_task(_scheduler()), name="nifty500_screener_scheduler")
         _scheduler_started = True
 
 

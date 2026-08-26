@@ -72,7 +72,7 @@ class TestRoundPaise:
         assert round_paise(Decimal("1234.56")) == Decimal("1234.56")
 
     def test_paise_constant(self):
-        assert PAISE == Decimal("0.01")
+        assert Decimal("0.01") == PAISE
 
 
 # ── quantum_for / round_tick ────────────────────────────────────────

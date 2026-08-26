@@ -25,6 +25,7 @@ from mcp_server.models import (
     MWAScore,
     Signal,
 )
+from mcp_server.task_registry import track
 
 logger = logging.getLogger(__name__)
 
@@ -1269,51 +1270,53 @@ async def lifespan(app: FastAPI):
     monitor_task = None
     try:
         from mcp_server.signal_monitor import signal_monitor_loop
-        monitor_task = asyncio.create_task(signal_monitor_loop())
+        monitor_task = track(
+            asyncio.create_task(signal_monitor_loop()), name="signal_monitor",
+        )
         logger.info("Signal auto-monitor background task started")
     except Exception as e:
         logger.warning("Signal monitor startup skipped: %s", e)
 
     # Dhan token auto-refresh — checks every hour, refreshes when < 2h remaining
-    asyncio.create_task(_dhan_token_refresh_loop())
+    track(asyncio.create_task(_dhan_token_refresh_loop()), name="dhan_token_refresh")
     logger.info("Dhan token refresh loop started (checks hourly)")
 
     # Start live price refresh background task (every 60s during market hours)
-    price_task = asyncio.create_task(_price_refresh_loop())
+    price_task = track(asyncio.create_task(_price_refresh_loop()), name="price_refresh")
     logger.info("Live price refresh background task started")
 
     # Index prices fetched by auto-scan loop, not separately
     logger.info("Index prices will be updated during MWA scan cycles")
 
     # Start auto-scan background task (every 15 min during market hours)
-    auto_scan_task = asyncio.create_task(_auto_scan_loop())
+    auto_scan_task = track(asyncio.create_task(_auto_scan_loop()), name="auto_scan")
     logger.info("Auto-scan background task started (every 15 min during market hours)")
 
     # Start intraday scan loop — opt-in via INTRADAY_SIGNALS_ENABLED. The
     # task itself short-circuits when the flag is off, so creating it
     # unconditionally is safe and keeps lifecycle shutdown clean.
-    asyncio.create_task(_intraday_scan_loop())
+    track(asyncio.create_task(_intraday_scan_loop()), name="intraday_scan")
     logger.info(
         "Intraday scan background task started (enabled=%s)",
         getattr(settings, "INTRADAY_SIGNALS_ENABLED", False),
     )
 
     # Start pure options signal loop (IV crush, PCR extreme, expiry plays, etc.)
-    asyncio.create_task(_options_signal_loop())
+    track(asyncio.create_task(_options_signal_loop()), name="options_signal")
     logger.info(
         "Options signal loop started (enabled=%s)",
         getattr(settings, "OPTION_SIGNALS_ENABLED", True),
     )
 
     # Start Nifty weekly strangle signal loop (validated Tier 2 strategy)
-    asyncio.create_task(_nifty_strangle_loop())
+    track(asyncio.create_task(_nifty_strangle_loop()), name="nifty_strangle")
     logger.info(
         "Nifty strangle signal loop started (enabled=%s)",
         getattr(settings, "NIFTY_STRANGLE_ENABLED", True),
     )
 
     # Start monthly momentum rebalance reminder (first trading day of each month, 10:00 IST)
-    asyncio.create_task(_monthly_rebalance_loop())
+    track(asyncio.create_task(_monthly_rebalance_loop()), name="monthly_rebalance")
     logger.info("Monthly rebalance reminder loop started")
 
     # Start all dedicated segment agents (Options Index, Options Stock,
@@ -1329,14 +1332,18 @@ async def lifespan(app: FastAPI):
     scanner_review_task = None
     if getattr(settings, "SCANNER_REVIEW_ENABLED", True):
         from mcp_server.scanner_review import scanner_review_loop
-        scanner_review_task = asyncio.create_task(scanner_review_loop())
+        scanner_review_task = track(
+            asyncio.create_task(scanner_review_loop()), name="scanner_review",
+        )
         logger.info("Scanner review background task started (15:45 IST daily)")
 
     # Start self-development background task (postmortem + retrain + rules mining at 16:00 IST)
     self_dev_task = None
     if getattr(settings, "SELF_DEV_ENABLED", True):
         try:
-            self_dev_task = asyncio.create_task(_self_dev_loop())
+            self_dev_task = track(
+                asyncio.create_task(_self_dev_loop()), name="self_dev",
+            )
             logger.info("Self-development background task started (16:00 IST daily)")
         except Exception as e:
             logger.warning("Self-development loop startup skipped: %s", e)
@@ -1346,7 +1353,9 @@ async def lifespan(app: FastAPI):
     if getattr(settings, "FNO_ANALYTICS_ENABLED", True):
         try:
             from mcp_server.fno_analytics_monitor import fno_analytics_loop
-            fno_analytics_task = asyncio.create_task(fno_analytics_loop())
+            fno_analytics_task = track(
+                asyncio.create_task(fno_analytics_loop()), name="fno_analytics",
+            )
             logger.info("F&O analytics monitor started (every 5 min during NFO hours)")
         except Exception as e:
             logger.warning("F&O analytics monitor startup skipped: %s", e)
@@ -1358,7 +1367,7 @@ async def lifespan(app: FastAPI):
         from mcp_server.options_seller.greeks_refresh_loop import (
             start_loop as _opts_loop,
         )
-        asyncio.create_task(_opts_loop())
+        track(asyncio.create_task(_opts_loop()), name="options_seller_greeks")
         logger.info("Options seller Greeks refresh loop started (every 5 min, market hours only)")
     except Exception as e:
         logger.warning("Options seller Greeks refresh loop startup skipped: %s", e)
@@ -1386,7 +1395,7 @@ async def lifespan(app: FastAPI):
                 logger.debug("Broker reconciler loop error: %s", _re)
             await _aio.sleep(60)
 
-    asyncio.create_task(_reconciler_loop())
+    track(asyncio.create_task(_reconciler_loop()), name="broker_reconciler")
     logger.info("Broker reconciler loop started (every 60s during market hours)")
 
     # Auto-login to Goodwill (GWC) at startup — mirrors Kite auto-login pattern.
@@ -2747,7 +2756,7 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                             f"Lot: {_lot} | Contracts: {_contracts} | Risk: \u20b9{_risk_per_lot:,.0f}\n"
                             f"Greeks: \u0394 {_delta:+.2f} | \u0393 {_gamma:+.4f} | \u0398 {_theta:+.1f}"
                         )
-                    except Exception as opt_msg_err:  # noqa: BLE001
+                    except Exception as opt_msg_err:
                         logger.debug("Option message block skipped: %s", opt_msg_err)
             disclaimer = getattr(settings, "UNVALIDATED_SIGNAL_DISCLAIMER", "")
             broadcast_msg = disclaimer + msg

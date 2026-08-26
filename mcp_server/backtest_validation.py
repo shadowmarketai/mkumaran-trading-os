@@ -124,7 +124,7 @@ def _extract_trade_timestamps(trades: list[dict]) -> list[pd.Timestamp | None]:
             continue
         try:
             stamps.append(pd.to_datetime(raw))
-        except Exception:  # noqa: BLE001
+        except Exception:
             stamps.append(None)
     return stamps
 

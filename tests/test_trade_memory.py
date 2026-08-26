@@ -76,7 +76,7 @@ def test_add_record_and_save(tmp_path):
 
     # Verify JSON file was created
     assert os.path.exists(filepath)
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         data = json.load(f)
     assert len(data) == 1
     assert data[0]["signal_id"] == "S001"

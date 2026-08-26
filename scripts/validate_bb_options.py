@@ -355,7 +355,7 @@ def _run_options(prices: dict[str, dict], indicators: dict[str, list[dict]],
             # Check underlying exit conditions
             stop = pos["entry_stock_px"] * (1 - HARD_STOP)
             ex   = None
-            if S <= stop:
+            if stop >= S:
                 ex = "hard_stop"
             elif bar["st_dir"] == -1:
                 ex = "st_flip"
@@ -510,7 +510,7 @@ def _run_puts(prices: dict, indicators: dict, date_to_idx: dict,
             # Exit when underlying RISES +5% (adverse for put holder)
             stop = pos["entry_stock_px"] * (1 + HARD_STOP)
             ex   = None
-            if S >= stop:
+            if stop <= S:
                 ex = "hard_stop"
             elif bar["st_dir"] == 1:   # ST turned bullish → exit put
                 ex = "st_flip"

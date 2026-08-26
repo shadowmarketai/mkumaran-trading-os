@@ -723,7 +723,7 @@ class OrderManager:
         current: Decimal = to_money(current_price)
         is_long = pos["direction"] == "BUY"
 
-        if is_long and current <= sl or not is_long and current >= sl:
+        if (is_long and current <= sl) or (not is_long and current >= sl):
             return {
                 "hit": True,
                 "action": "CLOSE",

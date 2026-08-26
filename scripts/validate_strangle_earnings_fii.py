@@ -748,7 +748,7 @@ def main() -> None:
 
     fii_available = not args.earnings_only
     fii_series: dict[date, float] | None = None
-    if fii_available and not args.fii_only or args.fii_only:
+    if (fii_available and not args.fii_only) or args.fii_only:
         fii_series = load_fii_historical(from_date, to_date)
         fii_available = fii_series is not None
 
