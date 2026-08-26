@@ -2606,6 +2606,11 @@ def _execute_mwa_scan_impl(db: Session, segments: list[str] | None = None) -> di
                 # below so nothing is silently dropped.
                 is_stale = deviation_pct > 2.0
                 if db_signal.suppressed:
+                    # Take the signal out of the OPEN pool so signal_monitor
+                    # doesn't pick it up and "close" it later with real P&L
+                    # (the whole point of suppression is that we didn't act
+                    # on it — there's no position to monitor).
+                    db_signal.status = "SUPPRESSED"
                     logger.info(
                         "ActiveTrade skipped for %s: signal suppressed by predictor (%s)",
                         sig["ticker"], db_signal.suppression_reason,

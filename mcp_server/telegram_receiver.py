@@ -611,41 +611,89 @@ class SheetsTracker:
         return False
 
     def get_accuracy_stats(self) -> dict:
-        """Calculate accuracy statistics from the sheet."""
-        self._connect()
-        if self._worksheet is None:
-            return {"error": "Sheets not connected"}
+        """Accuracy stats sourced from Postgres (signals + outcomes).
 
+        Sheets are a WRITE mirror only — reading from them meant the EOD
+        report showed zeros whenever the sheet-write path was stale, even
+        though the DB had real data. Same pattern as
+        routers/signals.py:tool_eod_summary. Output keys unchanged so the
+        Telegram template does not need touching.
+        """
         try:
-            all_records = self._worksheet.get_all_records()
-            if not all_records:
+            from mcp_server.db import SessionLocal
+            from mcp_server.models import Outcome, Signal
+        except Exception as e:
+            return {"error": f"DB not available: {e}"}
+
+        db = SessionLocal()
+        try:
+            # Base counts. "Total signals" mirrors the sheet behaviour of
+            # counting every row, including suppressed — the signal fired,
+            # we just didn't act on it. Open excludes SUPPRESSED because
+            # only OPEN rows are monitored.
+            total = db.query(Signal).count()
+            if total == 0:
+                # Preserved shape for empty-DB case — same keys the sheet
+                # version emitted so any caller checking .get("total") or
+                # .get("message") keeps working.
                 return {"total": 0, "message": "No signals recorded"}
 
-            total = len(all_records)
-            closed = [r for r in all_records if r.get("Status") in ("TARGET_HIT", "SL_HIT", "PARTIAL", "EXPIRED")]
-            wins = [r for r in closed if r.get("Result") == "WIN"]
-            losses = [r for r in closed if r.get("Result") == "LOSS"]
-            open_signals = [r for r in all_records if r.get("Status") == "OPEN"]
+            open_count = db.query(Signal).filter(Signal.status == "OPEN").count()
 
-            total_pnl = sum(float(r.get("P&L Rs", 0) or 0) for r in closed)
-            avg_win = sum(float(r.get("P&L %", 0) or 0) for r in wins) / len(wins) if wins else 0
-            avg_loss = sum(float(r.get("P&L %", 0) or 0) for r in losses) / len(losses) if losses else 0
+            # Outcomes joined to Signals so we can compute per-trade
+            # percentage P&L (Outcome only stores absolute rupees; entry
+            # price + qty live on Signal).
+            rows = (
+                db.query(Signal, Outcome)
+                .join(Outcome, Outcome.signal_id == Signal.id)
+                .all()
+            )
+            wins_pcts: list[float] = []
+            losses_pcts: list[float] = []
+            total_pnl = 0.0
+            for sig, out in rows:
+                pnl_amount = float(out.pnl_amount or 0)
+                total_pnl += pnl_amount
+
+                # Per-trade % from absolute ₹: (pnl_per_share) / entry × 100
+                # Fall back to qty=1 when the signal was recorded before
+                # a qty was known (paper-only sizing = 0).
+                entry = float(sig.entry_price or 0)
+                qty = int(sig.qty or 0) or 1
+                pct = (pnl_amount / qty) / entry * 100 if entry > 0 else 0.0
+
+                if out.outcome == "WIN":
+                    wins_pcts.append(pct)
+                elif out.outcome == "LOSS":
+                    losses_pcts.append(pct)
+
+            closed = len(wins_pcts) + len(losses_pcts)
+            avg_win = sum(wins_pcts) / len(wins_pcts) if wins_pcts else 0.0
+            avg_loss = sum(losses_pcts) / len(losses_pcts) if losses_pcts else 0.0
+            win_rate = round(len(wins_pcts) / closed * 100, 1) if closed else 0
+            expectancy = round(
+                avg_win * (len(wins_pcts) / max(closed, 1))
+                + avg_loss * (len(losses_pcts) / max(closed, 1)),
+                2,
+            )
 
             return {
                 "total_signals": total,
-                "open": len(open_signals),
-                "closed": len(closed),
-                "wins": len(wins),
-                "losses": len(losses),
-                "win_rate": round(len(wins) / len(closed) * 100, 1) if closed else 0,
+                "open": open_count,
+                "closed": closed,
+                "wins": len(wins_pcts),
+                "losses": len(losses_pcts),
+                "win_rate": win_rate,
                 "total_pnl_rs": round(total_pnl, 2),
                 "avg_win_pct": round(avg_win, 2),
                 "avg_loss_pct": round(avg_loss, 2),
-                "expectancy": round(avg_win * (len(wins) / max(len(closed), 1)) + avg_loss * (len(losses) / max(len(closed), 1)), 2),
+                "expectancy": expectancy,
             }
         except Exception as e:
             logger.error("Failed to get accuracy stats: %s", e)
             return {"error": str(e)}
+        finally:
+            db.close()
 
 
 # ── Telegram Bot ─────────────────────────────────────────────
