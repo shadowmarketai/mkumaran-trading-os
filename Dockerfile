@@ -68,6 +68,6 @@ ENV LOG_FORMAT=json \
 EXPOSE 8001
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
-    CMD python -c "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health', timeout=5).status == 200 else 1)"
+    CMD python -c "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5).status == 200 else 1)"
 
 CMD ["uvicorn", "mcp_server.mcp_server:app", "--host", "0.0.0.0", "--port", "8001"]
