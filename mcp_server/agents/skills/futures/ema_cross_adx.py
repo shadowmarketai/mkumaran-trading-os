@@ -39,7 +39,7 @@ class EMACrossADXSkill(BaseSkill):
         adx_arr = adx(h, low, c, 14)
         if adx_arr[-1] < 25:
             return None
-        cur_atr = atr(h, low, 14)
+        cur_atr = atr(h, low, c, 14)
         if e21[-1] > e55[-1] and e21[-2] <= e55[-2]:
             sl = round(float(c[-1]) - 1.5 * cur_atr, 2)
             return make_signal(

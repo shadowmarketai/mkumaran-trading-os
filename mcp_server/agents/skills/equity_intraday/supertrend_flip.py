@@ -15,7 +15,7 @@ from __future__ import annotationsfrom typing import Anyimport numpy as npi
         h = np.asarray(df["high"], dtype=float)
         low = np.asarray(df["low"], dtype=float)
         n = len(c)
-        cur_atr = atr(h, low, 10)
+        cur_atr = atr(h, low, c, 10)
         mult = 3.0
         mid = (h + low) / 2.0
         up = mid - mult * cur_atr

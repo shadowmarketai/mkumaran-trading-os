@@ -98,7 +98,7 @@ class MCXIntradayBreakoutSkill(BaseSkill):
         high_n = float(h[-_LOOKBACK:-1].max())
         low_n  = float(lo[-_LOOKBACK:-1].min())
         cur    = float(c[-1])
-        cur_atr = atr(h, lo, 14)
+        cur_atr = atr(h, lo, c, 14)
 
         today = date.today()
         sym = _strip_exchange(symbol)

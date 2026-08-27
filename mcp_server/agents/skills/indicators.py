@@ -27,8 +27,50 @@ def rsi(data: np.ndarray | pd.Series, period: int = 14) -> np.ndarray:
     return 100 - (100 / (1 + rs))
 
 
-def atr(high: np.ndarray, low: np.ndarray, period: int = 14) -> float:
-    return float(np.mean(high[-period:] - low[-period:]))
+def atr(
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray | None = None,
+    period: int = 14,
+) -> float:
+    """Average True Range over the last `period` bars.
+
+    True range is max(H-L, |H - prevC|, |L - prevC|) — the |H-prevC| and
+    |L-prevC| terms capture overnight/session gaps. Omitting them (the old
+    behaviour of this function) under-reports volatility by roughly 20-30%
+    on daily bars and more on gap days, which in turn makes every
+    ATR-derived stop that much too tight.
+
+    `close` is optional only for backward compatibility with callers that
+    predate this fix. When it is None the result falls back to mean(H-L),
+    which is NOT true range — pass close wherever possible.
+    """
+    h = np.asarray(high, dtype=float)
+    lo = np.asarray(low, dtype=float)
+
+    # Guard against legacy positional calls like atr(h, low, 10) where the
+    # third argument was the period, not close. A scalar/0-d third argument
+    # is treated as the period so old call sites degrade rather than crash.
+    if close is not None and np.ndim(close) == 0:
+        period = int(close)
+        close = None
+
+    if close is None or len(np.asarray(close)) < 2:
+        return float(np.mean(h[-period:] - lo[-period:]))
+
+    c = np.asarray(close, dtype=float)
+    n = min(len(h), len(lo), len(c))
+    h, lo, c = h[-n:], lo[-n:], c[-n:]
+    if n < 2:
+        return float(np.mean(h - lo)) if n else 0.0
+
+    prev_close = c[:-1]
+    tr = np.maximum(
+        h[1:] - lo[1:],
+        np.maximum(np.abs(h[1:] - prev_close), np.abs(lo[1:] - prev_close)),
+    )
+    window = tr[-period:] if len(tr) >= period else tr
+    return float(np.mean(window))
 
 
 def adx(

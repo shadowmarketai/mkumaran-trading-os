@@ -41,7 +41,7 @@ class VolumeBreakoutSkill(BaseSkill):
         high_20 = float(h[-21:-1].max())
         if c[-1] <= high_20:
             return None
-        cur_atr = atr(h, low, 14)
+        cur_atr = atr(h, low, c, 14)
         sl = round(float(c[-1]) - 1.5 * cur_atr, 2)
         return make_signal(
             ticker=symbol,
