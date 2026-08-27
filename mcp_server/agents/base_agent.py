@@ -346,13 +346,22 @@ class BaseAgent(ABC):
             db.close()
 
     async def run_cycle(self) -> dict[str, Any]:
-        """One full scan → validate → deliver cycle."""
+        """One full scan → validate → deliver cycle.
+
+        scan() and validate() are SYNCHRONOUS methods that do blocking
+        network I/O (OHLCV fetches to yfinance/NSE/Angel/Dhan). If we
+        called them directly from this coroutine they would block the
+        event loop for the full scan duration — 30-60s per agent, and
+        with six agents starting at once that meant uvicorn couldn't
+        even bind to accept /health requests for 4+ minutes. Both are
+        now offloaded to the default asyncio thread pool.
+        """
         if not self.is_market_open():
             return {"status": "market_closed", "agent": self.name}
 
         try:
-            candidates = self.scan()
-            validated = self.validate(candidates)
+            candidates = await asyncio.to_thread(self.scan)
+            validated = await asyncio.to_thread(self.validate, candidates)
             delivered = await self.deliver(validated)
             return {
                 "status": "ok",
@@ -365,12 +374,21 @@ class BaseAgent(ABC):
             logger.error("[%s] cycle failed: %s", self.name, e)
             return {"status": "error", "agent": self.name, "error": str(e)}
 
+    # Small stagger so six agents don't all hammer external APIs (and
+    # the thread pool) at the same instant on startup. Overridden in
+    # individual agents if needed.
+    startup_delay: float = 0.0
+
     async def run_loop(self) -> None:
         """Background loop — runs scan cycles at the configured interval."""
+        if self.startup_delay > 0:
+            await asyncio.sleep(self.startup_delay)
         logger.info("[%s] agent started (interval=%ds)", self.name, self.scan_interval)
         while True:
             try:
-                result = await asyncio.to_thread(lambda: None)  # yield to event loop
+                # to_thread(lambda: None) is a cheap yield — the real
+                # blocking work is now inside run_cycle() itself.
+                await asyncio.sleep(0)
                 result = await self.run_cycle()
                 if result.get("delivered"):
                     logger.info("[%s] cycle result: %s", self.name, result)

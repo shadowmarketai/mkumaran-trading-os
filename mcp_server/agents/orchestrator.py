@@ -37,15 +37,22 @@ async def start_all_agents() -> list[asyncio.Task]:
         FuturesAgent(),
     ]
 
+    # Stagger startup so agents don't all hammer external APIs (and the
+    # asyncio worker thread pool) at t=0 during a container boot. The
+    # first agent starts immediately; each subsequent one waits an extra
+    # 15s before its first scan. Six agents finish staggering in 75s —
+    # well within the auto-scan interval of any agent.
     tasks = []
-    for agent in agents:
+    for i, agent in enumerate(agents):
+        agent.startup_delay = float(i * 15)
         task = asyncio.create_task(agent.run_loop())
         tasks.append(task)
         logger.info(
-            "Agent started: %s (segment=%s, interval=%ds)",
+            "Agent started: %s (segment=%s, interval=%ds, delay=%.0fs)",
             agent.name,
             agent.segment,
             agent.scan_interval,
+            agent.startup_delay,
         )
 
     logger.info("All %d trading agents started", len(agents))
