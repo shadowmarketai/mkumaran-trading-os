@@ -83,6 +83,10 @@ class SkillRegistry:
                     signal.setdefault("skill_name", skill.name)
                     signal.setdefault("scanner_list", [skill.name])
                     signal.setdefault("timeframe", skill.timeframe)
+                    # Attach OHLCV frame so BaseAgent._persist_signal can
+                    # extract entry-context features for the predictor gate.
+                    # Underscore prefix — non-persisted, ephemeral.
+                    signal.setdefault("_ohlcv_df", df)
                     results.append(signal)
             except Exception as e:
                 logger.debug("Skill %s failed on %s: %s", skill.name, symbol, e)

@@ -147,11 +147,31 @@ class BaseAgent(ABC):
         return "\n".join(lines)
 
     async def deliver(self, signals: list[dict]) -> int:
-        """Persist to DB, send to Telegram, and broadcast to subscribers."""
+        """Persist to DB, send to Telegram, and broadcast to subscribers.
+
+        Two gates run before Telegram send:
+          1. ScannerBayesian auto-disable — skip skills flagged as
+             persistent underperformers. Previously only the MWA/Chartink
+             pipeline consulted this list; agent-sourced signals like
+             swing_low_bounce kept firing even after being disabled.
+          2. Predictor loss-probability gate (inside _persist_signal) —
+             persists the signal as SUPPRESSED and returns was_suppressed
+             so we skip Telegram.
+        """
         from mcp_server.telegram_bot import send_telegram_message
 
         self._reset_daily()
         delivered = 0
+
+        # Load auto-disable list once per delivery batch. Fail-open (empty
+        # set) on any error — a broken Bayesian read must not silence live
+        # signals.
+        try:
+            from mcp_server.scanner_bayesian import get_disabled_scanners
+            disabled = get_disabled_scanners()
+        except Exception as bayes_err:
+            logger.debug("[%s] auto-disable list unavailable: %s", self.name, bayes_err)
+            disabled = set()
 
         for sig in signals[: self.max_signals_per_cycle]:
             if self._signals_today >= self.max_signals_per_day:
@@ -164,6 +184,15 @@ class BaseAgent(ABC):
             if key in self._sent_keys:
                 continue
 
+            # Gate 1: Bayesian auto-disable
+            scanner_key = sig.get("skill_name") or sig.get("pattern")
+            if scanner_key and scanner_key in disabled:
+                logger.info(
+                    "[%s] SKIPPED (auto-disabled by Bayesian stats): %s %s",
+                    self.name, scanner_key, sig.get("ticker"),
+                )
+                continue
+
             try:
                 # ── Persist to DB first so this signal is tracked by
                 # signal_monitor (SL/TGT auto-close) and shows up in
@@ -171,7 +200,14 @@ class BaseAgent(ABC):
                 # source in the system. Previously this method only sent
                 # a Telegram message despite its docstring claiming it
                 # persisted — agent-sourced signals were untracked.
-                db_signal_id = self._persist_signal(sig)
+                db_signal_id, was_suppressed = self._persist_signal(sig)
+
+                # Gate 2: predictor gate. When _persist_signal reports the
+                # predictor blocked this signal, we still keep the DB row
+                # (as SUPPRESSED, for self-dev learning) but skip Telegram
+                # so we don't advertise a trade we won't take.
+                if was_suppressed:
+                    continue
 
                 from mcp_server.config import settings
                 disclaimer = "" if sig.get("validated") else getattr(settings, "UNVALIDATED_SIGNAL_DISCLAIMER", "")
@@ -202,22 +238,32 @@ class BaseAgent(ABC):
 
         return delivered
 
-    def _persist_signal(self, sig: dict) -> int | None:
+    def _persist_signal(self, sig: dict) -> tuple[int | None, bool]:
         """Write a Signal row to the DB for this agent-generated candidate.
 
-        Returns the new Signal.id, or None if persistence failed (delivery
-        still proceeds to Telegram — a DB hiccup shouldn't silence alerts).
+        Runs the self-development predictor gate (mirrors mcp_server.py's
+        MWA path at line 2544-2587) so agent signals are gated against
+        historical loss probability just like MWA-sourced ones.
+
+        Returns (signal_id, suppressed):
+          - signal_id is None on DB failure — delivery still proceeds so a
+            DB hiccup doesn't silence Telegram alerts.
+          - suppressed=True means the predictor blocked it and the caller
+            must NOT send the Telegram card or add to ActiveTrade.
         """
         from datetime import date as _date
 
+        from mcp_server.config import settings
         from mcp_server.db import SessionLocal
         from mcp_server.models import Signal
 
         db = SessionLocal()
+        was_suppressed = False
         try:
             entry = sig.get("entry", 0)
             sl = sig.get("sl", 0)
             target = sig.get("target", 0)
+            scanner_key = sig.get("pattern") or sig.get("skill_name") or self.name
 
             db_signal = Signal(
                 signal_date=_date.today(),
@@ -236,16 +282,66 @@ class BaseAgent(ABC):
                 source=self.name,
                 timeframe="1D",
                 status="OPEN",
-                scanner_list=[sig.get("pattern") or sig.get("skill_name") or self.name],
+                scanner_list=[scanner_key],
             )
+
+            # ── Self-development: entry-context features ──
+            # Same shape as mcp_server.py:2544. Uses whatever OHLCV the
+            # skill attached (via SkillRegistry.scan_all); on missing df
+            # the extractor falls back to neutral defaults.
+            try:
+                from mcp_server.signal_features import (
+                    apply_features_to_signal,
+                    extract_entry_features,
+                )
+                feat = extract_entry_features(
+                    sig.get("_ohlcv_df"),
+                    scanner_count=1,
+                    scanner_list=[scanner_key],
+                    ai_confidence=int(sig.get("confidence") or 0),
+                    rrr=float(sig.get("rrr") or 0),
+                    direction=sig.get("direction", "LONG"),
+                    exchange=self.segment,
+                )
+                apply_features_to_signal(db_signal, feat)
+            except Exception as feat_err:
+                logger.debug("[%s] feature extraction skipped: %s", self.name, feat_err)
+
+            # ── Self-development: predictive loss probability gate ──
+            try:
+                from mcp_server.signal_predictor import get_predictor
+                predictor = get_predictor()
+                if predictor.is_ready():
+                    loss_prob, top_features = predictor.predict(
+                        db_signal.feature_vector or [],
+                    )
+                    db_signal.loss_probability = round(loss_prob, 3)
+                    db_signal.predictor_version = predictor.version
+                    threshold = getattr(settings, "PREDICTOR_BLOCK_THRESHOLD", 0.75)
+                    if loss_prob >= threshold:
+                        db_signal.suppressed = True
+                        db_signal.status = "SUPPRESSED"
+                        db_signal.suppression_reason = (
+                            f"Predictor: P(loss)={loss_prob:.2f} ≥ {threshold:.2f}. "
+                            f"Top risk factors: {', '.join(top_features[:3])}"
+                        )
+                        was_suppressed = True
+                        logger.info(
+                            "[%s] Signal SUPPRESSED %s: P(loss)=%.2f reason=%s",
+                            self.name, sig.get("ticker"),
+                            loss_prob, db_signal.suppression_reason,
+                        )
+            except Exception as pred_err:
+                logger.debug("[%s] predictor skipped: %s", self.name, pred_err)
+
             db.add(db_signal)
             db.commit()
             db.refresh(db_signal)
-            return db_signal.id
+            return db_signal.id, was_suppressed
         except Exception as e:
             logger.warning("[%s] Signal persistence failed for %s: %s", self.name, sig.get("ticker"), e)
             db.rollback()
-            return None
+            return None, False
         finally:
             db.close()
 

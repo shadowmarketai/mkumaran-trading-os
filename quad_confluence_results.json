@@ -1,0 +1,1787 @@
+{
+  "summary": [
+    {
+      "variant": "4of4_adx",
+      "trades": 18,
+      "win_rate": 38.9,
+      "expectancy": 0.418,
+      "avg_win": 8.56,
+      "avg_loss": -4.76,
+      "profit_factor": 1.14,
+      "total_net_pct": 7.5,
+      "avg_bars_held": 20.1
+    },
+    {
+      "variant": "4of4",
+      "trades": 23,
+      "win_rate": 34.8,
+      "expectancy": 0.783,
+      "avg_win": 10.16,
+      "avg_loss": -4.22,
+      "profit_factor": 1.28,
+      "total_net_pct": 18.0,
+      "avg_bars_held": 23.6
+    },
+    {
+      "variant": "3of4",
+      "trades": 69,
+      "win_rate": 24.6,
+      "expectancy": -0.795,
+      "avg_win": 10.49,
+      "avg_loss": -4.48,
+      "profit_factor": 0.76,
+      "total_net_pct": -54.8,
+      "avg_bars_held": 15.3
+    },
+    {
+      "variant": "2of4",
+      "trades": 137,
+      "win_rate": 21.9,
+      "expectancy": -1.359,
+      "avg_win": 9.18,
+      "avg_loss": -4.31,
+      "profit_factor": 0.6,
+      "total_net_pct": -186.2,
+      "avg_bars_held": 13.6
+    }
+  ],
+  "trades": {
+    "4of4_adx": [
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -5.112,
+        "net_pct": -5.812,
+        "exit_reason": "STOP",
+        "bars_held": 15
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -3.615,
+        "net_pct": -4.315,
+        "exit_reason": "STOP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -4.6,
+        "net_pct": -5.3,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": 4.702,
+        "net_pct": 4.002,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 18
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -3.163,
+        "net_pct": -3.863,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": 9.494,
+        "net_pct": 8.794,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 48
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": -6.103,
+        "net_pct": -6.803,
+        "exit_reason": "STOP",
+        "bars_held": 14
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": 8.373,
+        "net_pct": 7.673,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 36
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -3.806,
+        "net_pct": -4.506,
+        "exit_reason": "STOP",
+        "bars_held": 14
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": 2.109,
+        "net_pct": 1.409,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 18
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -4.545,
+        "net_pct": -5.245,
+        "exit_reason": "STOP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -4.53,
+        "net_pct": -5.23,
+        "exit_reason": "STOP",
+        "bars_held": 11
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": 5.06,
+        "net_pct": 4.36,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 23
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": 13.761,
+        "net_pct": 13.061,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 48
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": -0.155,
+        "net_pct": -0.855,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 30
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": 21.304,
+        "net_pct": 20.604,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 60
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -4.52,
+        "net_pct": -5.22,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -4.525,
+        "net_pct": -5.225,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      }
+    ],
+    "4of4": [
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -5.112,
+        "net_pct": -5.812,
+        "exit_reason": "STOP",
+        "bars_held": 15
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": 0.36,
+        "net_pct": -0.34,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 26
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -3.615,
+        "net_pct": -4.315,
+        "exit_reason": "STOP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -2.945,
+        "net_pct": -3.645,
+        "exit_reason": "STOP",
+        "bars_held": 40
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -4.066,
+        "net_pct": -4.766,
+        "exit_reason": "STOP",
+        "bars_held": 21
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -3.782,
+        "net_pct": -4.482,
+        "exit_reason": "STOP",
+        "bars_held": 32
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -4.6,
+        "net_pct": -5.3,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": 4.702,
+        "net_pct": 4.002,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 18
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -3.163,
+        "net_pct": -3.863,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": 9.494,
+        "net_pct": 8.794,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 48
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": -6.103,
+        "net_pct": -6.803,
+        "exit_reason": "STOP",
+        "bars_held": 14
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": 8.373,
+        "net_pct": 7.673,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 36
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -3.806,
+        "net_pct": -4.506,
+        "exit_reason": "STOP",
+        "bars_held": 14
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": 2.109,
+        "net_pct": 1.409,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 18
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -2.475,
+        "net_pct": -3.175,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 10
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -4.53,
+        "net_pct": -5.23,
+        "exit_reason": "STOP",
+        "bars_held": 11
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": 6.284,
+        "net_pct": 5.584,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 25
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -2.786,
+        "net_pct": -3.486,
+        "exit_reason": "STOP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": 13.761,
+        "net_pct": 13.061,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 48
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": 20.845,
+        "net_pct": 20.145,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 63
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": 21.304,
+        "net_pct": 20.604,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 60
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -1.623,
+        "net_pct": -2.323,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 28
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -4.525,
+        "net_pct": -5.225,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      }
+    ],
+    "3of4": [
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": 3.145,
+        "net_pct": 2.445,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 28
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -7.633,
+        "net_pct": -8.333,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -5.509,
+        "net_pct": -6.209,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": 0.36,
+        "net_pct": -0.34,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 26
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -3.615,
+        "net_pct": -4.315,
+        "exit_reason": "STOP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -4.052,
+        "net_pct": -4.752,
+        "exit_reason": "STOP",
+        "bars_held": 5
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -5.078,
+        "net_pct": -5.778,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -3.709,
+        "net_pct": -4.409,
+        "exit_reason": "STOP",
+        "bars_held": 7
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -4.931,
+        "net_pct": -5.631,
+        "exit_reason": "STOP",
+        "bars_held": 15
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -2.377,
+        "net_pct": -3.077,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -2.945,
+        "net_pct": -3.645,
+        "exit_reason": "STOP",
+        "bars_held": 40
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": 3.221,
+        "net_pct": 2.521,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 22
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -3.495,
+        "net_pct": -4.195,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -4.645,
+        "net_pct": -5.345,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -4.653,
+        "net_pct": -5.353,
+        "exit_reason": "STOP",
+        "bars_held": 5
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -3.782,
+        "net_pct": -4.482,
+        "exit_reason": "STOP",
+        "bars_held": 32
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -2.58,
+        "net_pct": -3.28,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 7
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -0.009,
+        "net_pct": -0.709,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 23
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -2.72,
+        "net_pct": -3.42,
+        "exit_reason": "STOP",
+        "bars_held": 6
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -2.438,
+        "net_pct": -3.138,
+        "exit_reason": "STOP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": 9.219,
+        "net_pct": 8.519,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 39
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": 7.09,
+        "net_pct": 6.39,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 20
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -4.464,
+        "net_pct": -5.164,
+        "exit_reason": "STOP",
+        "bars_held": 6
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -3.226,
+        "net_pct": -3.926,
+        "exit_reason": "STOP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -3.524,
+        "net_pct": -4.224,
+        "exit_reason": "STOP",
+        "bars_held": 6
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -2.323,
+        "net_pct": -3.023,
+        "exit_reason": "STOP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -3.008,
+        "net_pct": -3.708,
+        "exit_reason": "STOP",
+        "bars_held": 5
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -2.734,
+        "net_pct": -3.434,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": 29.836,
+        "net_pct": 29.136,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 70
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": -5.892,
+        "net_pct": -6.592,
+        "exit_reason": "STOP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": -5.823,
+        "net_pct": -6.523,
+        "exit_reason": "STOP",
+        "bars_held": 5
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": -5.756,
+        "net_pct": -6.456,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": 16.379,
+        "net_pct": 15.679,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 36
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": 8.373,
+        "net_pct": 7.673,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 36
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": 0.178,
+        "net_pct": -0.522,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 20
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -3.953,
+        "net_pct": -4.653,
+        "exit_reason": "STOP",
+        "bars_held": 5
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -3.806,
+        "net_pct": -4.506,
+        "exit_reason": "STOP",
+        "bars_held": 14
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": 12.676,
+        "net_pct": 11.976,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 44
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": 4.226,
+        "net_pct": 3.526,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 11
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -1.747,
+        "net_pct": -2.447,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 12
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -4.202,
+        "net_pct": -4.902,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 13
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -4.919,
+        "net_pct": -5.619,
+        "exit_reason": "STOP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": 12.135,
+        "net_pct": 11.435,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 38
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": 2.734,
+        "net_pct": 2.034,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 51
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": 17.892,
+        "net_pct": 17.192,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 50
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -5.255,
+        "net_pct": -5.955,
+        "exit_reason": "STOP",
+        "bars_held": 4
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": -4.369,
+        "net_pct": -5.069,
+        "exit_reason": "STOP",
+        "bars_held": 7
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": 20.845,
+        "net_pct": 20.145,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 63
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": 26.969,
+        "net_pct": 26.269,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 67
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": -3.141,
+        "net_pct": -3.841,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": -3.717,
+        "net_pct": -4.417,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": 3.259,
+        "net_pct": 2.559,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 22
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": -4.005,
+        "net_pct": -4.705,
+        "exit_reason": "STOP",
+        "bars_held": 25
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -4.642,
+        "net_pct": -5.342,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -4.417,
+        "net_pct": -5.117,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -3.196,
+        "net_pct": -3.896,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -3.666,
+        "net_pct": -4.366,
+        "exit_reason": "STOP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -3.579,
+        "net_pct": -4.279,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -4.163,
+        "net_pct": -4.863,
+        "exit_reason": "STOP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -3.199,
+        "net_pct": -3.899,
+        "exit_reason": "STOP",
+        "bars_held": 17
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -0.949,
+        "net_pct": -1.649,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 14
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -5.955,
+        "net_pct": -6.655,
+        "exit_reason": "STOP",
+        "bars_held": 10
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -5.9,
+        "net_pct": -6.6,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -6.106,
+        "net_pct": -6.806,
+        "exit_reason": "STOP",
+        "bars_held": 5
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": 7.066,
+        "net_pct": 6.366,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 39
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -3.826,
+        "net_pct": -4.526,
+        "exit_reason": "STOP",
+        "bars_held": 4
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -3.249,
+        "net_pct": -3.949,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -4.445,
+        "net_pct": -5.145,
+        "exit_reason": "STOP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": 5.2,
+        "net_pct": 4.5,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 20
+      }
+    ],
+    "2of4": [
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -6.395,
+        "net_pct": -7.095,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -6.389,
+        "net_pct": -7.089,
+        "exit_reason": "STOP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": 3.145,
+        "net_pct": 2.445,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 28
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -8.145,
+        "net_pct": -8.845,
+        "exit_reason": "STOP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -6.511,
+        "net_pct": -7.211,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 5
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -2.365,
+        "net_pct": -3.065,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 12
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": 11.898,
+        "net_pct": 11.198,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 47
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -4.229,
+        "net_pct": -4.929,
+        "exit_reason": "STOP",
+        "bars_held": 4
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -3.771,
+        "net_pct": -4.471,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": 2.879,
+        "net_pct": 2.179,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 14
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -2.119,
+        "net_pct": -2.819,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 12
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -4.213,
+        "net_pct": -4.913,
+        "exit_reason": "STOP",
+        "bars_held": 10
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": 8.089,
+        "net_pct": 7.389,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 37
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -4.315,
+        "net_pct": -5.015,
+        "exit_reason": "STOP",
+        "bars_held": 6
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -0.785,
+        "net_pct": -1.485,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -3.921,
+        "net_pct": -4.621,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:360ONE",
+        "gross_pct": -4.22,
+        "net_pct": -4.92,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -3.709,
+        "net_pct": -4.409,
+        "exit_reason": "STOP",
+        "bars_held": 7
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": 3.702,
+        "net_pct": 3.002,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 54
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -2.377,
+        "net_pct": -3.077,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": 0.439,
+        "net_pct": -0.261,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 43
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -1.286,
+        "net_pct": -1.986,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": 3.221,
+        "net_pct": 2.521,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 22
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -3.495,
+        "net_pct": -4.195,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -4.541,
+        "net_pct": -5.241,
+        "exit_reason": "STOP",
+        "bars_held": 7
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -5.42,
+        "net_pct": -6.12,
+        "exit_reason": "STOP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -1.587,
+        "net_pct": -2.287,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 21
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": -4.653,
+        "net_pct": -5.353,
+        "exit_reason": "STOP",
+        "bars_held": 5
+      },
+      {
+        "ticker": "NSE:3MINDIA",
+        "gross_pct": 3.001,
+        "net_pct": 2.301,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 44
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -2.58,
+        "net_pct": -3.28,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 7
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": 0.711,
+        "net_pct": 0.011,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 17
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -0.715,
+        "net_pct": -1.415,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -1.895,
+        "net_pct": -2.595,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 13
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": 2.158,
+        "net_pct": 1.458,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 24
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -3.435,
+        "net_pct": -4.135,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -1.096,
+        "net_pct": -1.796,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": 0.255,
+        "net_pct": -0.445,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -0.349,
+        "net_pct": -1.049,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -2.747,
+        "net_pct": -3.447,
+        "exit_reason": "STOP",
+        "bars_held": 12
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -2.719,
+        "net_pct": -3.419,
+        "exit_reason": "STOP",
+        "bars_held": 4
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -2.719,
+        "net_pct": -3.419,
+        "exit_reason": "STOP",
+        "bars_held": 12
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": 17.653,
+        "net_pct": 16.953,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 40
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": 7.09,
+        "net_pct": 6.39,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 20
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -4.676,
+        "net_pct": -5.376,
+        "exit_reason": "STOP",
+        "bars_held": 9
+      },
+      {
+        "ticker": "NSE:ABB",
+        "gross_pct": -4.047,
+        "net_pct": -4.747,
+        "exit_reason": "STOP",
+        "bars_held": 10
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -3.731,
+        "net_pct": -4.431,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -0.221,
+        "net_pct": -0.921,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 16
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -2.7,
+        "net_pct": -3.4,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 18
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": 0.728,
+        "net_pct": 0.028,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 20
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -2.748,
+        "net_pct": -3.448,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 9
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -0.264,
+        "net_pct": -0.964,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 19
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": 0.242,
+        "net_pct": -0.458,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 18
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -2.282,
+        "net_pct": -2.982,
+        "exit_reason": "STOP",
+        "bars_held": 21
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -2.244,
+        "net_pct": -2.944,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -3.179,
+        "net_pct": -3.879,
+        "exit_reason": "STOP",
+        "bars_held": 6
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -3.681,
+        "net_pct": -4.381,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 21
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -3.247,
+        "net_pct": -3.947,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -1.831,
+        "net_pct": -2.531,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 16
+      },
+      {
+        "ticker": "NSE:ACC",
+        "gross_pct": -3.352,
+        "net_pct": -4.052,
+        "exit_reason": "STOP",
+        "bars_held": 4
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": -6.023,
+        "net_pct": -6.723,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": -7.489,
+        "net_pct": -8.189,
+        "exit_reason": "STOP",
+        "bars_held": 4
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": -7.095,
+        "net_pct": -7.795,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": 29.836,
+        "net_pct": 29.136,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 70
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": -5.892,
+        "net_pct": -6.592,
+        "exit_reason": "STOP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": -6.209,
+        "net_pct": -6.909,
+        "exit_reason": "STOP",
+        "bars_held": 13
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": -1.351,
+        "net_pct": -2.051,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 17
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": -5.583,
+        "net_pct": -6.283,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": 23.602,
+        "net_pct": 22.902,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 61
+      },
+      {
+        "ticker": "NSE:ACMESOLAR",
+        "gross_pct": 19.621,
+        "net_pct": 18.921,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 42
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -3.594,
+        "net_pct": -4.294,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": 0.178,
+        "net_pct": -0.522,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 20
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -3.831,
+        "net_pct": -4.531,
+        "exit_reason": "STOP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -0.942,
+        "net_pct": -1.642,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -3.953,
+        "net_pct": -4.653,
+        "exit_reason": "STOP",
+        "bars_held": 5
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -3.806,
+        "net_pct": -4.506,
+        "exit_reason": "STOP",
+        "bars_held": 14
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -3.466,
+        "net_pct": -4.166,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -3.674,
+        "net_pct": -4.374,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": 12.676,
+        "net_pct": 11.976,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 44
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -4.643,
+        "net_pct": -5.343,
+        "exit_reason": "STOP",
+        "bars_held": 18
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -5.533,
+        "net_pct": -6.233,
+        "exit_reason": "STOP",
+        "bars_held": 21
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": 2.451,
+        "net_pct": 1.751,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 19
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": 4.226,
+        "net_pct": 3.526,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 11
+      },
+      {
+        "ticker": "NSE:AIAENG",
+        "gross_pct": -1.747,
+        "net_pct": -2.447,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 12
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -4.762,
+        "net_pct": -5.462,
+        "exit_reason": "STOP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -3.127,
+        "net_pct": -3.827,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 14
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -3.902,
+        "net_pct": -4.602,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -4.685,
+        "net_pct": -5.385,
+        "exit_reason": "STOP",
+        "bars_held": 5
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -6.141,
+        "net_pct": -6.841,
+        "exit_reason": "STOP",
+        "bars_held": 4
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -5.932,
+        "net_pct": -6.632,
+        "exit_reason": "STOP",
+        "bars_held": 5
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -4.919,
+        "net_pct": -5.619,
+        "exit_reason": "STOP",
+        "bars_held": 8
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": 17.001,
+        "net_pct": 16.301,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 42
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": 6.324,
+        "net_pct": 5.624,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 61
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": 17.892,
+        "net_pct": 17.192,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 50
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -3.501,
+        "net_pct": -4.201,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 12
+      },
+      {
+        "ticker": "NSE:APLAPOLLO",
+        "gross_pct": -3.583,
+        "net_pct": -4.283,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": 0.267,
+        "net_pct": -0.433,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 19
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": -5.104,
+        "net_pct": -5.804,
+        "exit_reason": "STOP",
+        "bars_held": 4
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": -5.597,
+        "net_pct": -6.297,
+        "exit_reason": "STOP",
+        "bars_held": 7
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": 1.819,
+        "net_pct": 1.119,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 6
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": 30.884,
+        "net_pct": 30.184,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 66
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": -0.197,
+        "net_pct": -0.897,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": 33.144,
+        "net_pct": 32.444,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 75
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": -3.141,
+        "net_pct": -3.841,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": -3.717,
+        "net_pct": -4.417,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": 3.259,
+        "net_pct": 2.559,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 22
+      },
+      {
+        "ticker": "NSE:AUBANK",
+        "gross_pct": -4.005,
+        "net_pct": -4.705,
+        "exit_reason": "STOP",
+        "bars_held": 25
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -4.607,
+        "net_pct": -5.307,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -4.97,
+        "net_pct": -5.67,
+        "exit_reason": "STOP",
+        "bars_held": 10
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -4.742,
+        "net_pct": -5.442,
+        "exit_reason": "STOP",
+        "bars_held": 12
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -6.784,
+        "net_pct": -7.484,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": 2.318,
+        "net_pct": 1.618,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 34
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -4.499,
+        "net_pct": -5.199,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 13
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -3.196,
+        "net_pct": -3.896,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -3.666,
+        "net_pct": -4.366,
+        "exit_reason": "STOP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -4.186,
+        "net_pct": -4.886,
+        "exit_reason": "STOP",
+        "bars_held": 4
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -0.38,
+        "net_pct": -1.08,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -3.579,
+        "net_pct": -4.279,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -3.334,
+        "net_pct": -4.034,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -4.163,
+        "net_pct": -4.863,
+        "exit_reason": "STOP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -3.199,
+        "net_pct": -3.899,
+        "exit_reason": "STOP",
+        "bars_held": 17
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -5.64,
+        "net_pct": -6.34,
+        "exit_reason": "STOP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": 8.967,
+        "net_pct": 8.267,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 21
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -4.169,
+        "net_pct": -4.869,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:AWL",
+        "gross_pct": -4.2,
+        "net_pct": -4.9,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -5.859,
+        "net_pct": -6.559,
+        "exit_reason": "STOP",
+        "bars_held": 1
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -5.955,
+        "net_pct": -6.655,
+        "exit_reason": "STOP",
+        "bars_held": 10
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": 3.753,
+        "net_pct": 3.053,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 25
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": 9.195,
+        "net_pct": 8.495,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 40
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -3.826,
+        "net_pct": -4.526,
+        "exit_reason": "STOP",
+        "bars_held": 4
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -2.572,
+        "net_pct": -3.272,
+        "exit_reason": "STOP",
+        "bars_held": 0
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -3.249,
+        "net_pct": -3.949,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -2.931,
+        "net_pct": -3.631,
+        "exit_reason": "STOP",
+        "bars_held": 9
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -5.869,
+        "net_pct": -6.569,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -5.942,
+        "net_pct": -6.642,
+        "exit_reason": "STOP",
+        "bars_held": 3
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -6.09,
+        "net_pct": -6.79,
+        "exit_reason": "STOP",
+        "bars_held": 2
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": -2.425,
+        "net_pct": -3.125,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 20
+      },
+      {
+        "ticker": "NSE:AADHARHFC",
+        "gross_pct": 5.2,
+        "net_pct": 4.5,
+        "exit_reason": "ST_FLIP",
+        "bars_held": 20
+      }
+    ]
+  }
+}
