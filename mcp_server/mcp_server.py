@@ -1106,118 +1106,134 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Database init skipped (not available): %s", e)
 
-    # One-shot purge of stale yfinance MCX/NFO rows. They map CRUDEOIL→CL=F
-    # (NYMEX WTI USD) etc., which is wrong currency + wrong contract for
-    # MCX FUTCOM lookups. After purge, next fetch hits gwc/angel/kite.
-    try:
-        from mcp_server.db import SessionLocal
-        from mcp_server.ohlcv_cache import purge_yfinance_mcx_nfo
-        _purge_session = SessionLocal()
+    # ─────────────────────────────────────────────────────────────
+    # Deferred startup work — everything below used to run inline
+    # BEFORE the lifespan `yield`, which blocked uvicorn from binding
+    # for 2-4 minutes. Predictor training alone can take 30-60s on a
+    # cold deploy. Coolify's healthcheck retries would exhaust while
+    # uvicorn was still stuck in migrations, and the deploy rolled
+    # back even though the app was seconds from being ready.
+    #
+    # Moving these to a background task means uvicorn binds within
+    # ~1s of init_db() finishing, so /health responds immediately.
+    # None of these steps are prerequisites for serving requests —
+    # they're maintenance + model warm-up.
+    # ─────────────────────────────────────────────────────────────
+    async def _deferred_startup() -> None:
+        # yfinance MCX/NFO cache purge — stale rows map CRUDEOIL→CL=F
+        # (NYMEX WTI USD) which is wrong for MCX FUTCOM lookups.
         try:
-            purged = purge_yfinance_mcx_nfo(_purge_session)
-            if purged:
-                logger.info("Startup: purged %d stale yfinance MCX/NFO cache rows", purged)
-        finally:
-            _purge_session.close()
-    except Exception as e:
-        logger.debug("Startup yfinance MCX/NFO purge skipped: %s", e)
+            from mcp_server.ohlcv_cache import purge_yfinance_mcx_nfo
+            _purge_session = SessionLocal()
+            try:
+                purged = await asyncio.to_thread(purge_yfinance_mcx_nfo, _purge_session)
+                if purged:
+                    logger.info(
+                        "Deferred startup: purged %d stale yfinance MCX/NFO cache rows",
+                        purged,
+                    )
+            finally:
+                _purge_session.close()
+        except Exception as e:
+            logger.debug("Deferred startup yfinance purge skipped: %s", e)
 
-    # Auto-close stale signals — signals OPEN for >7 days without hitting
-    # SL or TGT are expired. This prevents the OPEN signal count from
-    # growing indefinitely (was 1318), which breaks dedup, signal monitor
-    # performance, and EOD accuracy reporting.
-    try:
-        _stale_db = SessionLocal()
+        # Expire stale OPEN signals (>3 days without SL/TGT hit).
         try:
-            # Aggressive 3-day cutoff — no swing trade should stay open
-            # for 3+ days without hitting SL or TGT. If it hasn't moved
-            # in 3 days, the setup is invalidated.
-            stale_cutoff = (date.today() - timedelta(days=3))
-            stale_signals = _stale_db.query(Signal).filter(
-                Signal.status == "OPEN",
-                Signal.signal_date < stale_cutoff,
-            ).all()
-            if stale_signals:
-                for sig in stale_signals:
-                    sig.status = "EXPIRED"
-                _stale_db.commit()
-                expired_ids = [s.id for s in stale_signals]
-                _stale_db.query(ActiveTrade).filter(
-                    ActiveTrade.signal_id.in_(expired_ids)
-                ).delete(synchronize_session=False)
-                _stale_db.commit()
-                logger.info(
-                    "Startup: expired %d stale OPEN signals (older than %s)",
-                    len(stale_signals), stale_cutoff,
-                )
-        finally:
-            _stale_db.close()
-    except Exception as stale_err:
-        logger.debug("Stale signal cleanup skipped: %s", stale_err)
+            def _cleanup_stale() -> int:
+                s = SessionLocal()
+                try:
+                    stale_cutoff = date.today() - timedelta(days=3)
+                    stale_signals = s.query(Signal).filter(
+                        Signal.status == "OPEN",
+                        Signal.signal_date < stale_cutoff,
+                    ).all()
+                    if not stale_signals:
+                        return 0
+                    for sig in stale_signals:
+                        sig.status = "EXPIRED"
+                    s.commit()
+                    expired_ids = [x.id for x in stale_signals]
+                    s.query(ActiveTrade).filter(
+                        ActiveTrade.signal_id.in_(expired_ids)
+                    ).delete(synchronize_session=False)
+                    s.commit()
+                    return len(stale_signals)
+                finally:
+                    s.close()
 
-    # Deduplicate OPEN signals — expire extras when same ticker+direction
-    # has more than one OPEN record. Keeps the oldest (lowest id) as the
-    # canonical record; extras are silently expired. Prevents the monitor
-    # loop from sending repeated SL/TGT alerts for the same position.
-    try:
-        _dedup_db = SessionLocal()
+            n_stale = await asyncio.to_thread(_cleanup_stale)
+            if n_stale:
+                logger.info("Deferred startup: expired %d stale OPEN signals", n_stale)
+        except Exception as stale_err:
+            logger.debug("Deferred stale signal cleanup skipped: %s", stale_err)
+
+        # Deduplicate OPEN signals (same ticker+direction — keep oldest).
         try:
-            from sqlalchemy import func as _func
-            open_sigs = (
-                _dedup_db.query(Signal.ticker, Signal.direction,
+            def _dedup_open() -> int:
+                s = SessionLocal()
+                try:
+                    from sqlalchemy import func as _func
+                    open_sigs = (
+                        s.query(Signal.ticker, Signal.direction,
                                 _func.count(Signal.id).label("cnt"))
-                .filter(Signal.status == "OPEN")
-                .group_by(Signal.ticker, Signal.direction)
-                .having(_func.count(Signal.id) > 1)
-                .all()
+                        .filter(Signal.status == "OPEN")
+                        .group_by(Signal.ticker, Signal.direction)
+                        .having(_func.count(Signal.id) > 1)
+                        .all()
+                    )
+                    expired = 0
+                    for row in open_sigs:
+                        records = (
+                            s.query(Signal)
+                            .filter(Signal.ticker == row.ticker,
+                                    Signal.direction == row.direction,
+                                    Signal.status == "OPEN")
+                            .order_by(Signal.id)
+                            .all()
+                        )
+                        for extra in records[1:]:
+                            extra.status = "EXPIRED"
+                            expired += 1
+                    if expired:
+                        s.commit()
+                    return expired
+                finally:
+                    s.close()
+
+            n_dup = await asyncio.to_thread(_dedup_open)
+            if n_dup:
+                logger.info("Deferred startup: expired %d duplicate OPEN signals", n_dup)
+        except Exception as dedup_err:
+            logger.debug("Deferred duplicate signal cleanup skipped: %s", dedup_err)
+
+        # Force-train the loss predictor if no model is loaded.
+        # This is the heaviest single step — often 30-60s on cold boot.
+        try:
+            from mcp_server.signal_predictor import get_predictor, retrain_predictor
+            pred = get_predictor()
+            if not pred.is_ready():
+                logger.info("Deferred startup: loss predictor not ready — training")
+                result = await asyncio.to_thread(retrain_predictor)
+                logger.info("Deferred startup: predictor training result: %s", result)
+            else:
+                logger.info("Deferred startup: loss predictor ready (model loaded)")
+        except Exception as pred_err:
+            logger.debug("Deferred predictor training skipped: %s", pred_err)
+
+        # Bayesian scanner stats for confidence booster.
+        try:
+            from mcp_server.scanner_bayesian import update_bayesian_stats
+            bay_result = await asyncio.to_thread(update_bayesian_stats)
+            logger.info(
+                "Deferred startup: Bayesian scanner stats updated — %d scanners tracked",
+                bay_result.get("scanners_tracked", 0),
             )
-            expired_dup = 0
-            for row in open_sigs:
-                records = (
-                    _dedup_db.query(Signal)
-                    .filter(Signal.ticker == row.ticker,
-                            Signal.direction == row.direction,
-                            Signal.status == "OPEN")
-                    .order_by(Signal.id)
-                    .all()
-                )
-                for extra in records[1:]:   # keep first (oldest), expire rest
-                    extra.status = "EXPIRED"
-                    expired_dup += 1
-            if expired_dup:
-                _dedup_db.commit()
-                logger.info("Startup: expired %d duplicate OPEN signals", expired_dup)
-        finally:
-            _dedup_db.close()
-    except Exception as dedup_err:
-        logger.debug("Duplicate signal cleanup skipped: %s", dedup_err)
+        except Exception as bay_err:
+            logger.debug("Deferred Bayesian stats skipped: %s", bay_err)
 
-    # Force-train the loss predictor at startup if enough closed trades
-    # exist and no model is loaded yet. The self-dev loop only runs at
-    # 16:00 IST — but the predictor should be ready from boot.
-    try:
-        from mcp_server.signal_predictor import get_predictor, retrain_predictor
-        pred = get_predictor()
-        if not pred.is_ready():
-            logger.info("Startup: loss predictor not ready — attempting training")
-            result = retrain_predictor()
-            logger.info("Startup: predictor training result: %s", result)
-        else:
-            logger.info("Startup: loss predictor ready (model loaded)")
-    except Exception as pred_err:
-        logger.debug("Startup predictor training skipped: %s", pred_err)
+        logger.info("Deferred startup: complete")
 
-    # Update Bayesian scanner stats at startup so the confidence booster
-    # has fresh per-scanner win rates from the first scan cycle.
-    try:
-        from mcp_server.scanner_bayesian import update_bayesian_stats
-        bay_result = update_bayesian_stats()
-        logger.info(
-            "Startup: Bayesian scanner stats updated — %d scanners tracked",
-            bay_result.get("scanners_tracked", 0),
-        )
-    except Exception as bay_err:
-        logger.debug("Startup Bayesian stats skipped: %s", bay_err)
+    track(asyncio.create_task(_deferred_startup()), name="deferred_startup")
 
     # Force-clear stale Dhan instrument cache so the latest scrip master
     # (with futures aliases for MCX/NFO/CDS) is loaded fresh. The cached
@@ -1429,21 +1445,60 @@ async def lifespan(app: FastAPI):
     # Awaiting it here blocks the yield, which prevents uvicorn from accepting
     # connections until polling completes. During rolling deploys the Conflict
     # error retries can delay this by 30–60s, causing healthcheck failure.
+    #
+    # Conflict retry: during rolling deploys the OLD container is still
+    # polling Telegram when the new one starts, so Telegram returns
+    # Conflict ("terminated by other getUpdates request"). Coolify takes
+    # ~30-60s to tear down the old container, so we retry with backoff
+    # for up to ~3 minutes before giving up. On non-Conflict errors we
+    # log and give up immediately (there's no point retrying an auth
+    # failure or malformed token).
     async def _start_bot_polling():
         await asyncio.sleep(5)  # let uvicorn fully bind before polling starts
         try:
             from mcp_server.telegram_bot import create_bot_application
             global _bot_app
             _bot_app = create_bot_application()
-            if _bot_app:
-                await _bot_app.initialize()
-                await _bot_app.start()
-                await _bot_app.updater.start_polling(drop_pending_updates=True)
-                logger.info("Telegram bot polling started")
+            if not _bot_app:
+                return
+
+            await _bot_app.initialize()
+            await _bot_app.start()
+
+            # Import Conflict lazily so this module doesn't hard-depend
+            # on python-telegram-bot at import time.
+            try:
+                from telegram.error import Conflict as _TgConflict
+            except Exception:
+                _TgConflict = None
+
+            max_attempts = 12
+            delay = 15.0
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    await _bot_app.updater.start_polling(drop_pending_updates=True)
+                    logger.info("Telegram bot polling started (attempt %d)", attempt)
+                    return
+                except Exception as e:
+                    is_conflict = (
+                        _TgConflict is not None and isinstance(e, _TgConflict)
+                    ) or "Conflict" in type(e).__name__
+                    if not is_conflict or attempt == max_attempts:
+                        logger.warning(
+                            "Telegram bot polling failed after %d attempt(s): %s",
+                            attempt, e,
+                        )
+                        return
+                    logger.info(
+                        "Telegram polling Conflict on attempt %d/%d — "
+                        "old container likely still polling, retrying in %.0fs",
+                        attempt, max_attempts, delay,
+                    )
+                    await asyncio.sleep(delay)
         except Exception as e:
             logger.warning("Telegram bot polling startup failed: %s", e)
 
-    asyncio.create_task(_start_bot_polling())
+    track(asyncio.create_task(_start_bot_polling()), name="telegram_bot_polling")
 
     # Start RealtimeEngine (WebSocket live market data)
     global _realtime_engine
